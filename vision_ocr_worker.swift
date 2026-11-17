@@ -23,6 +23,8 @@ struct Observation: Codable {
     let region: String
     let requestedLanguage: String
     let selectedLanguage: String
+    let requestedLevel: String
+    let recognitionLevel: String
     let text: String
     let confidence: Float
     let x0: Double
@@ -38,6 +40,7 @@ struct WorkerOutput: Codable {
     let imageHeight: Int
     let elapsedSeconds: Double
     let supportedLanguages: [String]
+    let levelsUsed: [String]
     let observations: [Observation]
 }
 
@@ -50,6 +53,33 @@ func levelValue(_ value: String) -> VNRequestTextRecognitionLevel {
     return value.lowercased() == "fast" ? .fast : .accurate
 }
 
+func levelName(_ level: VNRequestTextRecognitionLevel) -> String {
+    return level == .fast ? "fast" : "accurate"
+}
+
+/// Traditional Chinese identifiers accepted by `resolveLanguage`.
+func isTraditionalChinese(_ requested: String) -> Bool {
+    switch requested.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+    case "zh", "zh-hant", "zh_hant", "zh-hk", "zh-mo", "zh-tw",
+         "chinese_cht", "chinese-cht", "traditional-chinese":
+        return true
+    default:
+        // Never treat zh-Hans or an unrelated identifier as Traditional Chinese.
+        return false
+    }
+}
+
+/// Vision `fast` has no Traditional Chinese recognizer. Rather than fail the
+/// Chinese label/header regions (or silently drop them), route those tasks to
+/// `accurate` and report the requested level separately from the level used.
+func resolveTaskLevel(_ task: RegionTask) -> VNRequestTextRecognitionLevel {
+    let requested = levelValue(task.level)
+    if requested == .fast && isTraditionalChinese(task.language) {
+        return .accurate
+    }
+    return requested
+}
+
 func languages(for level: VNRequestTextRecognitionLevel) throws -> [String] {
     return try VNRecognizeTextRequest.supportedRecognitionLanguages(
         for: level,
@@ -60,7 +90,8 @@ func languages(for level: VNRequestTextRecognitionLevel) throws -> [String] {
 func resolveLanguage(_ requested: String, available: [String]) -> String? {
     if available.contains(requested) { return requested }
     switch requested.lowercased() {
-    case "zh", "zh-hant", "chinese_cht", "traditional-chinese":
+    case "zh", "zh-hant", "zh_hant", "zh-hk", "zh-mo", "zh-tw",
+         "chinese_cht", "chinese-cht", "traditional-chinese":
         // Deliberately do not fall back to zh-Hans: this project requires Traditional Chinese.
         return available.first { $0.caseInsensitiveCompare("zh-Hant") == .orderedSame }
     case "pt", "portuguese", "pt-pt":
@@ -76,9 +107,15 @@ func resolveLanguage(_ requested: String, available: [String]) -> String? {
 }
 
 let args = Array(CommandLine.arguments.dropFirst())
-if args.count == 1 && args[0] == "--list-languages" {
+if args.first == "--list-languages" {
+    // Default stays "accurate" for backward compatibility with the Python
+    // adapter and the documented setup check.
+    let requested = args.count > 1 ? args[1].lowercased() : "accurate"
+    guard requested == "fast" || requested == "accurate" else {
+        fail("Usage: --list-languages [fast|accurate]")
+    }
     do {
-        let values = try languages(for: .accurate).sorted()
+        let values = try languages(for: levelValue(requested)).sorted()
         print(values.joined(separator: "\n"))
         exit(0)
     } catch {
@@ -100,10 +137,12 @@ do {
     let height = image.height
     var allObservations: [Observation] = []
     var languageCache: [String: [String]] = [:]
+    var usedLevels: Set<String> = []
 
     for task in input.tasks {
-        let level = levelValue(task.level)
-        let levelKey = task.level.lowercased()
+        let level = resolveTaskLevel(task)
+        let levelKey = levelName(level)
+        usedLevels.insert(levelKey)
         let available: [String]
         if let cached = languageCache[levelKey] {
             available = cached
@@ -115,7 +154,7 @@ do {
 
         guard let selected = resolveLanguage(task.language, available: available) else {
             throw NSError(domain: "MacauTBVision", code: 2, userInfo: [
-                NSLocalizedDescriptionKey: "Requested language '\(task.language)' is unavailable for Vision \(task.level). Supported: \(available.joined(separator: ", "))"
+                NSLocalizedDescriptionKey: "Requested language '\(task.language)' is unavailable for Vision \(levelKey). Supported: \(available.joined(separator: ", "))"
             ])
         }
 
@@ -150,6 +189,8 @@ do {
                 region: task.name,
                 requestedLanguage: task.language,
                 selectedLanguage: selected,
+                requestedLevel: levelName(levelValue(task.level)),
+                recognitionLevel: levelKey,
                 text: candidate.string,
                 confidence: candidate.confidence,
                 x0: Double(imageRect.minX),
@@ -168,6 +209,7 @@ do {
         imageHeight: height,
         elapsedSeconds: ProcessInfo.processInfo.systemUptime - started,
         supportedLanguages: queriedLanguages,
+        levelsUsed: usedLevels.sorted(),
         observations: allObservations.sorted {
             if abs($0.y0 - $1.y0) > 2.0 { return $0.y0 < $1.y0 }
             return $0.x0 < $1.x0

@@ -539,9 +539,13 @@ def run_vision_ocr(image_path: Path, languages: list[str],
             continue
     diagnostics = {
         "vision_elapsed_seconds": result.get("elapsedSeconds", ""),
-        "vision_supported_languages": result.get("supportedLanguages", []),
+        "vision_supported_languages": ",".join(result.get("supportedLanguages", [])),
         "vision_observation_count": len(boxes),
         "vision_level": level,
+        # Traditional Chinese has no Vision `fast` recognizer, so the worker
+        # routes zh-Hant tasks to `accurate`. Record the levels actually used
+        # next to the operator-requested level for audit.
+        "vision_levels_used": ",".join(result.get("levelsUsed", [])),
         "vision_minimum_text_height": minimum_text_height,
     }
     return boxes, diagnostics

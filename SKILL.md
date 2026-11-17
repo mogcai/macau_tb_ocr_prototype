@@ -39,7 +39,7 @@ Before OCR, Python detects the two vertical separators for Account / Debit / Cre
 
 For bilingual pages, separate header/label tasks may run for both Chinese and Portuguese. Numeric column recognition is separated from Chinese/Portuguese label recognition. The worker resolves locale identifiers from the languages actually supported by the installed macOS Vision revision. It must refuse to fall back from `zh-Hant` to `zh-Hans`.
 
-Vision `fast` and `accurate` modes are available. `accurate` is the default to protect small financial text; benchmark `fast` separately on the same pages. The default minimum text height is 0.004 relative to image height. Raising it may improve speed but can omit small rows.
+Vision `fast` and `accurate` modes are available. `accurate` is the default to protect small financial text; benchmark `fast` separately on the same pages. Vision `fast` has no Traditional Chinese recognizer, so any `zh-Hant` task is always executed at `accurate` regardless of `--vision-level`; the requested and actually used levels are both recorded (`vision_level` vs `vision_levels_used`). The default minimum text height is 0.004 relative to image height. Raising it may improve speed but can omit small rows.
 
 The ROI mapping uses Apple's Vision coordinate-conversion API; it must still be visually smoke-tested on the user's Mac with pages 7 and 10, since the Vision worker cannot be executed in a Linux build environment. Do not claim that ROI coordinate mapping or Vision performance has been verified in a Linux environment.
 

@@ -11,6 +11,7 @@
 - Added grouping-aware OCR separator recovery, always flagged for human review.
 - Split core requirements from optional PaddleOCR and Tesseract dependencies so an M1 Mac can use Vision without PaddlePaddle.
 - Added number-normalization and engine-default unit tests.
+- Vision `fast` has no Traditional Chinese recognizer; `zh-Hant` header/label tasks are now automatically run at `accurate` and the requested/used levels are recorded in `documents.csv`.
 
 ## Validation note for this delivery
 

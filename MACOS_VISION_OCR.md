@@ -10,6 +10,8 @@ In v0.2 Apple Vision is integrated into `macau_tb_ocr.py` as `--engine vision`; 
 - A bundled Swift worker calls `VNRecognizeTextRequest` in one process per page, with separate Vision requests for each region.
 - Account labels use the page script's language: `zh-Hant`, Portuguese (`pt-PT`/`pt-BR` where available), or English. Debit/credit numeric regions use English recognition.
 - The worker queries locally supported Vision languages and refuses to silently fall back from `zh-Hant` to `zh-Hans`.
+- Vision `fast` on current macOS revisions has no Traditional Chinese recognizer (typically only `de-DE`, `en-US`, `es-ES`, `fr-FR`, `it-IT`, `pt-BR`). Any task whose language is Traditional Chinese (`zh-Hant`, `zh`, `zh-HK`, `chinese_cht`, ...) therefore always runs at `accurate`, even when `--vision-level fast` is requested. The requested level and the level actually used are both recorded.
+- Each worker observation (worker JSON) also carries `requestedLevel` and `recognitionLevel`; per-page `vision_levels_used` in `documents.csv` records the levels actually executed.
 - All OCR text, confidence and pixel coordinates are exported to `ocr_raw.csv`.
 
 Apple's Vision API supports language-prioritised recognition and fast/accurate recognition levels. It also exposes `minimumTextHeight`, a relative text-size threshold; v0.2 sets it to 0.004 by default to retain small text in tall TB images. The Chinese recognition route does not support language correction/customWords, so the worker disables correction and preserves raw output.
@@ -40,6 +42,13 @@ python macau_tb_ocr.py input.pdf --outdir output_p07_fast --pages 7 \
 ```
 
 Use different output folders for comparison. Do not treat confidence scores across engines/levels as directly comparable.
+
+`--vision-level fast` applies to the Latin/digit regions only. Because Vision `fast` supports no Traditional Chinese language, Chinese header/label regions are automatically upgraded to `accurate`. Check `documents.csv` `vision_level` (requested) against `vision_levels_used` (actually used). To inspect the raw lists:
+
+```bash
+.vision_cache/macau_tb_vision_worker --list-languages fast
+.vision_cache/macau_tb_vision_worker --list-languages accurate
+```
 
 ## Region and coordinate rules
 
