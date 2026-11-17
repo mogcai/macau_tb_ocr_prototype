@@ -1,0 +1,11 @@
+{
+  "ocr_version": "PP-OCRv5",
+  "ocr_languages": "auto",
+  "device": "cpu",
+  "confidence_threshold": 0.88,
+  "notes": {
+    "auto_language_detection": "Reads selectable text outside each embedded table image to choose chinese_cht, pt, or en OCR recognizers.",
+    "amount_policy": "Preserve original OCR strings; suspicious OCR substitutions are flagged for human review, not silently corrected.",
+    "table_columns": "Detects the two internal vertical rules from the embedded table image; uses fixed fallback fractions if line detection fails."
+  }
+}

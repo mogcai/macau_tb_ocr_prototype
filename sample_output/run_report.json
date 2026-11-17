@@ -1,0 +1,12 @@
+{
+  "app_version": "0.1.0",
+  "source_pdf": "/mnt/data/files/anotariais-45-2026.pdf",
+  "pdf_pages": 32,
+  "tb_pages_detected": 26,
+  "tb_rows_extracted": 0,
+  "rows_for_review": 0,
+  "mode": "inspect_only",
+  "ocr_engine": "paddle",
+  "ocr_version": "PP-OCRv5",
+  "languages": "auto"
+}
