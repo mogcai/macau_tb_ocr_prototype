@@ -1,185 +1,222 @@
-# 澳門公報 Balancete OCR Prototype
+# 澳門公報 Balancete OCR Prototype v0.2.0
 
-版本：0.1.0  
-用途：將澳門《公報》第二組中銀行／金融機構的 Balancete（試算表）由 PDF 表格圖片抽取成 Excel / CSV。
+用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
 
-## 呢個 Prototype 對第 45 期 PDF 做咗咩針對性設計？
+## v0.2 重點升級
 
-已檢查的 PDF 特徵：
+1. **Apple Vision 原生 OCR**：macOS 預設使用 `--engine vision`，毋須安裝 PaddlePaddle 或 PaddleOCR。Swift worker 會在首次執行時自動編譯並快取。
+2. **分欄 OCR**：帳戶名稱欄使用繁體中文 `zh-Hant` 或葡文模型；借方、貸方數字欄獨立使用英文／數字 OCR。Header 另外辨識，用於補充銀行名稱及日期。
+3. **繁體中文正規化**：使用 OpenCC `s2hk` 將常見簡體字形轉成香港繁體，寫入 `label_normalized`；`label_raw` 永遠保留原始 OCR 結果。
+4. **數字格式推斷**：支援 `comma_dot`（`1,234,567.89`）及 `dot_comma`（`1.234.567,89`）。按每張 TB 的實際數字證據推斷，唔會因為葡文就假設係歐式格式。
+5. **OCR 標點修復**：如果數字分組仍然符合三位分組結構，可以產生候選標準值，但會標示 `recovered_ocr_separator` 並進入覆核清單。
+6. **PaddleOCR / Tesseract**：保留為可選後備及 benchmark 引擎。
 
-- 全份 32 頁；銀行試算表公告集中在第 7–32 頁。
-- 每張 TB 表格以獨立高解像度圖片嵌入 PDF。
-- 表格圖片可直接由 PyMuPDF 的 image xref 抽取，不必重新將整頁 PDF rasterize。
-- 同一期內有繁體中文、葡萄牙文，亦預留英文 OCR profile。
-- 銀行名稱、試算表日期大多仍可從 PDF text layer 取得；TB 表格帳戶列及借貸金額需要 OCR。
-- 本期自動語言分流：16 頁繁體中文、8 頁葡萄牙文、2 頁中葡混合；未見純英文 TB 頁，但程式保留 `en` profile，可透過 `--ocr-langs en` 或自動語言提示處理後續英文公告。
-- 第 28 頁的銀行名稱及試算表日期只存在表格圖片 header；第 17 頁原生文字層未提供銀行名稱，圖片亦未見明確機構標題，兩者應留作 metadata 覆核。
+## 第 45 期 PDF 的已知特徵
 
-## 資料流程
+根據已提供的 2026 年第 45 期 PDF：
 
-```text
-PDF
- ├─ Page text layer -> 銀行名稱、試算表日期、公報頁碼、語言提示
- └─ Embedded image xref -> 原始高解像度 TB PNG
-          |
-          v
-   PaddleOCR (chinese_cht / pt / en)
-          |
-          v
-   OCR bounding boxes + confidence
-          |
-          v
-   OpenCV vertical-line detection
-          |
-          v
-   Rebuild rows: Account | Debit | Credit
-          |
-          v
-   Amount parsing + review rules
-          |
-          v
-   CSV + Excel (TB_Rows / Review_Queue / Documents / OCR_Raw)
-```
+- 全份 32 頁；TB 圖片集中在第 7–32 頁。
+- 26 張 TB 圖片可直接透過 PDF image xref 抽取。
+- 同期包含繁體中文、葡文及中葡混合頁。
+- 中文及葡文試算表不應以語言推斷數字格式；已檢視的中文第 7 頁及葡文第 10 頁均可見逗號千分位、句號小數點格式。
+- 第 7 頁 OCR 測試資料包含 `119.366,280.10` 等標點混淆案例；v0.2 的數字修復測試覆蓋這類例子。
 
-## 本次 Prototype 的驗證範圍（請先留意）
+## 1. M1 Mac 安裝（推薦）
 
-- 已對附件第 45 期 PDF 完成結構檢查：偵測 26 張 TB 圖片、抽出原圖，並為 26/26 張圖片偵測到兩條內部分隔線。
-- 已測試語言分類、日期／金額解析、欄位分組及覆核規則；單元測試 12/12 通過。
-- 交付內的 `sample_output/` 是**頁面清單及版面檢查結果**，不是 OCR 完成後的 TB 金額資料。此執行環境沒有安裝 PaddleOCR 模型，因此未在這裏聲稱已量度金額 OCR 準確率。
-- 第一次在你部電腦運行時，PaddleOCR 會下載對應模型；正式採用前，請先用第 7 頁（繁中）及第 10 頁（葡文）做小批測試，人工建立 ground truth，再計算借方／貸方金額的 exact-match rate。
-- `--confidence-threshold 0.88` 係 Prototype 初始門檻，並非已校準的生產門檻。
-
-## 1. 環境安裝
-
-建議使用 Python 3.10 或 3.11 的獨立環境。PaddlePaddle wheel 會因 macOS / Windows / Linux、CPU / GPU、Intel / Apple Silicon 而不同，請先按 PaddlePaddle 官方安裝頁選擇對應命令：
-
-- https://www.paddlepaddle.org.cn/install/quick
-- https://www.paddleocr.ai/latest/en/version3.x/pipeline_usage/OCR.html
-
-建立環境：
+先檢查架構：
 
 ```bash
+uname -m
+python3 -c "import platform,sys; print(platform.machine(), sys.executable, platform.python_version())"
+swift --version
+```
+
+M1 原生環境應顯示 `arm64`。如未有 Swift compiler：
+
+```bash
+xcode-select --install
+```
+
+建立環境及安裝 Python 基礎套件：
+
+```bash
+cd /path/to/macau_tb_ocr_prototype_v0.2
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-```
-
-先安裝適合你部電腦的 PaddlePaddle，例如官方安裝頁提供的 CPU wheel，再安裝本專案套件：
-
-```bash
-python -m pip install paddlepaddle
+python -m pip install --upgrade pip setuptools wheel
 python -m pip install -r requirements.txt
 ```
 
-如果 `paddlepaddle` 喺你部 Mac 的 Python / CPU 架構上無相容 wheel，建議用 Linux Docker / Linux VM 運行 OCR。Apple Silicon 如需用 x86_64 Linux image，可先試 `docker build --platform linux/amd64 -t macau-tb-ocr .`。PDF 抽圖和 CSV 匯出部分本身只需要 PyMuPDF、OpenCV、OpenPyXL。
+**Vision 路徑不需要：** `paddlepaddle`、`paddleocr` 或任何 API key。
 
-## 2. 先做 PDF 結構檢查（毋須下載 OCR 模型）
+檢查本機 Vision 語言：
+
+```bash
+swiftc -O vision_ocr_worker.swift -o /tmp/macau_tb_vision_worker
+/tmp/macau_tb_vision_worker --list-languages | grep -E 'zh-Hant|pt-|en-'
+```
+
+需要有 `zh-Hant`、至少一個 `pt-*`、以及 `en-*`。程式唔會將 `zh-Hant` 靜默 fallback 成 `zh-Hans`。
+
+## 2. 先做 PDF 結構檢查
 
 ```bash
 python macau_tb_ocr.py anotariais-45-2026.pdf \
-  --outdir output_inspect \
-  --pages 7-32 \
-  --inspect-only
+  --outdir output_inspect --pages 7-32 --inspect-only
 ```
 
-會產生：
+檢查：
+- `documents.csv`：銀行名稱、日期、頁碼、語言、圖片尺寸。
+- `images/page_XXXX_table.png`：抽取的原圖是否正確。
+- `run_report.json`：TB 頁數、抽圖結果。
 
-- `output_inspect/documents.csv`：銀行、日期、PDF 頁碼、圖片解像度、建議 OCR 語言。
-- `output_inspect/images/page_XXXX_table.png`：直接由 PDF 抽出的 TB 原圖。
-- `output_inspect/run_report.json`：頁數及圖片抽取摘要。
+新一期 PDF 必須重新 inspect，唔好假設 TB 一定在 7–32 頁。
 
-先開幾張 PNG 睇清楚有冇抽錯圖片，確認係表格原圖。
+## 3. Apple Vision OCR 測試
 
-## 3. 執行 OCR
-
-建議正式測試用 PaddleOCR：
+繁體中文第 7 頁：
 
 ```bash
 python macau_tb_ocr.py anotariais-45-2026.pdf \
-  --outdir output \
-  --pages 7-32 \
-  --engine paddle \
-  --device cpu \
-  --ocr-version PP-OCRv5 \
-  --ocr-langs auto
+  --outdir output_v02_p07 --pages 7 \
+  --engine vision --vision-level accurate --ocr-langs auto
 ```
 
-如想先確認程式流程、或以另一套 OCR 作 benchmark，可用 Tesseract baseline（需另外安裝 Tesseract executable 和對應語言資料 `HanT`、`por`、`eng`）：
+葡文第 10 頁：
 
 ```bash
-python macau_tb_ocr.py anotariais-45-2026.pdf --outdir output_tesseract \
-  --pages 7-10 --engine tesseract --ocr-langs auto
+python macau_tb_ocr.py anotariais-45-2026.pdf \
+  --outdir output_v02_p10 --pages 10 \
+  --engine vision --vision-level accurate --ocr-langs auto
 ```
 
-安裝 Python wrapper：`python -m pip install -r requirements-tesseract.txt`。Tesseract baseline 只用來測試流程及比較，不代表建議用它作正式生產模型。財務金額必須以 ground truth 作 exact-match benchmark。
-
-`auto` 會先排除公報固定的中葡雙語頁尾，再利用每頁試算表標題／機構文字判斷 OCR 語言：
-
-- `chinese_cht`：繁體中文表格
-- `pt`：葡萄牙文表格
-- `en`：英文表格（英文文字亦可由中文模型處理；此 profile 作補充）
-
-第一次運行會下載 OCR 模型，需要網絡連線；之後模型會快取在本機。
-
-如需對同一頁做多模型比對：
+速度比較：
 
 ```bash
-python macau_tb_ocr.py input.pdf --outdir output_compare --pages 7-32 \
-  --ocr-langs chinese_cht,pt,en
+python macau_tb_ocr.py anotariais-45-2026.pdf \
+  --outdir output_v02_p07_fast --pages 7 \
+  --engine vision --vision-level fast --ocr-langs auto
 ```
 
-這會較慢，適合做 benchmark，唔建議一開始就每日跑三次。
+比較 `fast` 同 `accurate` 時必須使用相同 PDF 頁及不同輸出資料夾，記錄實際時間及人工核對結果。唔好只比較 OCR confidence。
 
-## 4. 輸出檔案
+第一次執行會將 `vision_ocr_worker.swift` 編譯到 `.vision_cache/`；之後會重用編譯檔。
 
-| 檔案 | 內容 |
+## 4. 完整批次執行
+
+完成中、葡文 smoke test 並人工抽查後：
+
+```bash
+python macau_tb_ocr.py anotariais-45-2026.pdf \
+  --outdir output_issue45_v02 --pages 7-32 \
+  --engine vision --vision-level accurate --ocr-langs auto
+```
+
+如某一期所有 TB 已確認使用英美式數字：
+
+```bash
+--number-format comma_dot
+```
+
+如確認使用歐式數字：
+
+```bash
+--number-format dot_comma
+```
+
+未確認時應保留 `auto`。不可因為文件係葡文而直接設定 `dot_comma`。
+
+## 5. 數字正規化規則
+
+| 原始 OCR | Page profile | 標準候選值 | 狀態 |
+|---|---|---:|---|
+| `1,234,567.89` | comma_dot | `1234567.89` | parsed |
+| `1.234.567,89` | dot_comma | `1234567.89` | parsed |
+| `119.366,280.10` | comma_dot | `119366280.10` | recovered_ocr_separator |
+| `2.496,722,065.08` | comma_dot | `2496722065.08` | recovered_ocr_separator |
+| `65.045.622.601.52` | comma_dot | `65045622601.52` | recovered_ocr_separator |
+
+規則：
+- 千分位和小數點的判斷以整張 TB 的數字證據為準，不使用語言作假設。
+- 只在所有數字分組仍合理時修復標點。
+- 修復結果必須保留原文並標示覆核，不會自動變成已驗證資料。
+- 不補回缺失數字；不符合三位分組結構的字串會標記 `invalid_grouping` 或 `ambiguous_format`。
+- `O/0`、`I/1` 等 OCR 字符混淆可以產生候選值，但仍會標記 `ambiguous_ocr_character`。
+
+## 6. 輸出資料
+
+| 檔案／欄位 | 用途 |
 |---|---|
 | `macau_balancete.xlsx` | Excel 工作簿 |
-| `tb_rows.csv` | 每個 TB account row 一行 |
-| `review_queue.csv` | 需要人工核對的列 |
-| `documents.csv` | 每份 TB 的銀行、日期、頁碼和圖片來源 |
-| `ocr_raw.csv` | 每個 OCR text box、confidence、座標及語言 |
-| `images/` | 保留的原始 TB 圖片 |
-| `run_report.json` | 本次執行摘要 |
+| `tb_rows.csv` | 每行帳戶資料 |
+| `review_queue.csv` | 需人工覆核的資料 |
+| `documents.csv` | 每張 TB 的銀行、日期、語言、number format profile、OCR 執行時間 |
+| `ocr_raw.csv` | 原始 OCR 字串、信心值、區域、座標 |
+| `images/` | 原始 TB 圖片 |
+| `run_report.json` | 執行摘要 |
 
-Excel 有四個 sheet：`TB_Rows`、`Review_Queue`、`Documents`、`OCR_Raw`。
+`tb_rows.csv` 重要欄位：
 
-## 5. 非常重要的準確度原則
+- `label_raw`：OCR 原始帳戶名稱，永不覆蓋。
+- `label_normalized`：OpenCC 正規化後帳戶名稱。
+- `label_normalization_status`：`converted` / `unchanged` / `opencc_missing` 等。
+- `debit_raw` / `credit_raw`：OCR 原始金額字串。
+- `debit_amount` / `credit_amount`：統一用句號小數點、無千分位符號的標準數值字串；Excel 另會儲存為數值 cell。
+- `number_format`：`comma_dot` / `dot_comma` / `ambiguous`。
+- `number_format_confidence`、`number_format_evidence`：格式判斷證據。
+- `debit_parse_status` / `credit_parse_status`：解析或修復狀態。
+- `review_reason` / `review_status`：覆核原因及狀態。
+- `source_image`、PDF 頁數及 bbox：方便返查原圖。
 
-1. `debit_raw`、`credit_raw` 永遠保留 OCR 原文。
-2. `debit_amount`、`credit_amount` 只有通過基本數字格式驗證先會填入。
-3. OCR 將 `O` 認成 `0`、`l` 認成 `1` 等可疑情況不會靜默修正，會放入 `review_queue.csv`。
-4. 低於 `--confidence-threshold` 的列會標示 `needs_review`。
-5. 借貸合計不一致時會標示覆核；唔會自動改金額。
-6. 每一行保留 PDF 頁數、圖片路徑、OCR bounding box，方便回看原圖。
+Excel sheets：`TB_Rows`、`Review_Queue`、`Documents`、`OCR_Raw`。
 
-`auto_check_pass` 只代表通過 Prototype 的基本規則，**唔等於已證明財務數據正確**。正式投產前必須用人工標註的 ground-truth 樣本測試金額 exact-match rate。
+## 7. 品質控制
 
-## 6. 目前限制／下一步
+1. `raw` 欄位永遠不可被自動改寫。
+2. `recovered_ocr_separator` 必須進入 `review_queue.csv`。
+3. `ambiguous_format`、`invalid_grouping`、`ambiguous_ocr_character` 必須覆核。
+4. 簡轉繁只係字形正規化，唔代表帳戶文字已經正確；原始 OCR 必須保留。
+5. OCR confidence 不可當成準確率。
+6. 借貸兩欄相等只係輔助檢查，不代表每行帳戶正確。
+7. 投產前必須人工標註繁中及葡文頁，計算帳戶名稱 exact match、借方／貸方 exact match、行欄對位準確度。
 
-- 目前以表格中的兩條主要垂直分隔線劃分「帳戶名稱／借方／貸方」。如果個別銀行採用不同欄位布局，需增加版面 profile。
-- 行合併以 OCR box 的垂直中心距離作初步分組；多行科目、跨行標籤需加入人工校正樣本。
-- `statement_date` 對中文數字日期和葡文月份有基本處理；遇到特殊字體／格式應加入 fixtures 測試。
-- 下一階段最值得做：對第 7、10、12、20、27、32 頁人工校對每個帳戶與金額，建立 benchmark，量度 Account label accuracy、Debit/Credit exact match、Row alignment accuracy。
+## 8. 可選 OCR 引擎
 
-## 7. 常用命令
+macOS 預設 `vision`。若需 PaddleOCR benchmark：
 
 ```bash
-# 只處理第 10 頁
-python macau_tb_ocr.py anotariais-45-2026.pdf --outdir output_p10 --pages 10
-
-# 調低覆核門檻（只適合探索，不建議正式數據）
-python macau_tb_ocr.py anotariais-45-2026.pdf --outdir output_low_threshold --pages 7-32 --confidence-threshold 0.80
-
-# GPU（必須先裝好相容的 GPU PaddlePaddle）
-python macau_tb_ocr.py anotariais-45-2026.pdf --outdir output_gpu --pages 7-32 --device gpu
+# 先按官方指引安裝適用於平台的 PaddlePaddle
+python -m pip install paddlepaddle
+python -m pip install -r requirements-paddle.txt
+python macau_tb_ocr.py input.pdf --outdir output_paddle --pages 7 --engine paddle --device cpu
 ```
 
-## 8. AI Agent 運行文件
+Tesseract：先安裝系統 Tesseract 及語言資料，再安裝：
 
-如果你會交由 AI agent（例如 coding agent 或自動化 agent）運行，請先讀：
+```bash
+python -m pip install -r requirements-tesseract.txt
+```
 
-- [`SKILL.md`](SKILL.md)：完整 agent skill，包含執行步驟、不可違反的資料準則、輸出欄位、品質檢查及 troubleshooting。
-- [`README_AGENT.md`](README_AGENT.md)：精簡操作入口及常用命令。
+## 9. 單元測試
 
-重要：目前 `config.example.json` 只係參考設定，CLI 未有讀取此 JSON 的功能；實際執行設定請使用 command-line options。
+```bash
+python -m unittest discover -s tests -v
+```
+
+目前測試涵蓋日期抽取、語言判斷、三欄分組、英美／歐式數字格式、OCR 標點修復、錯誤分組拒絕及覆核規則。Swift Vision 必須在 macOS 實際編譯及執行後，先能確認當地語言支援、ROI 座標、速度及 OCR 準確度。
+
+## 10. CLI 參數
+
+```text
+--engine vision|paddle|tesseract
+--vision-level fast|accurate
+--vision-minimum-text-height 0.004
+--ocr-langs auto|chinese_cht,pt,en
+--number-format auto|comma_dot|dot_comma
+--chinese-label-normalization off|s2t|s2hk
+--no-repair-ocr-separators
+--confidence-threshold 0.88
+--inspect-only
+```
+
+完整 Agent 操作規則請閱讀 `SKILL.md`；快速入口見 `README_AGENT.md`。

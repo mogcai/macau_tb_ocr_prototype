@@ -1,0 +1,2 @@
+# Optional fallback / benchmark engine; install PaddlePaddle separately first.
+paddleocr>=3.7.0,<4.0.0

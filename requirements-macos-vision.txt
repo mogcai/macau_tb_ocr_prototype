@@ -1,0 +1,4 @@
+# No pip packages required for Apple Vision.
+# Install Apple's Xcode Command Line Tools so that swiftc is available:
+#   xcode-select --install
+# The native Vision framework ships with macOS.

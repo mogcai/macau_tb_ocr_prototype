@@ -1,97 +1,127 @@
-# AI Agent Quick Start — Macau Balancete OCR
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.2.0
 
-This is the short operational entry point for an AI coding/automation agent. For full constraints, data dictionary, quality rules, and troubleshooting, read [`SKILL.md`](SKILL.md). For a human setup walkthrough, read [`README_zh_HK.md`](README_zh_HK.md).
+Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`.
 
-## Mission
+## Purpose
 
-Given a Macau Government Gazette PDF, identify bank/financial-institution Balancete pages, extract the embedded table image, run language-aware OCR, reconstruct `Account | Debit | Credit` rows, and export Excel/CSV with evidence and a review queue.
+Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review.
 
-## Non-negotiable rules
+## v0.2 changes
 
-- Never overwrite the source PDF.
-- Use a unique `--outdir` per run; current CLI writes directly into that folder.
-- Run `--inspect-only` before OCR on each new Gazette PDF.
-- Inspect `documents.csv` and sample extracted PNGs before starting a batch.
-- Preserve `*_raw` OCR text and original images. Never silently correct amounts.
-- `auto_check_pass` is not proof of financial correctness.
-- Review low-confidence rows, suspicious numeric characters, blank account labels, and fallback column boundaries.
-- Do not report OCR accuracy without manual ground truth.
-- `config.example.json` is a reference file only; current CLI does not load it.
+- macOS default: native Apple Vision (`--engine vision`); no PaddlePaddle/PaddleOCR installation required.
+- OCR is region-based: header, account label, debit, credit. Chinese uses `zh-Hant`; Portuguese uses an available `pt-*` locale; amount columns use English/digits.
+- Simplified-to-HK-Traditional conversion is written to `label_normalized`; `label_raw` remains unchanged.
+- Numeric punctuation is inferred from statement values, never from the document language. `comma_dot` and `dot_comma` are supported. Recoverable OCR separator substitutions are still flagged for review.
+- PaddleOCR and Tesseract are optional alternatives.
 
-## Commands
-
-### 1. Check CLI and tests
+## Setup (M1/M2/M3/M4 Mac)
 
 ```bash
-python macau_tb_ocr.py --help
-python -m unittest discover -s tests -v
+xcode-select --install   # only if swiftc is missing
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
 ```
 
-### 2. Inspect a new PDF (no OCR)
+Check Vision language availability:
 
 ```bash
-python macau_tb_ocr.py /path/to/input.pdf \
-  --outdir output_inspection_YYYYMMDD \
-  --inspect-only
+swiftc -O vision_ocr_worker.swift -o /tmp/macau_tb_vision_worker
+/tmp/macau_tb_vision_worker --list-languages | grep -E 'zh-Hant|pt-|en-'
 ```
 
-For known 2026 issue 45 only, TB pages are PDF pages 7–32:
+Do not silently substitute `zh-Hans` if `zh-Hant` is unavailable.
 
-```bash
-python macau_tb_ocr.py /path/to/anotariais-45-2026.pdf \
-  --outdir output_issue45_inspection \
-  --pages 7-32 --inspect-only
-```
+## Standard runbook
 
-Verify `run_report.json`, `documents.csv`, bank/date metadata, language, image dimensions, `embedded_image`, and the extracted PNGs.
-
-### 3. Run a Chinese and Portuguese smoke test
-
-```bash
-python macau_tb_ocr.py /path/to/anotariais-45-2026.pdf \
-  --outdir output_issue45_p07 \
-  --pages 7 --engine paddle --device cpu \
-  --ocr-version PP-OCRv5 --ocr-langs auto
-
-python macau_tb_ocr.py /path/to/anotariais-45-2026.pdf \
-  --outdir output_issue45_p10 \
-  --pages 10 --engine paddle --device cpu \
-  --ocr-version PP-OCRv5 --ocr-langs auto
-```
-
-For future PDFs, choose one visually confirmed Chinese page, one Portuguese page, and one mixed/unusual page from that issue; do not reuse fixed page numbers blindly.
-
-### 4. Batch after smoke tests
+### 1. Inspect first
 
 ```bash
 python macau_tb_ocr.py /path/to/input.pdf \
-  --outdir output_full_YYYYMMDD \
-  --pages 7-32 --engine paddle --device cpu \
-  --ocr-version PP-OCRv5 --ocr-langs auto \
-  --confidence-threshold 0.88
+  --outdir output_inspect_YYYYMMDD --inspect-only
 ```
 
-Replace `7-32` with the page range confirmed by that PDF's inspection.
+Review `documents.csv`, page ranges, embedded image dimensions, metadata, and sample images.
 
-## Expected outputs
+### 2. Chinese and Portuguese smoke tests on macOS
 
-- `macau_balancete.xlsx` — sheets: `TB_Rows`, `Review_Queue`, `Documents`, `OCR_Raw`
-- `tb_rows.csv` — reconstructed row data
-- `review_queue.csv` — rows flagged for review
-- `documents.csv` — one row per detected statement page
-- `ocr_raw.csv` — OCR boxes, confidence, and pixel coordinates
-- `images/` — extracted table images
-- `run_report.json` — run summary
+```bash
+python macau_tb_ocr.py /path/to/input.pdf --outdir output_p07 \
+  --pages 7 --engine vision --vision-level accurate --ocr-langs auto
+
+python macau_tb_ocr.py /path/to/input.pdf --outdir output_p10 \
+  --pages 10 --engine vision --vision-level accurate --ocr-langs auto
+```
+
+Use page numbers confirmed by the current PDF's inspection; 7 and 10 are only the known examples from issue 45 of 2026.
+
+To compare speed, repeat one page with `--vision-level fast` and a different output directory. Do not compare confidence scores between engines as if they were calibrated.
+
+### 3. Batch after sample review
+
+```bash
+python macau_tb_ocr.py /path/to/input.pdf \
+  --outdir output_full_YYYYMMDD --pages 7-32 \
+  --engine vision --vision-level accurate --ocr-langs auto
+```
+
+Replace `7-32` with the confirmed TB page range.
+
+## Numeric-format behaviour
+
+The parser infers the page-level format from OCR numeric evidence:
+
+- `comma_dot`: `1,234,567.89`
+- `dot_comma`: `1.234.567,89`
+
+It does not assume Portuguese means `dot_comma`. In issue 45, both Chinese and Portuguese sample TBs visibly use comma thousands and dot decimals.
+
+Examples of OCR separator recovery under a confirmed `comma_dot` page profile:
+
+- `119.366,280.10` → `119366280.10`
+- `2.496,722,065.08` → `2496722065.08`
+- `405.228,717.57` → `405228717.57`
+- `65.045.622.601.52` → `65045622601.52`
+
+These values are recovered candidates, not silently approved financial data. Their parse status is `recovered_ocr_separator` and the row remains in `review_queue.csv`.
+
+## Important columns
+
+- `label_raw`: unmodified OCR account text.
+- `label_normalized`: OpenCC `s2hk` converted label (separate from raw).
+- `debit_raw`, `credit_raw`: exact OCR strings.
+- `debit_amount`, `credit_amount`: canonical values (dot decimal separator, no grouping marks).
+- `number_format`: page-level inferred or explicitly overridden format.
+- `number_format_confidence`, `number_format_evidence`: evidence supporting the page profile.
+- `debit_parse_status`, `credit_parse_status`: `parsed`, `recovered_ocr_separator`, `ambiguous_format`, `invalid_grouping`, `ambiguous_ocr_character`, etc.
+- `review_reason`, `review_status`: automatic validation results; `auto_check_pass` is not financial verification.
+- `source_image`, PDF page, bounding box and OCR raw evidence: audit trail.
+
+## Useful CLI options
+
+```text
+--engine vision|paddle|tesseract
+--vision-level fast|accurate
+--vision-minimum-text-height 0.004
+--ocr-langs auto|chinese_cht,pt,en
+--number-format auto|comma_dot|dot_comma
+--chinese-label-normalization off|s2t|s2hk
+--no-repair-ocr-separators
+--confidence-threshold 0.88
+--inspect-only
+```
+
+On macOS, engine defaults to Vision. On non-macOS, it defaults to Paddle. Paddle is optional and requires a separately installed PaddlePaddle backend plus `requirements-paddle.txt`.
 
 ## Success criteria
 
 A run is complete only when:
+1. The detected pages match the inspected manifest.
+2. Every page has its embedded source image.
+3. The OCR output and row alignment are sampled visually.
+4. `number_format` is supported by visible numeric evidence or an explicit operator override.
+5. All separator-recovered, ambiguous-format, low-confidence, blank-label and fallback-boundary rows are reviewed or marked pending.
+6. The run report distinguishes extracted, normalized, recovered, and human-verified data.
 
-1. Detected statement pages match the inspected page manifest.
-2. Each detected page has a source image and document row.
-3. OCR output is present and the row count is plausible.
-4. Account/debit/credit columns have been visually sampled against source images.
-5. All `needs_review` rows and any fallback-boundary pages are reviewed or explicitly reported as pending.
-6. The report clearly distinguishes extracted data from verified data.
-
-The prototype does not currently reconcile the grand debit and credit column totals. Treat all parsed numbers as candidates until checked against the original table or a ground-truth dataset.
+Never claim accuracy or improved speed without a manually checked ground-truth sample on the target Mac.

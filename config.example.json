@@ -1,11 +1,18 @@
 {
-  "ocr_version": "PP-OCRv5",
+  "version": "0.2.0",
+  "engine": "vision",
+  "vision_level": "accurate",
+  "vision_minimum_text_height": 0.004,
   "ocr_languages": "auto",
-  "device": "cpu",
+  "number_format": "auto",
+  "chinese_label_normalization": "s2hk",
+  "repair_ocr_separators": true,
   "confidence_threshold": 0.88,
   "notes": {
-    "auto_language_detection": "Reads selectable text outside each embedded table image to choose chinese_cht, pt, or en OCR recognizers.",
-    "amount_policy": "Preserve original OCR strings; suspicious OCR substitutions are flagged for human review, not silently corrected.",
-    "table_columns": "Detects the two internal vertical rules from the embedded table image; uses fixed fallback fractions if line detection fails."
+    "engine": "Apple Vision is the default on macOS; PaddleOCR and Tesseract are optional alternatives.",
+    "language_routing": "Traditional Chinese account labels use zh-Hant; Portuguese uses an available pt-* locale; amount columns use English/digit recognition.",
+    "raw_policy": "Raw OCR text and source images are immutable evidence; normalized labels and amounts are stored separately.",
+    "number_policy": "Infer comma_dot or dot_comma from each statement's numeric evidence, not from Chinese/Portuguese language. Recovered OCR separators are sent to review.",
+    "config_file": "Reference example only; the current CLI reads command-line options, not this JSON file."
   }
 }

@@ -1,9 +1,12 @@
-# Core processing and exports
+# Core PDF/image processing and Excel/CSV export
 PyMuPDF>=1.24.0
 numpy>=1.26.0
 opencv-python-headless>=4.9.0
 openpyxl>=3.1.2
 Pillow>=10.0.0
 
-# OCR runtime. Install PaddlePaddle separately for your platform first.
-paddleocr>=3.7.0,<4.0.0
+# Traditional Chinese label normalization (raw OCR remains unchanged)
+opencc-python-reimplemented>=0.1.7
+
+# Apple Vision OCR is provided by the macOS Vision framework and Swift worker;
+# it does not require PaddlePaddle, PaddleOCR, or a Python OCR package.

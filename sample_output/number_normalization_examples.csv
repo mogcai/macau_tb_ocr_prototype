@@ -1,0 +1,9 @@
+raw,number_format,canonical_candidate,parse_status
+"1,234,567.89",comma_dot,1234567.89,parsed
+"1.234.567,89",dot_comma,1234567.89,parsed
+"119.366,280.10",comma_dot,119366280.10,recovered_ocr_separator
+"2.496,722,065.08",comma_dot,2496722065.08,recovered_ocr_separator
+"405.228,717.57",comma_dot,405228717.57,recovered_ocr_separator
+"65.045.622.601.52",comma_dot,65045622601.52,recovered_ocr_separator
+"0.00",comma_dot,0.00,parsed
+"0,00",dot_comma,0.00,parsed

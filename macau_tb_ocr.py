@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Macau Gazette Balancete OCR prototype.
+"""Macau Gazette Balancete OCR prototype v0.2.
 
-Extracts embedded statement images from PDFs, runs PaddleOCR by detected language,
-reconstructs rows using the table's vertical rules, and exports CSV/XLSX review files.
+Extract embedded statement images, run native Apple Vision on macOS or an optional
+PaddleOCR/Tesseract backend, reconstruct Account/Debit/Credit rows, normalize
+Chinese labels and page-specific numeric formats, then export auditable CSV/XLSX.
 """
 from __future__ import annotations
 
@@ -10,18 +11,21 @@ import argparse
 import csv
 import json
 import re
+import shutil
 import statistics
+import subprocess
 import sys
 import unicodedata
 from dataclasses import dataclass, asdict
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
 import fitz  # PyMuPDF
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 TB_TERMS = (
     "試算表", "BALANCETE", "TRIAL BALANCE", "BALANCE OF THE LEDGER",
     "BALANCETE DO RAZAO", "BALANCETE DO RAZÃO",
@@ -45,6 +49,7 @@ class OCRBox:
     x1: float
     y1: float
     language: str
+    region: str = "table"
 
     @property
     def cx(self) -> float:
@@ -361,7 +366,7 @@ def _parse_v3_result(item: Any, language: str) -> list[OCRBox]:
 
 
 def run_tesseract_ocr(image_path: Path, language: str) -> list[OCRBox]:
-    """Optional local baseline. PaddleOCR remains the recommended primary engine."""
+    """Optional local Tesseract baseline for comparison and fallback."""
     try:
         import pytesseract
         from pytesseract import Output
@@ -424,12 +429,136 @@ def run_ocr(image_path: Path, language: str, engine_name: str, device: str,
     return run_paddle_ocr(image_path, language, device, version, engines)
 
 
+def _ensure_vision_worker() -> Path:
+    """Compile the bundled Swift Vision worker once, on the user's Mac."""
+    if sys.platform != "darwin":
+        raise RuntimeError("Apple Vision OCR 只可以在 macOS 執行。")
+    source = Path(__file__).with_name("vision_ocr_worker.swift")
+    if not source.exists():
+        raise FileNotFoundError(f"搵唔到 Swift Vision worker：{source}")
+    compiler = shutil.which("swiftc")
+    if not compiler:
+        raise RuntimeError("搵唔到 swiftc。請先執行：xcode-select --install")
+    cache_dir = Path(__file__).with_name(".vision_cache")
+    cache_dir.mkdir(exist_ok=True)
+    binary = cache_dir / "macau_tb_vision_worker"
+    if not binary.exists() or binary.stat().st_mtime < source.stat().st_mtime:
+        command = [compiler, "-O", str(source), "-o", str(binary)]
+        try:
+            completed = subprocess.run(command, capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("Swift Vision worker 編譯超時。請確認 Xcode Command Line Tools 已安裝。") from exc
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout)[-5000:]
+            raise RuntimeError(f"Swift Vision worker 編譯失敗：\n{detail}")
+    return binary
+
+
+def vision_supported_languages() -> list[str]:
+    binary = _ensure_vision_worker()
+    completed = subprocess.run([str(binary), "--list-languages"], capture_output=True,
+                               text=True, timeout=30)
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or "無法查詢 Apple Vision 語言")
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def _vision_language_profiles(languages: list[str]) -> list[tuple[str, str]]:
+    profiles: list[tuple[str, str]] = []
+    for lang in languages:
+        if lang in {"chinese_cht", "zh-Hant", "zh"}:
+            profiles.append(("zh-Hant", "zh-Hant"))
+        elif lang in {"pt", "pt-PT", "Portuguese"}:
+            profiles.append(("pt", "pt"))
+        elif lang in {"en", "English", "en-US"}:
+            profiles.append(("en", "en"))
+    return list(dict.fromkeys(profiles)) or [("zh-Hant", "zh-Hant")]
+
+
+def run_vision_ocr(image_path: Path, languages: list[str],
+                   boundaries: tuple[float, float], level: str = "accurate",
+                   minimum_text_height: float = 0.004) -> tuple[list[OCRBox], dict[str, Any]]:
+    """Run native Vision once per page, with separate label/amount column ROIs.
+
+    ROI positions are normalised top-left fractions in the source image. Chinese
+    uses zh-Hant, Portuguese uses a Portuguese model, and amount columns use
+    English/digits. A page's script/language never dictates its number format.
+    """
+    binary = _ensure_vision_worker()
+    image_path = image_path.resolve()
+    sep1, sep2 = boundaries
+    # Table body excludes the double-height column-heading band and page footer.
+    body_y0, body_y1 = 0.035, 0.985
+    profiles = _vision_language_profiles(languages)
+    tasks: list[dict[str, Any]] = []
+
+    for profile_name, lang_code in profiles:
+        tasks.append({"name": f"header_{profile_name}", "language": lang_code,
+                      "level": level, "x0": 0.005, "y0": 0.0, "x1": 0.995, "y1": 0.25})
+        tasks.append({"name": f"label_{profile_name}", "language": lang_code,
+                      "level": level, "x0": 0.005, "y0": body_y0,
+                      "x1": max(0.01, sep1 - 0.002), "y1": body_y1})
+
+    # Numeric columns use a dedicated Latin/digit recognizer, not a Chinese or
+    # Portuguese language assumption. This also avoids language correction.
+    tasks.extend([
+        {"name": "debit_numeric", "language": "en", "level": level,
+         "x0": min(0.99, sep1 + 0.002), "y0": body_y0,
+         "x1": max(sep1 + 0.01, sep2 - 0.002), "y1": body_y1},
+        {"name": "credit_numeric", "language": "en", "level": level,
+         "x0": min(0.99, sep2 + 0.002), "y0": body_y0,
+         "x1": 0.995, "y1": body_y1},
+    ])
+
+    payload = {"imagePath": str(image_path), "tasks": tasks,
+               "minimumTextHeight": minimum_text_height}
+    try:
+        completed = subprocess.run([str(binary)], input=json.dumps(payload),
+                                   capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Apple Vision OCR 超時：{image_path.name}") from exc
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or "Apple Vision OCR 執行失敗")
+    try:
+        result = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Apple Vision 回傳無效 JSON：{completed.stdout[:500]}") from exc
+
+    boxes: list[OCRBox] = []
+    for item in result.get("observations", []):
+        try:
+            task_region = str(item.get("region", "table"))
+            region = "header" if task_region.startswith("header_") else "table"
+            boxes.append(OCRBox(
+                text=str(item["text"]), score=float(item.get("confidence", 0.0)),
+                x0=float(item["x0"]), y0=float(item["y0"]),
+                x1=float(item["x1"]), y1=float(item["y1"]),
+                language=str(item.get("selectedLanguage", "")), region=region,
+            ))
+        except (KeyError, TypeError, ValueError):
+            continue
+    diagnostics = {
+        "vision_elapsed_seconds": result.get("elapsedSeconds", ""),
+        "vision_supported_languages": result.get("supportedLanguages", []),
+        "vision_observation_count": len(boxes),
+        "vision_level": level,
+        "vision_minimum_text_height": minimum_text_height,
+    }
+    return boxes, diagnostics
+
+
 def dedupe_boxes(boxes: list[OCRBox]) -> list[OCRBox]:
     """Deduplicate boxes when bilingual pages are OCR'd with multiple models."""
     kept: list[OCRBox] = []
     for box in sorted(boxes, key=lambda b: b.score, reverse=True):
         duplicate = False
         for old in kept:
+            if box.region != old.region:
+                continue
+            # Do not discard overlapping but different-language labels on
+            # bilingual Gazette pages; only dedupe cross-language exact text.
+            if box.language != old.language and norm_text(box.text) != norm_text(old.text):
+                continue
             ix0, iy0 = max(box.x0, old.x0), max(box.y0, old.y0)
             ix1, iy1 = min(box.x1, old.x1), min(box.y1, old.y1)
             inter = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
@@ -522,63 +651,259 @@ def group_boxes_into_rows(boxes: list[OCRBox], image_width: int, image_height: i
     ]
 
 
-def parse_amount(raw: str) -> tuple[str, str]:
-    """Return (decimal string, issue). Never silently repair ambiguous characters."""
-    s = norm_text(raw).replace(" ", "").replace("−", "-").replace("–", "-")
-    if not s:
-        return "", ""
-    if s in {"-", "—", "–", "－", "."}:
-        return "", "dash_or_blank"
-    negative = s.startswith("(") and s.endswith(")")
-    if negative:
+def _clean_amount_token(raw: str) -> tuple[str, bool, str]:
+    """Strip display-only material and map common OCR-confusable glyphs.
+
+    Returns (token, negative, issue). The original input is never modified in
+    the exported *_raw field.
+    """
+    s = norm_text(raw).replace(" ", "").replace("\u00a0", "").replace("\u202f", "")
+    s = s.replace("−", "-").replace("–", "-").replace("—", "-")
+    if not s or s in {"-", "－", ".", ","}:
+        return "", False, "dash_or_blank"
+
+    negative = False
+    if s.startswith("(") and s.endswith(")"):
+        negative = True
         s = s[1:-1]
-    # Currency labels/symbols occasionally appear beside numeric values.
-    s = re.sub(r"(?i)(MOP|HKD|USD|RMB|AOA|\$|€|£)", "", s)
+    if s.startswith("-"):
+        negative = not negative
+        s = s[1:]
+
+    s = re.sub(r"(?i)(MOP|HKD|USD|RMB|AOA|澳门元|澳門元|\$|€|£)", "", s)
+    s = s.strip()
+    if not s:
+        return "", negative, "dash_or_blank"
+
+    issue = ""
     if re.search(r"[OoIl|]", s):
-        candidate = s.translate(str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1"}))
+        s = s.translate(str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1"}))
         issue = "ambiguous_ocr_character"
+    if not re.fullmatch(r"[0-9.,']+", s):
+        return "", negative, issue or "invalid_characters"
+    s = s.replace("'", "")
+    return s, negative, issue
+
+
+def _grouping_is_valid(groups: list[str]) -> bool:
+    if not groups or not all(x.isdigit() for x in groups):
+        return False
+    if not (1 <= len(groups[0]) <= 3):
+        return False
+    return all(len(x) == 3 for x in groups[1:])
+
+
+def _parse_amount_for_style(token: str, style: str) -> tuple[str, str, bool]:
+    """Parse one token using a known page convention.
+
+    style is comma_dot (1,234.56) or dot_comma (1.234,56).
+    Punctuation in the integer portion may be OCR-corrupted, but only when
+    all digit groups remain structurally valid. Such repairs are flagged.
+    """
+    decimal_sep = "." if style == "comma_dot" else ","
+    grouping_sep = "," if style == "comma_dot" else "."
+    separators = [c for c in token if c in ",."]
+    if not separators:
+        if token.isdigit():
+            return token, "", False
+        return "", "unparsed_amount", False
+
+    last_sep_pos = max(token.rfind("."), token.rfind(","))
+    last_sep = token[last_sep_pos]
+    tail = token[last_sep_pos + 1:]
+    prefix = token[:last_sep_pos]
+
+    # Financial balances normally use two decimal places. A different number
+    # of trailing digits is not silently guessed as a currency fraction.
+    if last_sep == decimal_sep and len(tail) in (1, 2, 4) and tail.isdigit():
+        int_groups = re.split(r"[.,]", prefix) if prefix else ["0"]
+        if not _grouping_is_valid(int_groups):
+            return "", "invalid_grouping", False
+        integer = "".join(int_groups)
+        if not integer:
+            integer = "0"
+        repaired = any(sep != grouping_sep for sep in re.findall(r"[.,]", prefix))
+        value = integer + "." + tail
+        return value, ("recovered_ocr_separator" if repaired else ""), repaired
+
+    # Grouping-only values: every group after the first must have three digits.
+    groups = re.split(r"[.,]", token)
+    if _grouping_is_valid(groups):
+        original_separators = set(separators)
+        expected_only = original_separators == {grouping_sep}
+        if expected_only:
+            return "".join(groups), "", False
+        # Recover only a consistent all-one-separator grouping substitution.
+        # Mixed punctuation with a 3-digit tail may instead be a nonstandard
+        # decimal precision, so do not silently collapse it into an integer.
+        if len(original_separators) == 1:
+            return "".join(groups), "recovered_ocr_separator", True
+        return "", "ambiguous_format", False
+
+    return "", "ambiguous_format", False
+
+
+def infer_number_format(values: Iterable[str]) -> dict[str, Any]:
+    """Infer punctuation convention from evidence on one statement page.
+
+    Do not infer from language. Prefer numbers with a two-digit decimal tail
+    and valid 3-digit integer groups; single simple values contribute less.
+    """
+    scores = {"comma_dot": 0.0, "dot_comma": 0.0}
+    evidence: list[dict[str, str]] = []
+    for raw in values:
+        token, _, clean_issue = _clean_amount_token(str(raw or ""))
+        if not token or not any(ch in token for ch in ",."):
+            continue
+        last_pos = max(token.rfind("."), token.rfind(","))
+        last_sep = token[last_pos]
+        tail = token[last_pos + 1:]
+        prefix = token[:last_pos]
+        groups = re.split(r"[.,]", prefix) if prefix else ["0"]
+        all_groups = re.split(r"[.,]", token)
+        has_valid_groups = _grouping_is_valid(groups)
+        all_grouping_valid = _grouping_is_valid(all_groups)
+        if (len(tail) == 3 and tail.isdigit() and all_grouping_valid
+                and len(all_groups) > 1 and set(re.findall(r"[.,]", token)) == {last_sep}):
+            grouping_style = "comma_dot" if last_sep == "," else "dot_comma"
+            scores[grouping_style] += 1.0
+            evidence.append({"raw": str(raw), "vote": grouping_style, "weight": "1.0"})
+        elif last_sep == "." and len(tail) in (1, 2, 4) and tail.isdigit() and has_valid_groups:
+            weight = 3.0 if len(tail) == 2 and len(groups) > 1 else 1.0
+            scores["comma_dot"] += weight
+            evidence.append({"raw": str(raw), "vote": "comma_dot", "weight": str(weight)})
+        elif last_sep == "," and len(tail) in (1, 2, 4) and tail.isdigit() and has_valid_groups:
+            weight = 3.0 if len(tail) == 2 and len(groups) > 1 else 1.0
+            scores["dot_comma"] += weight
+            evidence.append({"raw": str(raw), "vote": "dot_comma", "weight": str(weight)})
+        else:
+            # A single clear decimal separator with two trailing digits is useful
+            # evidence, while a bare grouping token remains weak evidence.
+            parts = re.split(r"[.,]", token)
+            if len(parts) == 2 and len(parts[-1]) == 2 and parts[-1].isdigit():
+                if last_sep == ".":
+                    scores["comma_dot"] += 1.5
+                    evidence.append({"raw": str(raw), "vote": "comma_dot", "weight": "1.5"})
+                else:
+                    scores["dot_comma"] += 1.5
+                    evidence.append({"raw": str(raw), "vote": "dot_comma", "weight": "1.5"})
+
+    total = scores["comma_dot"] + scores["dot_comma"]
+    if total <= 0 or abs(scores["comma_dot"] - scores["dot_comma"]) < 1.0:
+        chosen = "ambiguous"
+        confidence = 0.0 if total <= 0 else round(max(scores.values()) / total, 3)
     else:
-        candidate, issue = s, ""
-    # Both separators: rightmost one is decimal separator.
-    if "," in candidate and "." in candidate:
-        if candidate.rfind(".") > candidate.rfind(","):
-            candidate = candidate.replace(",", "")
+        chosen = max(scores, key=scores.get)
+        confidence = round(scores[chosen] / total, 3)
+    return {"number_format": chosen, "format_confidence": confidence,
+            "format_scores": scores, "format_evidence": evidence}
+
+
+def parse_amount(raw: str, number_format: str = "auto",
+                 repair_ocr_separators: bool = True) -> tuple[str, str]:
+    """Return (canonical decimal string, parse status).
+
+    Canonical output always uses digits and a dot decimal separator. OCR text
+    is preserved separately by callers. Ambiguous formats are never guessed.
+    """
+    token, negative, initial_issue = _clean_amount_token(raw)
+    if not token:
+        return "", initial_issue
+
+    styles = [number_format] if number_format in {"comma_dot", "dot_comma"} else []
+    if not styles:
+        inferred = infer_number_format([raw])["number_format"]
+        if inferred in {"comma_dot", "dot_comma"}:
+            styles = [inferred]
         else:
-            candidate = candidate.replace(".", "").replace(",", ".")
-    elif "," in candidate:
-        tail = candidate.rsplit(",", 1)[-1]
-        if len(tail) in (1, 2):
-            candidate = candidate.replace(".", "").replace(",", ".")
-        else:
-            candidate = candidate.replace(",", "")
-    # Remove thin-space/group separators, but do not guess letters or missing digits.
-    if not re.fullmatch(r"-?\d+(?:\.\d{1,4})?", candidate):
-        return "", issue or "unparsed_amount"
+            # Token-level inference is allowed only when one convention is
+            # structurally unambiguous; never prefer a language-based default.
+            if token.count(".") and token.count(","):
+                styles = ["comma_dot" if token.rfind(".") > token.rfind(",") else "dot_comma"]
+            elif token.count(".") == 1 and token.rsplit(".", 1)[-1].isdigit() and len(token.rsplit(".", 1)[-1]) == 2:
+                styles = ["comma_dot"]
+            elif token.count(",") == 1 and token.rsplit(",", 1)[-1].isdigit() and len(token.rsplit(",", 1)[-1]) == 2:
+                styles = ["dot_comma"]
+            else:
+                return "", initial_issue or "ambiguous_format"
+
+    value, style_issue, repaired = _parse_amount_for_style(token, styles[0])
+    if not value:
+        return "", initial_issue or style_issue or "unparsed_amount"
+    if repaired and not repair_ocr_separators:
+        return "", initial_issue or "separator_repair_disabled"
     try:
-        value = Decimal(candidate)
+        decimal_value = Decimal(value)
         if negative:
-            value = -value
-        # Keep exact decimal representation and avoid binary float rounding.
-        return format(value, "f"), issue
+            decimal_value = -decimal_value
+        canonical = format(decimal_value, "f")
     except InvalidOperation:
-        return "", issue or "unparsed_amount"
+        return "", initial_issue or "unparsed_amount"
+
+    issues = [x for x in (initial_issue, style_issue) if x]
+    return canonical, ";".join(dict.fromkeys(issues))
 
 
-def validate_rows(rows: list[dict[str, Any]], confidence_threshold: float) -> list[dict[str, Any]]:
+@lru_cache(maxsize=3)
+def _get_opencc_converter(conversion: str):
+    from opencc import OpenCC
+    return OpenCC(conversion)
+
+
+def normalize_chinese_label(raw: str, conversion: str = "s2hk") -> tuple[str, str]:
+    """Keep OCR raw text intact and return a separate Traditional label field."""
+    value = norm_text(raw)
+    if not value or conversion == "off" or not has_chinese(value):
+        return value, "unchanged"
+    try:
+        converter = _get_opencc_converter(conversion)
+        converted = converter.convert(value)
+        return converted, "converted" if converted != value else "unchanged"
+    except ImportError:
+        return value, "opencc_missing"
+    except Exception as exc:
+        return value, f"opencc_error:{type(exc).__name__}"
+
+def validate_rows(rows: list[dict[str, Any]], confidence_threshold: float,
+                  number_format_override: str = "auto",
+                  chinese_label_normalization: str = "s2hk",
+                  repair_ocr_separators: bool = True) -> list[dict[str, Any]]:
+    profile = infer_number_format(
+        [value for row in rows for value in (row.get("debit_raw", ""), row.get("credit_raw", ""))]
+    )
+    page_format = number_format_override if number_format_override in {"comma_dot", "dot_comma"} else profile["number_format"]
+
     for row in rows:
-        debit, debit_issue = parse_amount(row.get("debit_raw", ""))
-        credit, credit_issue = parse_amount(row.get("credit_raw", ""))
+        label_normalized, label_status = normalize_chinese_label(
+            row.get("label_raw", ""), chinese_label_normalization
+        )
+        row["label_normalized"] = label_normalized
+        row["label_normalization_status"] = label_status
+        row["number_format"] = page_format
+        row["number_format_confidence"] = profile["format_confidence"]
+        row["number_format_evidence"] = json.dumps(profile["format_evidence"], ensure_ascii=False)
+
+        debit, debit_issue = parse_amount(row.get("debit_raw", ""), page_format, repair_ocr_separators)
+        credit, credit_issue = parse_amount(row.get("credit_raw", ""), page_format, repair_ocr_separators)
         row["debit_amount"] = debit
         row["credit_amount"] = credit
+        row["debit_parse_status"] = debit_issue or ("parsed" if debit else "blank")
+        row["credit_parse_status"] = credit_issue or ("parsed" if credit else "blank")
+
         issues: list[str] = []
         for col, issue in (("debit", debit_issue), ("credit", credit_issue)):
             if issue and issue != "dash_or_blank":
                 issues.append(f"{col}:{issue}")
+        if page_format == "ambiguous" and (row.get("debit_raw") or row.get("credit_raw")):
+            issues.append("page_number_format_ambiguous")
+        if label_status.startswith("opencc_"):
+            issues.append(f"label:{label_status}")
         if row.get("row_confidence", 0) < confidence_threshold:
             issues.append("low_ocr_confidence")
         if not row.get("label_raw") and (debit or credit):
             issues.append("amount_without_account_label")
-        label_upper = norm_text(row.get("label_raw", "")).upper()
+
+        label_upper = norm_text(label_normalized).upper()
         if any(x in label_upper for x in ("總額", "合計", "TOTAL", "TOTAIS")):
             if debit and credit:
                 try:
@@ -586,10 +911,9 @@ def validate_rows(rows: list[dict[str, Any]], confidence_threshold: float) -> li
                         issues.append("debit_credit_total_mismatch")
                 except InvalidOperation:
                     issues.append("total_validation_error")
-        row["review_reason"] = ";".join(issues)
+        row["review_reason"] = ";".join(dict.fromkeys(issues))
         row["review_status"] = "needs_review" if issues else "auto_check_pass"
     return rows
-
 
 def ocr_boxes_to_lines(boxes: list[OCRBox], max_y: float) -> list[str]:
     """Merge word-level OCR boxes into reading lines for image-header metadata."""
@@ -743,13 +1067,25 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
         if args.inspect_only:
             continue
 
-        all_boxes: list[OCRBox] = []
-        for lang in langs:
-            boxes = run_ocr(image_path, lang, args.engine, args.device, args.ocr_version, engines)
-            all_boxes.extend(boxes)
+        b1, b2, boundary_source = detect_column_boundaries(image_path)
+        vision_diagnostics: dict[str, Any] = {}
+        if args.engine == "vision":
+            all_boxes, vision_diagnostics = run_vision_ocr(
+                image_path, langs, (b1, b2), level=args.vision_level,
+                minimum_text_height=args.vision_minimum_text_height,
+            )
+        else:
+            all_boxes = []
+            for lang in langs:
+                boxes = run_ocr(image_path, lang, args.engine, args.device, args.ocr_version, engines)
+                all_boxes.extend(boxes)
         all_boxes = dedupe_boxes(all_boxes)
-        # Fill missing/embedded-only entity name and date from the OCR header lines.
-        header_lines = ocr_boxes_to_lines(all_boxes, table_image.height * 0.24)
+        header_boxes = [b for b in all_boxes if b.region == "header"]
+        if not header_boxes:
+            header_boxes = [b for b in all_boxes if b.cy <= table_image.height * 0.24]
+        table_boxes = [b for b in all_boxes if b.region == "table"]
+        # Fill missing/embedded-only entity name and date from the dedicated header ROI.
+        header_lines = ocr_boxes_to_lines(header_boxes, table_image.height * 0.24)
         ocr_header_text = "\n".join(header_lines)
         if meta.get("bank_name_source") == "image_header_check":
             heading_pos = next((i for i, x in enumerate(header_lines) if re.search(
@@ -769,21 +1105,35 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
         document_rows[-1].update({k: meta.get(k, "") for k in (
             "bank_name", "statement_date", "bank_name_source", "metadata_status"
         )})
-        b1, b2, boundary_source = detect_column_boundaries(image_path)
         for box in all_boxes:
             raw_rows.append({
                 **meta,
                 "language": box.language,
+                "region": box.region,
                 "text": box.text,
                 "confidence": round(box.score, 4),
                 "x0": round(box.x0, 2), "y0": round(box.y0, 2),
                 "x1": round(box.x1, 2), "y1": round(box.y1, 2),
                 "image_path": str(image_path),
             })
-        rows = group_boxes_into_rows(all_boxes, table_image.width, table_image.height, (b1, b2))
-        rows = validate_rows(rows, args.confidence_threshold)
+        rows = group_boxes_into_rows(table_boxes, table_image.width, table_image.height, (b1, b2))
+        rows = validate_rows(
+            rows, args.confidence_threshold,
+            number_format_override=args.number_format,
+            chinese_label_normalization=args.chinese_label_normalization,
+            repair_ocr_separators=args.repair_ocr_separators,
+        )
+        if rows:
+            document_rows[-1]["number_format_detected"] = rows[0].get("number_format", "")
+            document_rows[-1]["number_format_confidence"] = rows[0].get("number_format_confidence", "")
+            document_rows[-1]["number_format_evidence"] = rows[0].get("number_format_evidence", "")
+        document_rows[-1].update(vision_diagnostics)
         for row in rows:
             row["column_boundary_source"] = boundary_source
+            if str(boundary_source).startswith("fallback"):
+                current = row.get("review_reason", "")
+                row["review_reason"] = ";".join(x for x in (current, "fallback_column_boundaries") if x)
+                row["review_status"] = "needs_review"
             tb_rows.append(make_export_row(meta, row, image_path))
         document_rows[-1]["ocr_status"] = "completed"
         document_rows[-1]["ocr_box_count"] = len(all_boxes)
@@ -807,6 +1157,10 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
         "mode": "inspect_only" if args.inspect_only else "ocr",
         "ocr_engine": args.engine,
         "ocr_version": args.ocr_version,
+        "vision_level": args.vision_level if args.engine == "vision" else "",
+        "number_format_override": args.number_format,
+        "chinese_label_normalization": args.chinese_label_normalization,
+        "repair_ocr_separators": args.repair_ocr_separators,
         "languages": args.ocr_langs,
     }
     (out_dir / "run_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -828,18 +1182,30 @@ def parse_page_range(value: str, total_pages: int) -> tuple[int, int]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="澳門公報 Balancete OCR / Excel / CSV prototype")
+    default_engine = "vision" if sys.platform == "darwin" else "paddle"
+    p = argparse.ArgumentParser(description="澳門公報 Balancete OCR / Excel / CSV prototype v0.2")
     p.add_argument("pdf", help="輸入 PDF 路徑")
     p.add_argument("--outdir", default="output", help="輸出資料夾（預設：output）")
     p.add_argument("--pages", default="all", help="處理頁數，例如 7-32；預設 all")
-    p.add_argument("--engine", default="paddle", choices=["paddle", "tesseract"], help="OCR 引擎；PaddleOCR 為建議主引擎，Tesseract 作本機 baseline")
+    p.add_argument("--engine", default=default_engine, choices=["vision", "paddle", "tesseract"],
+                   help=f"OCR 引擎；macOS 預設 Vision，其他平台預設 Paddle（目前：{default_engine}）")
     p.add_argument("--device", default="cpu", choices=["cpu", "gpu"], help="OCR 運算裝置（PaddleOCR 使用）")
     p.add_argument("--ocr-version", default="PP-OCRv5", help="PaddleOCR 模型版本")
     p.add_argument("--ocr-langs", default="auto", help="auto 或逗號分隔，例如 chinese_cht,pt,en")
+    p.add_argument("--vision-level", default="accurate", choices=["fast", "accurate"],
+                   help="Apple Vision 模式；accurate 較重視識別完整度，fast 較快")
+    p.add_argument("--vision-minimum-text-height", type=float, default=0.004,
+                   help="Vision 最小相對文字高度；降低可讀更細文字但可能較慢")
+    p.add_argument("--number-format", default="auto", choices=["auto", "comma_dot", "dot_comma"],
+                   help="數字格式；auto 按每張 TB 證據推斷，不按中文／葡文猜測")
+    p.add_argument("--chinese-label-normalization", default="s2hk", choices=["off", "s2t", "s2hk"],
+                   help="另行輸出中文標籤正規化欄位；raw OCR 永不覆蓋")
+    p.add_argument("--no-repair-ocr-separators", dest="repair_ocr_separators", action="store_false",
+                   help="停用有分組證據的 OCR 千分位標點修復")
+    p.set_defaults(repair_ocr_separators=True)
     p.add_argument("--confidence-threshold", type=float, default=0.88, help="低於此 OCR 信心值會進入覆核清單")
     p.add_argument("--inspect-only", action="store_true", help="只抽取內嵌圖片及 metadata，不執行 OCR")
     return p
-
 
 def main() -> int:
     args = build_parser().parse_args()
