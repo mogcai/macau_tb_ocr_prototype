@@ -192,6 +192,48 @@ class DashStateTests(unittest.TestCase):
             self.assertFalse(gt_score.is_dash_cell(raw))
 
 
+class LabelCerTests(unittest.TestCase):
+    def gt(self, row_id: str, top: float, label: str) -> dict[str, str]:
+        return {"pdf_page": "7", "gt_row_id": row_id,
+                "bbox_y0": str(top), "bbox_y1": str(top + 40),
+                "label_gt": label, "debit_gt": "", "credit_gt": "",
+                "debit_dash_gt": "0", "credit_dash_gt": "0"}
+
+    def run_row(self, top: float, label: str) -> dict[str, str]:
+        return {"pdf_page": "7", "bbox_y0": str(top), "label_raw": label,
+                "debit_raw": "", "debit_amount": "", "credit_raw": "",
+                "credit_amount": "", "debit_parse_status": "blank",
+                "credit_parse_status": "blank", "review_status": "needs_review"}
+
+    def test_cer_uses_total_characters_not_label_rows(self):
+        gt = [
+            self.gt("r1", 100, "現金"),
+            self.gt("r2", 200, "存款"),
+            self.gt("r3", 300, "其他固定資產"),
+        ]
+        run = [
+            self.run_row(100, "現金"),
+            self.run_row(200, "存数"),
+            self.run_row(300, "其他固定賞產"),
+        ]
+        metrics, _ = gt_score.score_page(7, gt, run, 0, 0)
+        self.assertEqual(metrics["label_edit_distance"], 2)
+        self.assertEqual(metrics["label_characters"], 10)
+        self.assertAlmostEqual(metrics["label_cer"], 0.2)
+
+    def test_merged_cer_is_distance_over_characters(self):
+        page_a = {"gt_rows": 1, "run_rows": 1, "matched_rows": 1,
+                  "label_rows": 1, "label_exact": 0,
+                  "label_edit_distance": 1, "label_characters": 2}
+        page_b = {"gt_rows": 1, "run_rows": 1, "matched_rows": 1,
+                  "label_rows": 1, "label_exact": 1,
+                  "label_edit_distance": 1, "label_characters": 10}
+        merged = gt_score.merge_metrics({"a": page_a, "b": page_b})
+        self.assertEqual(merged["label_edit_distance"], 2)
+        self.assertEqual(merged["label_characters"], 12)
+        self.assertAlmostEqual(merged["label_cer"], round(2 / 12, 4))
+
+
 class ScoreTests(unittest.TestCase):
     def gt(self, debit: str = "1000.00", label: str = "現金") -> list[dict[str, str]]:
         return [{

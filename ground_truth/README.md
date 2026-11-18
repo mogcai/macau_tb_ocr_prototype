@@ -129,7 +129,7 @@ python tools/gt_score.py ground_truth/issue45_2026 --run output_v03_issue45
 
 ```text
 Rows: run=... matched=... gt_missing=... run_spurious=... alignment F1=...
-Labels: exact=... CER=... (n=...)
+Labels: exact=... CER=... (rows=..., chars=...)
 Debit : exact=... (n=...)
 Credit: exact=... (n=...)
 Wrong amounts: ... rows, of which auto_check_pass: ...
@@ -145,7 +145,8 @@ Wrong amounts: ... rows, of which auto_check_pass: ...
 | `gt_missing_rows` | GT 有、run 冇 | 可能漏行或行被合併 |
 | `run_spurious_rows` | run 有、GT 冇 | 可能重複行或把 header 當成資料 |
 | `label_exact_rate` | 標籤逐字完全相同 | 中文忽略空格差異；葡文只合併多餘空格 |
-| `label_cer` | 字元錯誤率（Levenshtein / 長度） | 越低越好；`0.05` = 平均每 20 字錯 1 字 |
+| `label_cer` | 字元錯誤率＝總編輯距離 ÷ GT 總字元數 | 唔係逐行平均；多頁合併亦用總字元數加權。`0.02` = 2% 字元錯 |
+| `label_characters` / `label_edit_distance` | CER 的分子／分母 | 方便核對計算及跨 run 比較 |
 | `debit_exact_rate` / `credit_exact_rate` | 金額數值完全相同 | 以 Decimal 比較，`1.0` = `1.00` |
 | `wrong_amount_rows` | 有金額錯的行數 | 最關鍵 |
 | `auto_pass_wrong_amount_rows` | **系統自動放行但金額錯** | 最危險，必須逐條查 |

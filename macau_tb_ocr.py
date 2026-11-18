@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import difflib
 import io
 import json
 import re
@@ -28,7 +29,7 @@ from typing import Any, Iterable
 
 import fitz  # PyMuPDF
 
-APP_VERSION = "0.2.1"
+APP_VERSION = "0.3.0"
 TB_TERMS = (
     "試算表", "BALANCETE", "TRIAL BALANCE", "BALANCE OF THE LEDGER",
     "BALANCETE DO RAZAO", "BALANCETE DO RAZÃO",
@@ -1582,6 +1583,256 @@ def validate_rows(rows: list[dict[str, Any]], confidence_threshold: float,
         row["review_status"] = "needs_review" if issues else "auto_check_pass"
     return rows
 
+
+CHILD_LABEL_RE = re.compile(r"^[\-–—•·]\s*")
+LABEL_ZH_VARIANTS = str.maketrans({
+    "賬": "帳",
+    "帐": "帳",
+    "劵": "券",
+    "産": "產",
+    "価": "價",
+    "歴": "歷",
+})
+# Fuzzy thresholds are deliberately conservative: a wrong account name is more
+# expensive than an unmatched one, which stays visible in the output.
+LABEL_FUZZY_THRESHOLD = {"zh-Hant": 0.50, "pt": 0.80}
+LABEL_FUZZY_MARGIN = 0.05
+
+
+def _label_language(value: str) -> str:
+    return "zh-Hant" if has_chinese(value) else "pt"
+
+
+def normalize_label_key(text: str, language: str) -> str:
+    """Normalise a label for exact/fuzzy lexicon matching."""
+    value = CHILD_LABEL_RE.sub("", norm_text(text))
+    if language == "zh-Hant":
+        value = value.translate(LABEL_ZH_VARIANTS)
+        value = re.sub(r"[()（）〔〕【】\[\]、,，:：;；]", "", value)
+        return re.sub(r"\s+", "", value)
+    decomposed = unicodedata.normalize("NFKD", value)
+    ascii_text = decomposed.encode("ascii", "ignore").decode("ascii")
+    ascii_text = re.sub(r"[^0-9A-Za-z\s]", " ", ascii_text)
+    return re.sub(r"\s+", "", ascii_text).casefold()
+
+
+@lru_cache(maxsize=4)
+def _load_label_lexicon_cached(path_str: str, mtime: float):
+    entries: list[dict[str, Any]] = []
+    with open(path_str, newline="", encoding="utf-8-sig") as handle:
+        for row in csv.DictReader(handle):
+            standard = norm_text(row.get("label_std", ""))
+            if not standard:
+                continue
+            language = (row.get("language") or _label_language(standard)).strip()
+            level = (row.get("level") or "parent").strip()
+            keys = {normalize_label_key(standard, language)}
+            for alias in (row.get("aliases") or "").split("|"):
+                if alias.strip():
+                    keys.add(normalize_label_key(alias, language))
+            entries.append({
+                "id": (row.get("label_id") or "").strip(),
+                "std": standard,
+                "language": language,
+                "level": level,
+                "keys": frozenset(keys),
+            })
+    return tuple(entries)
+
+
+def load_label_lexicon(path: str | Path) -> list[dict[str, Any]]:
+    lexicon_path = Path(path).expanduser()
+    if not lexicon_path.exists():
+        return []
+    return list(_load_label_lexicon_cached(
+        str(lexicon_path.resolve()), lexicon_path.stat().st_mtime
+    ))
+
+
+def _match_standard_label(label: str, lexicon: list[dict[str, Any]],
+                          level: str) -> tuple[dict[str, Any] | None, float, str]:
+    language = _label_language(label)
+    key = normalize_label_key(label, language)
+    candidates = [
+        entry for entry in lexicon
+        if entry["language"] == language and entry["level"] == level
+    ]
+    if not candidates:
+        return None, 0.0, "unmatched"
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for entry in candidates:
+        score = max(
+            (difflib.SequenceMatcher(None, key, candidate).ratio()
+             for candidate in entry["keys"]),
+            default=0.0,
+        )
+        scored.append((score, entry))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    best_score, best = scored[0]
+    second_score = scored[1][0] if len(scored) > 1 else 0.0
+    if key in best["keys"]:
+        return best, 1.0, "exact"
+    threshold = LABEL_FUZZY_THRESHOLD.get(language, 0.80)
+    if best_score >= threshold and (best_score - second_score) >= LABEL_FUZZY_MARGIN:
+        return best, best_score, "fuzzy"
+    return None, best_score, "unmatched"
+
+
+def standardize_labels(rows: list[dict[str, Any]],
+                       lexicon: list[dict[str, Any]]) -> dict[str, Any]:
+    """Map labels to the standard lexicon without touching ``label_raw``."""
+    diagnostics: dict[str, Any] = {
+        "label_lexicon_entries": len(lexicon),
+        "label_standard_exact": 0,
+        "label_standard_fuzzy": 0,
+        "label_standard_unmatched": 0,
+        "label_continuation_rows": 0,
+        "label_orphan_children": 0,
+    }
+    for row in rows:
+        raw = norm_text(row.get("label_raw", ""))
+        if not raw:
+            row["label_standard"] = ""
+            row["label_standard_id"] = ""
+            row["label_standard_status"] = ""
+            row["label_standard_score"] = ""
+            row["label_role"] = ""
+            continue
+        is_child = bool(CHILD_LABEL_RE.match(raw))
+        source = row.get("label_normalized") or raw
+        if not is_child and raw[:1] in {"，", ",", "一"}:
+            candidate = raw[1:].strip()
+            child_match, _, child_status = _match_standard_label(
+                candidate, lexicon, "child"
+            )
+            if child_match and child_status == "exact":
+                is_child = True
+                source = candidate
+        row["label_role"] = "child" if is_child else "standalone"
+        match, score, status = _match_standard_label(
+            source, lexicon, "child" if is_child else "parent"
+        )
+        if not match and not is_child:
+            # Some forms print sub-items without the leading dash (PATACAS,
+            # Moedas externas). An exact child-lexicon hit reclassifies the row.
+            child_match, child_score, child_status = _match_standard_label(
+                source, lexicon, "child"
+            )
+            if child_match and child_status == "exact":
+                match, score, status = child_match, child_score, child_status
+                row["label_role"] = "child"
+        row["label_standard"] = match["std"] if match else ""
+        row["label_standard_id"] = match["id"] if match else ""
+        row["label_standard_status"] = status
+        row["label_standard_score"] = round(float(score), 3)
+        diagnostics[f"label_standard_{status}"] += 1
+    return diagnostics
+
+
+def build_label_hierarchy(rows: list[dict[str, Any]]) -> None:
+    """Attach dash-prefixed sub-items to the nearest preceding parent label."""
+    last_parent: dict[str, Any] | None = None
+    for row in rows:
+        role = row.get("label_role")
+        if role == "child":
+            if last_parent is None:
+                row["label_role"] = "orphan_child"
+                row["label_path"] = row.get("label_standard") or norm_text(
+                    row.get("label_raw", "")
+                )
+                continue
+            parent_name = last_parent.get("label_standard") or norm_text(
+                last_parent.get("label_raw", "")
+            )
+            child_name = row.get("label_standard") or CHILD_LABEL_RE.sub(
+                "", norm_text(row.get("label_raw", ""))
+            )
+            row["parent_label_raw"] = last_parent.get("label_raw", "")
+            row["parent_label_standard"] = last_parent.get("label_standard", "")
+            row["label_path"] = f"{parent_name} > {child_name}" if parent_name else child_name
+            last_parent["label_role"] = "parent"
+        elif role == "standalone":
+            last_parent = row
+
+
+def detect_label_continuations(rows: list[dict[str, Any]],
+                               lexicon: list[dict[str, Any]]) -> int:
+    """Detect a label wrapped onto the line above a row that carries amounts."""
+    count = 0
+    for index, row in enumerate(rows):
+        if index == 0:
+            continue
+        raw = norm_text(row.get("label_raw", ""))
+        if not raw or row.get("label_role") in {"child", "orphan_child"}:
+            continue
+        if not (row.get("debit_amount") or row.get("credit_amount")):
+            continue
+        previous = rows[index - 1]
+        previous_raw = norm_text(previous.get("label_raw", ""))
+        if not previous_raw:
+            continue
+        if previous.get("debit_amount") or previous.get("credit_amount"):
+            continue
+        if previous.get("label_role") in {"child", "orphan_child"}:
+            continue
+        combined = f"{previous_raw} {raw}"
+        match, score, _status = _match_standard_label(combined, lexicon, "parent")
+        if not match:
+            continue
+        # The combined text always contains the previous label, so a high score
+        # alone is not evidence of a wrapped label. A real wrap extends the
+        # previous standard ("... no Território"); a different concept does not.
+        previous_standard = previous.get("label_standard") or ""
+        if match["std"] == previous_standard:
+            continue
+        prefix_wrap = bool(
+            previous_standard
+            and match["std"].startswith(previous_standard)
+            and score >= 0.90
+            and len(raw) <= 30
+        )
+        current_score = float(row.get("label_standard_score") or 0.0)
+        threshold = LABEL_FUZZY_THRESHOLD.get(_label_language(combined), 0.80)
+        score_wrap = (
+            row.get("label_standard_status") != "exact"
+            and score >= max(threshold, current_score + 0.15)
+        )
+        if not (prefix_wrap or score_wrap):
+            continue
+        row["label_continuation_raw"] = previous_raw
+        row["label_combined_raw"] = combined
+        row["label_standard"] = match["std"]
+        row["label_standard_id"] = match["id"]
+        row["label_standard_status"] = "continuation"
+        row["label_standard_score"] = round(float(score), 3)
+        previous["label_role"] = "continuation_line"
+        count += 1
+    return count
+
+
+def apply_label_review(rows: list[dict[str, Any]]) -> None:
+    """Route uncertain, orphan and merged labels to human review."""
+    for row in rows:
+        reasons: list[str] = []
+        status = row.get("label_standard_status", "")
+        if status == "continuation":
+            reasons.append("label_continuation_merged")
+        if row.get("label_role") == "orphan_child":
+            reasons.append("label_orphan_child")
+        score = float(row.get("label_standard_score") or 0.0)
+        if (status == "unmatched"
+                and score >= 0.55
+                and (row.get("debit_amount") or row.get("credit_amount"))):
+            reasons.append("label_standard_uncertain")
+        if status == "fuzzy" and score < 0.70:
+            reasons.append("label_standard_low_similarity")
+        if not reasons:
+            continue
+        existing = [x for x in (row.get("review_reason") or "").split(";") if x]
+        row["review_reason"] = ";".join(dict.fromkeys(existing + reasons))
+        row["review_status"] = "needs_review"
+
+
 def ocr_boxes_to_lines(boxes: list[OCRBox], max_y: float) -> list[str]:
     """Merge word-level OCR boxes into reading lines for image-header metadata."""
     selected = [b for b in boxes if b.cy <= max_y]
@@ -1852,6 +2103,18 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
             amount_verifier=verifier_diagnostics.get("amount_verifier_status") == "ran",
             amount_second_pass=second_pass_diagnostics.get("amount_second_pass_status") == "ran",
         )
+        label_diagnostics: dict[str, Any] = {}
+        if args.label_standardization:
+            lexicon = load_label_lexicon(args.label_lexicon)
+            if lexicon:
+                label_diagnostics = standardize_labels(rows, lexicon)
+                build_label_hierarchy(rows)
+                label_diagnostics["label_continuation_rows"] = detect_label_continuations(
+                    rows, lexicon
+                )
+                apply_label_review(rows)
+            else:
+                label_diagnostics = {"label_standard_status": "lexicon_missing"}
         if rows:
             document_rows[-1]["number_format_detected"] = rows[0].get("number_format", "")
             document_rows[-1]["number_format_confidence"] = rows[0].get("number_format_confidence", "")
@@ -1859,6 +2122,7 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
         document_rows[-1].update(vision_diagnostics)
         document_rows[-1].update(verifier_diagnostics)
         document_rows[-1].update(second_pass_diagnostics)
+        document_rows[-1].update(label_diagnostics)
         document_rows[-1]["row_structure_source"] = row_structure_source
         document_rows[-1]["row_structure_guard"] = row_structure_guard
         document_rows[-1]["row_band_count"] = len(row_bands)
@@ -1898,6 +2162,8 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
         "row_structure": args.row_structure,
         "amount_verifier": args.amount_verifier,
         "amount_second_pass": args.amount_second_pass,
+        "label_standardization": args.label_standardization,
+        "label_lexicon": args.label_lexicon if args.label_standardization else "",
         "number_format_override": args.number_format,
         "chinese_label_normalization": args.chinese_label_normalization,
         "repair_ocr_separators": args.repair_ocr_separators,
@@ -1947,6 +2213,13 @@ def build_parser() -> argparse.ArgumentParser:
                    help="experimental 金額交叉驗證（tesseract）；只加證據，唔會改 raw 或已解析金額")
     p.add_argument("--amount-second-pass", default="ink", choices=["off", "ink"],
                    help="對空白／低信心金額格以 3x 重讀（只加證據；採用時標 recovered_second_pass 並入覆核）")
+    p.add_argument("--label-lexicon",
+                   default=str(Path(__file__).with_name("labels") / "label_lexicon.csv"),
+                   help="標準標籤詞表 CSV；預設 labels/label_lexicon.csv")
+    p.add_argument("--no-label-standardization", dest="label_standardization",
+                   action="store_false",
+                   help="停用標籤標準化及父子層偵測")
+    p.set_defaults(label_standardization=True)
     p.add_argument("--number-format", default="auto", choices=["auto", "comma_dot", "dot_comma"],
                    help="數字格式；auto 按每張 TB 證據推斷，不按中文／葡文猜測")
     p.add_argument("--chinese-label-normalization", default="s2hk", choices=["off", "s2t", "s2hk"],

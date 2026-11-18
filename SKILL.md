@@ -1,4 +1,4 @@
-# Agent Skill: Macau Gazette Balancete OCR v0.2.1
+# Agent Skill: Macau Gazette Balancete OCR v0.3.0
 
 ## Purpose
 
@@ -179,6 +179,15 @@ A run is complete only when every TB page is present, source images exist, row/c
 - Numeric debit/credit regions use English/digit recognition regardless of document language.
 - Vision `label_raw` is immutable OCR output. OpenCC `s2hk` creates a separate `label_normalized` value only. Script conversion does not prove the account name was correctly recognized.
 - Raw OCR confidence values from Vision and PaddleOCR are not calibrated to the same scale; do not compare them as probabilities or accuracy scores.
+
+### Standard label lexicon and hierarchy
+
+- `labels/label_lexicon.csv` is seeded from verified GT and may be curated by hand. Matching is exact or fuzzy after language-specific folding: Traditional Chinese variant characters, and Portuguese case/accent/spacing.
+- `label_raw` is never overwritten. `label_standard` and `label_standard_id` hold the mapped standard name; `label_standard_status` is `exact` / `fuzzy` / `unmatched` / `continuation`, plus `label_standard_score`.
+- Low-similarity fuzzy matches and near-miss unmatched labels with amounts are routed to review (`label_standard_low_similarity`, `label_standard_uncertain`). Never treat a fuzzy mapping as verified data.
+- Dash sub-items are children of the nearest preceding parent: `label_role`, `parent_label_raw`, `parent_label_standard`, `label_path`. Dash-less sub-items (`PATACAS`) are reclassified only on an exact child-lexicon hit; orphans are flagged.
+- A label wrapped onto the line above a row with amounts is merged into `label_combined_raw` / `label_standard` only when the combined text extends the previous standard; the original rows and `label_raw` stay intact. Flagged `label_continuation_merged`.
+- Rebuild the lexicon with `tools/build_label_lexicon.py` after adding verified labels; measure with `tools/gt_label_report.py`.
 
 ## 6. Numeric format detection and normalization
 

@@ -165,6 +165,7 @@ def score_page(page: int, gt_rows: list[dict[str, str]],
 
     labels_total = labels_exact = 0
     label_distance = 0
+    label_characters = 0
     debit_total = debit_exact = 0
     credit_total = credit_exact = 0
     wrong_amount_rows = 0
@@ -179,6 +180,7 @@ def score_page(page: int, gt_rows: list[dict[str, str]],
         actual_label = norm_label(run.get("label_raw"))
         if expected_label:
             labels_total += 1
+            label_characters += len(expected_label)
             if expected_label == actual_label:
                 labels_exact += 1
             else:
@@ -282,7 +284,12 @@ def score_page(page: int, gt_rows: list[dict[str, str]],
         "label_rows": labels_total,
         "label_exact": labels_exact,
         "label_exact_rate": round(labels_exact / labels_total, 4) if labels_total else None,
-        "label_cer": round(label_distance / labels_total, 4) if labels_total else None,
+        "label_characters": label_characters,
+        "label_edit_distance": label_distance,
+        "label_cer": (
+            round(label_distance / label_characters, 4)
+            if label_characters else None
+        ),
         "debit_rows": debit_total,
         "debit_exact": debit_exact,
         "debit_exact_rate": round(debit_exact / debit_total, 4) if debit_total else None,
@@ -322,10 +329,12 @@ def merge_metrics(per_page: dict[int, dict[str, object]]) -> dict[str, object]:
         "label_rows": label_rows,
         "label_exact": total("label_exact"),
         "label_exact_rate": round(total("label_exact") / label_rows, 4) if label_rows else None,
-        "label_cer": round(
-            sum(float(p.get("label_cer") or 0) * int(p.get("label_rows") or 0)
-                for p in per_page.values()) / label_rows, 4
-        ) if label_rows else None,
+        "label_characters": total("label_characters"),
+        "label_edit_distance": total("label_edit_distance"),
+        "label_cer": (
+            round(total("label_edit_distance") / total("label_characters"), 4)
+            if total("label_characters") else None
+        ),
         "debit_rows": debit_rows,
         "debit_exact": total("debit_exact"),
         "debit_exact_rate": round(total("debit_exact") / debit_rows, 4) if debit_rows else None,
@@ -446,7 +455,8 @@ def main() -> int:
     print(f"Rows: run={o['run_rows']} matched={o['matched_rows']} "
           f"gt_missing={o['gt_missing_rows']} run_spurious={o['run_spurious_rows']} "
           f"alignment F1={o['alignment_f1']}")
-    print(f"Labels: exact={o['label_exact_rate']} CER={o['label_cer']} (n={o['label_rows']})")
+    print(f"Labels: exact={o['label_exact_rate']} CER={o['label_cer']} "
+          f"(rows={o['label_rows']}, chars={o['label_characters']})")
     print(f"Debit : exact={o['debit_exact_rate']} (n={o['debit_rows']})")
     print(f"Credit: exact={o['credit_exact_rate']} (n={o['credit_rows']})")
     print(f"Wrong amounts: {o['wrong_amount_rows']} rows, "

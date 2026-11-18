@@ -110,6 +110,25 @@ On issue 45 this took page 15 from 8 wrong amounts to 0 and did not change any
 amount on the other five GT pages. Cost: ~190 cell re-reads, about +30 s for the
 26-page run. Use `--amount-second-pass off` to restore the single-pass baseline.
 
+## Standard labels and hierarchy
+
+`labels/label_lexicon.csv` maps OCR account names to a standard vocabulary. The
+worker never changes `label_raw`; mapped values go to `label_standard` with a
+status (`exact`/`fuzzy`/`unmatched`/`continuation`) and score. Matching folds
+Traditional Chinese variants and Portuguese case/accent/spacing. Fuzzy results
+below 0.70 and near-miss unmatched amounts enter review.
+
+Dash sub-items (`-澳門元`, `- Patacas`) are linked to the nearest preceding parent
+via `label_role` / `parent_label_standard` / `label_path`; dash-less sub-items
+are reclassified only on an exact child hit. A fragment below a label-only row
+is merged into `label_combined_raw` / `label_standard` only when the combined
+text extends the previous standard.
+
+Measured on the 379-row verified GT: raw label exact 79.95% → **97.89%**
+standardised exact, with 3 wrong mappings (2 are row-shift/data issues) and 5
+unmatched. Rebuild with `tools/build_label_lexicon.py`; measure with
+`tools/gt_label_report.py`.
+
 ## Region and coordinate rules
 
 ROI coordinates are normalised top-left fractions in the Python input JSON. The Swift worker converts y-coordinates to Vision's normalised lower-left ROI convention. It maps each ROI-relative observation back to full-image pixel coordinates with Apple's `VNImageRectForNormalizedRectUsingRegionOfInterest` conversion, then flips the y-axis to the top-left coordinate system used by Python row reconstruction.

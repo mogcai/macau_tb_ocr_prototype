@@ -1,4 +1,4 @@
-# AI Agent Quick Start — Macau Gazette Balancete OCR v0.2.1
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.3.0
 
 Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`.
 
@@ -92,6 +92,9 @@ These values are recovered candidates, not silently approved financial data. The
 
 - `label_raw`: unmodified OCR account text.
 - `label_normalized`: OpenCC `s2hk` converted label (separate from raw).
+- `label_standard`, `label_standard_status`, `label_standard_score`: mapped standard label from `labels/label_lexicon.csv`; never overwrites raw.
+- `label_role`, `parent_label_raw`, `parent_label_standard`, `label_path`: parent/child structure for dash sub-items.
+- `label_combined_raw`, `label_continuation_raw`: wrapped-label detection; flagged for review.
 - `debit_raw`, `credit_raw`: exact OCR strings.
 - `debit_amount`, `credit_amount`: canonical values (dot decimal separator, no grouping marks).
 - `number_format`: page-level inferred or explicitly overridden format.
@@ -110,6 +113,8 @@ These values are recovered candidates, not silently approved financial data. The
 --vision-language-correction off|labels|all
 --amount-verifier off|tesseract
 --amount-second-pass ink|off
+--label-lexicon labels/label_lexicon.csv
+--no-label-standardization
 --row-structure clustered|auto|projection
 --ocr-langs auto|chinese_cht,pt,en
 --number-format auto|comma_dot|dot_comma

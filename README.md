@@ -25,13 +25,6 @@
 
 **版本定位：** 技術概念驗證及 OCR 流程測試。
 
-### v0.2.1 — Ground Truth 評分修正
-
-- **GT 行配對修正**：只有真正缺少座標的行才按閱讀次序配對；有座標但超出容差的行保留為 unmatched，避免「漏一行 + 多一行」互相抵消而虛高 alignment F1。
-- **空白與橫線分開**：`blank`（空白）與 `dash`（印有 `-`／`—`）而家係唔同狀態；GT 建立同評分都會獨立比較，唔會再把空白格當成橫線。
-- **第二輪金額重讀**：新增 `--amount-second-pass ink`（預設），針對空白／低信心金額格做 3× 重讀，原 OCR 保留，採用值標示 `recovered_second_pass` 並入覆核。
-- 版本更新至 v0.2.1，新增 GT 工具與 82 個測試。
-
 ### v0.2 — Enhanced OCR Prototype
 
 在 v0.1 基礎上改善 OCR 引擎、語言處理及財務數字辨識。
@@ -49,6 +42,21 @@
 - **人工覆核：** 保留原始辨識結果及修正後資料，減少錯誤被直接當成正確數值。
 
 **版本定位：** 改善實際公報處理能力，為後續批量擷取及自動化建立基礎。
+
+### v0.3.0 — 標準標籤詞表
+
+- **標準標籤對照**：由已核對 GT 建立 `labels/label_lexicon.csv`，OCR 標籤會對應到最相似嘅標準名稱，寫入獨立欄位 `label_standard`；`label_raw` 永不覆蓋。
+- **中葡文正規化**：中文異體字（帳/賬、券/劵、歷/歴…）、葡文大小寫／重音／空格差異會先正規化再比對；信心不足會標 `label_standard_uncertain` 或 `label_standard_low_similarity`。
+- **父子層**：`-澳門元`、`-外幣`、`- Patacas` 等子項會掛到上層科目，輸出 `label_role`、`parent_label_standard`、`label_path`；無上層會標 `label_orphan_child`。
+- **斷行標籤**：如果標籤跌落下一行，會用上一行＋本行合併比對，寫入 `label_combined_raw` 同 `label_standard`，並標 `label_continuation_merged`。
+- 新增 `tools/build_label_lexicon.py`、`tools/gt_label_report.py`；GT 量度：raw label exact 79.95% → **standardised 97.89%**。
+
+### v0.2.1 — Ground Truth 評分修正
+
+- **GT 行配對修正**：只有真正缺少座標的行才按閱讀次序配對；有座標但超出容差的行保留為 unmatched，避免「漏一行 + 多一行」互相抵消而虛高 alignment F1。
+- **空白與橫線分開**：`blank`（空白）與 `dash`（印有 `-`／`—`）而家係唔同狀態；GT 建立同評分都會獨立比較，唔會再把空白格當成橫線。
+- **第二輪金額重讀**：新增 `--amount-second-pass ink`（預設），針對空白／低信心金額格做 3× 重讀，原 OCR 保留，採用值標示 `recovered_second_pass` 並入覆核。
+- 版本更新至 v0.2.1，新增 GT 工具與 82 個測試。
 
 ## 版本比較
 
@@ -148,5 +156,5 @@ python -m unittest discover -s tests -v
 ---
 
 **Project:** Macau Gazette Balancete OCR  
-**Current prototype:** v0.2.1  
+**Current prototype:** v0.3.0  
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

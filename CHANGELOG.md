@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.0
+
+- Added a standard-label lexicon (`labels/label_lexicon.csv`, seeded from verified GT) and `--label-lexicon`. OCR is never overwritten: results go to `label_standard`, `label_standard_id`, `label_standard_status`, `label_standard_score`.
+- Exact/fuzzy matching is language-aware (Traditional Chinese variant folding; Portuguese case/accent/spacing folding) with a conservative margin; uncertain and low-similarity mappings are routed to review (`label_standard_uncertain`, `label_standard_low_similarity`).
+- Added parent/child detection for sub-items (`-澳門元`, `-外幣`, `- Patacas`, dash-less `PATACAS`): `label_role`, `parent_label_raw`, `parent_label_standard`, `label_path`; orphan children are flagged.
+- Added wrapped-label detection: a fragment below a label-only row is merged into `label_combined_raw`/`label_standard` when the combined text extends the previous standard (`label_continuation_merged`); `label_raw` is untouched.
+- Added `tools/build_label_lexicon.py` (rebuild lexicon from verified GT) and `tools/gt_label_report.py` (raw vs standardised exact match, wrong mappings).
+- Measured on the 379-row verified GT: raw label exact 79.95% → **standardised exact 97.89%** (371/379), 3 wrong mappings (2 are row-shift/data issues), 5 unmatched. 3 wrapped labels recovered, 4 orphan children flagged.
+- **Ground truth CER fix:** `label_cer` is now total edit distance divided by total GT characters (per page and across pages), not average edit distance per label row. `label_characters` and `label_edit_distance` are reported so the calculation is auditable. Existing v0.3.0 GT score: **CER 0.0225** (106 edits / 4704 characters), replacing the previous 0.2797 average-per-row figure.
+- Added tests for lexicon matching, child hierarchy and continuation detection. Tests: 91 passing.
+- Version bumped to v0.3.0.
+
 ## v0.2.1
 
 - **Ground truth scoring fix:** `match_rows()` now pairs rows by reading order only when both sides genuinely lack coordinates. Rows with coordinates outside the tolerance stay unmatched, so one missing row plus one spurious row can no longer cancel out and inflate `alignment_f1`. Added regression tests for missing/spurious rows and coordinate-less rows.
