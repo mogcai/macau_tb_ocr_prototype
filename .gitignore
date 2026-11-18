@@ -8,7 +8,8 @@ input/
 .DS_Store
 lasped/
 ground_truth/**/crops/
-data/
-*.sqlite
+data/*
+!data/macau_balancete.sqlite
+!data/macau_balancete_import_report.json
 *.sqlite-wal
 *.sqlite-shm
