@@ -92,7 +92,7 @@ python tools/gt_build_sheet.py output_v02_issue45_full_1900 \
 |---|---|
 | `label_gt` | 圖片上的帳目名稱原文。保留繁體/葡文/重音/大小寫。唔好順手 OpenCC 轉換。 |
 | `debit_gt` / `credit_gt` | 數值，例 `595846.01`。空白 = 該格冇金額；`0.00` = 印住零。 |
-| `debit_dash_gt` / `credit_dash_gt` | 印住 `-` 或 `—` 時設 `1`（同時 `*_gt` 留空）。 |
+| `debit_dash_gt` / `credit_dash_gt` | 只在該格**實際印有** `-`／`—`／`–`／`−` 時設 `1`（同時 `*_gt` 留空）。空白格係 `0`，唔係 dash。工具會由預填 OCR 文字自動判斷，但仍要對圖確認。 |
 | `gt_note` | 任何唔肯定、頁面本身異常、跨行 label 等。 |
 | `verified` | 只在你**親眼對過圖**之後設 `1`。 |
 | `reviewer` / `reviewed_at` | 你個名 / `YYYY-MM-DD`。 |
@@ -149,6 +149,7 @@ Wrong amounts: ... rows, of which auto_check_pass: ...
 | `debit_exact_rate` / `credit_exact_rate` | 金額數值完全相同 | 以 Decimal 比較，`1.0` = `1.00` |
 | `wrong_amount_rows` | 有金額錯的行數 | 最關鍵 |
 | `auto_pass_wrong_amount_rows` | **系統自動放行但金額錯** | 最危險，必須逐條查 |
+| `dash_mismatch_rows` | GT 與 run 的空白／橫線狀態不同 | 空白 ≠ 橫線；值相同但狀態不同都會列出 `*_state` |
 
 ## 唔可以講嘅結論
 

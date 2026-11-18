@@ -101,7 +101,10 @@ recognised with English/digits only.
   (`second_pass_differs`); only a low-confidence, cleanly parsed first reading is
   replaced (`replaced_low_confidence`).
 - Per-page counters are written to `documents.csv`
-  (`amount_second_pass_cells`, `amount_second_pass_filled`).
+  (`amount_second_pass_cells`, `amount_second_pass_filled`,
+  `amount_second_pass_seconds`). On the M1 reference run the full 26-page scan
+  took about 85 s with the second pass versus about 55 s without it; measure on
+  the target machine before assuming a speed.
 
 On issue 45 this took page 15 from 8 wrong amounts to 0 and did not change any
 amount on the other five GT pages. Cost: ~190 cell re-reads, about +30 s for the
@@ -111,7 +114,7 @@ amount on the other five GT pages. Cost: ~190 cell re-reads, about +30 s for the
 
 ROI coordinates are normalised top-left fractions in the Python input JSON. The Swift worker converts y-coordinates to Vision's normalised lower-left ROI convention. It maps each ROI-relative observation back to full-image pixel coordinates with Apple's `VNImageRectForNormalizedRectUsingRegionOfInterest` conversion, then flips the y-axis to the top-left coordinate system used by Python row reconstruction.
 
-The table body is currently approximated by y=0.035–0.997 and the three columns are derived from the two rightmost detected vertical rules; a leading account-code rule (issue 45 page 29) is used only to trim the label ROI. These are issue-45-oriented defaults and must be revalidated on new Gazette layouts. If lines are not detected, review `column_boundary_source` before accepting data.
+The table body is currently approximated by y=0.035–0.997 and the three columns are derived from the two rightmost detected vertical rules; a leading account-code rule (issue 45 page 29) is used only to trim the label ROI. These are issue-45-oriented defaults and must be revalidated on new Gazette layouts. If lines are not detected, review `column_boundary_source` before accepting data. If a code-column page falls back to `detected_projection`, the code/label rule is not trusted and the label ROI starts at 0.005, so account codes may be merged into labels; check `label_column_x0` and sample the left edge.
 
 ## Chinese output policy
 

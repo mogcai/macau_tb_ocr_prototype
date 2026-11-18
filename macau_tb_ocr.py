@@ -17,6 +17,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import time
 import unicodedata
 from dataclasses import dataclass, asdict
 from datetime import date
@@ -27,7 +28,7 @@ from typing import Any, Iterable
 
 import fitz  # PyMuPDF
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 TB_TERMS = (
     "試算表", "BALANCETE", "TRIAL BALANCE", "BALANCE OF THE LEDGER",
     "BALANCETE DO RAZAO", "BALANCETE DO RAZÃO",
@@ -1085,9 +1086,11 @@ def second_pass_amount_cells(rows: list[dict[str, Any]], image_path: Path,
         "amount_second_pass_status": "off",
         "amount_second_pass_cells": 0,
         "amount_second_pass_filled": 0,
+        "amount_second_pass_seconds": 0.0,
     }
     if not rows:
         return diagnostics
+    started = time.perf_counter()
     try:
         import cv2
         image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
@@ -1186,6 +1189,7 @@ def second_pass_amount_cells(rows: list[dict[str, Any]], image_path: Path,
     diagnostics["amount_second_pass_status"] = "ran"
     diagnostics["amount_second_pass_cells"] = cells
     diagnostics["amount_second_pass_filled"] = filled
+    diagnostics["amount_second_pass_seconds"] = round(time.perf_counter() - started, 2)
     return diagnostics
 
 
@@ -1206,8 +1210,12 @@ def _clean_amount_token(raw: str) -> tuple[str, bool, str]:
     s = re.sub(r"(?<=\d)\s+(?=\d)", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     s = s.replace("−", "-").replace("–", "-").replace("—", "-")
-    if not s or s in {"-", "－", ".", ","}:
-        return "", False, "dash_or_blank"
+    if not s:
+        return "", False, "blank"
+    if s in {"-", "－"}:
+        return "", False, "dash"
+    if s in {".", ","}:
+        return "", False, "invalid_characters"
 
     negative = False
     if s.startswith("(") and s.endswith(")"):
@@ -1220,7 +1228,7 @@ def _clean_amount_token(raw: str) -> tuple[str, bool, str]:
     s = re.sub(r"(?i)(MOP|HKD|USD|RMB|AOA|澳门元|澳門元|\$|€|£)", "", s)
     s = s.strip()
     if not s:
-        return "", negative, "dash_or_blank"
+        return "", negative, "blank"
 
     issue = ""
     if re.search(r"[OoIl|]", s):
@@ -1526,7 +1534,7 @@ def validate_rows(rows: list[dict[str, Any]], confidence_threshold: float,
 
         issues: list[str] = []
         for col, issue in (("debit", debit_issue), ("credit", credit_issue)):
-            if issue and issue != "dash_or_blank":
+            if issue and issue not in {"blank", "dash"}:
                 issues.append(f"{col}:{issue}")
         if amount_second_pass:
             for col in ("debit", "credit"):
@@ -1545,7 +1553,7 @@ def validate_rows(rows: list[dict[str, Any]], confidence_threshold: float,
                 # escalated when Vision itself already failed to parse the amount
                 # cleanly. All readings stay in the evidence columns either way.
                 vision_unsure = row.get(f"{col}_parse_status") not in {
-                    "parsed", "dash_or_blank", "blank",
+                    "parsed", "blank", "dash",
                 }
                 if status == "digit_mismatch":
                     row[f"{col}_verifier_note"] = "digit_mismatch_vision_parsed" if not vision_unsure else "digit_mismatch_vision_unparsed"
@@ -1816,6 +1824,7 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
             "amount_second_pass_status": "off",
             "amount_second_pass_cells": 0,
             "amount_second_pass_filled": 0,
+            "amount_second_pass_seconds": 0.0,
         }
         if args.amount_second_pass == "ink" and args.engine == "vision":
             page_profile = infer_number_format(

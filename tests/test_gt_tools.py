@@ -65,6 +65,14 @@ class RowMatchingTests(unittest.TestCase):
         self.assertEqual(match, {0: 0, 1: 1})
 
 
+class DashFlagTests(unittest.TestCase):
+    def test_builder_marks_only_printed_dash(self):
+        for raw in ("-", "—", "–", "－", " - "):
+            self.assertTrue(gt_build.is_dash_cell(raw))
+        for raw in ("", " ", "0.00", "abc"):
+            self.assertFalse(gt_build.is_dash_cell(raw))
+
+
 class SyncMissingRowsTests(unittest.TestCase):
     def gt(self, top: float, row_id: str) -> dict[str, str]:
         return {"pdf_page": "29", "gt_row_id": row_id,
@@ -74,8 +82,8 @@ class SyncMissingRowsTests(unittest.TestCase):
         return {"pdf_page": "29", "label_raw": label, "bbox_y0": str(top),
                 "bbox_y1": str(top + 50), "debit_raw": "", "credit_raw": "",
                 "debit_amount": "", "credit_amount": "",
-                "debit_parse_status": "dash_or_blank",
-                "credit_parse_status": "dash_or_blank"}
+                "debit_parse_status": "blank",
+                "credit_parse_status": "blank"}
 
     def test_adds_only_unmatched_run_rows(self):
         gt_rows = [self.gt(100, "p0029_r001"), self.gt(300, "p0029_r002")]
@@ -93,13 +101,104 @@ class SyncMissingRowsTests(unittest.TestCase):
         self.assertEqual(gt_build.sync_missing_rows(29, gt_rows, run_rows, 1000), [])
 
 
+class RowMatchingGapsTests(unittest.TestCase):
+    def gt_row(self, top: float, row_id: str) -> dict[str, str]:
+        return {"pdf_page": "7", "gt_row_id": row_id,
+                "bbox_y0": str(top), "bbox_y1": str(top + 50),
+                "label_gt": "x", "debit_gt": "", "credit_gt": "",
+                "debit_dash_gt": "1", "credit_dash_gt": "1"}
+
+    def run_row(self, top, label="x") -> dict[str, str]:
+        return {"pdf_page": "7", "bbox_y0": str(top), "label_raw": label,
+                "debit_raw": "", "debit_amount": "", "credit_raw": "",
+                "credit_amount": "", "debit_parse_status": "blank",
+                "credit_parse_status": "blank", "review_status": "needs_review"}
+
+    def test_out_of_tolerance_rows_are_not_paired(self):
+        gt = [self.gt_row(100, "r1"), self.gt_row(300, "r2")]
+        run = [self.run_row(100), self.run_row(500)]
+        self.assertEqual(gt_score.match_rows(gt, run, 0, 0), {0: 0})
+
+    def test_alignment_f1_drops_for_missing_plus_spurious(self):
+        gt = [self.gt_row(100, "r1"), self.gt_row(300, "r2")]
+        run = [self.run_row(100), self.run_row(500)]
+        metrics, _ = gt_score.score_page(7, gt, run, 0, 0)
+        self.assertEqual(metrics["matched_rows"], 1)
+        self.assertEqual(metrics["gt_missing_rows"], 1)
+        self.assertEqual(metrics["run_spurious_rows"], 1)
+        self.assertEqual(metrics["alignment_f1"], 0.5)
+
+    def test_rows_without_coordinates_pair_by_order(self):
+        gt = [{"pdf_page": "7", "gt_row_id": "r1", "bbox_y0": "", "bbox_y1": ""},
+              {"pdf_page": "7", "gt_row_id": "r2", "bbox_y0": "", "bbox_y1": ""}]
+        run = [{"pdf_page": "7", "bbox_y0": ""}, {"pdf_page": "7", "bbox_y0": ""}]
+        self.assertEqual(gt_score.match_rows(gt, run, 0, 0), {0: 0, 1: 1})
+
+    def test_one_sided_coordinates_do_not_fallback(self):
+        gt = [{"pdf_page": "7", "gt_row_id": "r1", "bbox_y0": "", "bbox_y1": ""}]
+        run = [{"pdf_page": "7", "bbox_y0": "100"}]
+        self.assertEqual(gt_score.match_rows(gt, run, 0, 0), {})
+
+
+class DashStateTests(unittest.TestCase):
+    def gt_rows(self, dash: str = "1", value: str = "") -> list[dict[str, str]]:
+        return [{
+            "pdf_page": "7", "gt_row_id": "r1", "bbox_y0": "100", "bbox_y1": "150",
+            "label_gt": "x", "debit_gt": value, "credit_gt": "",
+            "debit_dash_gt": dash, "credit_dash_gt": "0",
+        }]
+
+    def run_rows(self, raw: str = "", status: str = "blank", value: str = "") -> list[dict[str, str]]:
+        return [{
+            "pdf_page": "7", "bbox_y0": "100", "label_raw": "x",
+            "debit_raw": raw, "debit_amount": value,
+            "credit_raw": "", "credit_amount": "",
+            "debit_parse_status": status, "credit_parse_status": "blank",
+            "review_status": "needs_review",
+        }]
+
+    def test_dash_matches_dash(self):
+        metrics, errors = gt_score.score_page(
+            7, self.gt_rows(), self.run_rows("-", "dash"), 0, 0
+        )
+        self.assertEqual(metrics["dash_mismatch_rows"], 0)
+        self.assertEqual(errors, [])
+
+    def test_dash_versus_blank_is_a_mismatch(self):
+        metrics, errors = gt_score.score_page(
+            7, self.gt_rows(), self.run_rows("", "blank"), 0, 0
+        )
+        self.assertEqual(metrics["dash_mismatch_rows"], 1)
+        self.assertTrue(any(e["field"] == "debit_state" for e in errors))
+
+    def test_blank_versus_dash_is_a_mismatch(self):
+        metrics, _ = gt_score.score_page(
+            7, self.gt_rows(dash="0"), self.run_rows("-", "dash"), 0, 0
+        )
+        self.assertEqual(metrics["dash_mismatch_rows"], 1)
+
+    def test_dash_versus_value_is_spurious_not_dash_mismatch(self):
+        metrics, errors = gt_score.score_page(
+            7, self.gt_rows(), self.run_rows("1.00", "parsed", "1.00"), 0, 0
+        )
+        self.assertEqual(metrics["wrong_amount_rows"], 1)
+        self.assertEqual(metrics["dash_mismatch_rows"], 0)
+        self.assertTrue(any(e["field"] == "debit_spurious" for e in errors))
+
+    def test_is_dash_cell(self):
+        for raw in ("-", "—", "–", "－", " - "):
+            self.assertTrue(gt_score.is_dash_cell(raw))
+        for raw in ("", " ", "0.00", "abc"):
+            self.assertFalse(gt_score.is_dash_cell(raw))
+
+
 class ScoreTests(unittest.TestCase):
     def gt(self, debit: str = "1000.00", label: str = "現金") -> list[dict[str, str]]:
         return [{
             "pdf_page": "7", "gt_row_id": "p0007_r001",
             "bbox_y0": "100", "bbox_y1": "150", "y_frac": "0.1",
             "label_gt": label, "debit_gt": debit, "credit_gt": "",
-            "debit_dash_gt": "0", "credit_dash_gt": "1", "verified": "1",
+            "debit_dash_gt": "0", "credit_dash_gt": "0", "verified": "1",
         }]
 
     def run_row(self, amount: str = "1000.00", status: str = "auto_check_pass") -> list[dict[str, str]]:

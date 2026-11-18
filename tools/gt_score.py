@@ -43,6 +43,14 @@ def norm_label(text: str | None) -> str:
     return " ".join(value.split())
 
 
+DASH_RE = re.compile(r"^\s*[-－—–−]+\s*$")
+
+
+def is_dash_cell(raw: str | None) -> bool:
+    """True only when the cell prints a dash; blank is a different state."""
+    return bool(DASH_RE.match(raw or ""))
+
+
 def to_decimal(text: str | None) -> Decimal | None:
     raw = (text or "").strip().replace(" ", "").replace("\u00a0", "")
     if not raw or raw in {"-", "–", "—", "－"}:
@@ -137,9 +145,12 @@ def match_rows(gt_rows: list[dict[str, str]], run_rows: list[dict[str, str]],
         used_gt.add(gi)
         used_run.add(ri)
         match[gi] = ri
-    # Fallback for rows without coordinates: pair leftovers in reading order.
-    remaining_gt = [i for i in range(len(gt_rows)) if i not in used_gt]
-    remaining_run = [i for i in range(len(run_rows)) if i not in used_run]
+    # Only rows that genuinely have no coordinates may be paired by reading
+    # order. A row with coordinates that fell outside the tolerance stays
+    # unmatched, so a missing row plus a spurious row cannot cancel out and
+    # inflate alignment F1.
+    remaining_gt = [i for i, value in enumerate(gt_values) if value is None]
+    remaining_run = [i for i, value in enumerate(run_values) if value is None]
     for gi, ri in zip(remaining_gt, remaining_run):
         match[gi] = ri
     return match
@@ -158,6 +169,7 @@ def score_page(page: int, gt_rows: list[dict[str, str]],
     credit_total = credit_exact = 0
     wrong_amount_rows = 0
     auto_pass_wrong = 0
+    dash_mismatch_rows = 0
     review_rows = 0
 
     for gi, gt in enumerate(gt_rows):
@@ -190,10 +202,14 @@ def score_page(page: int, gt_rows: list[dict[str, str]],
             })
 
         row_wrong = False
+        row_dash_mismatch = False
         for column in ("debit", "credit"):
             expected = to_decimal(gt.get(f"{column}_gt"))
             actual = to_decimal(run.get(f"{column}_amount"))
-            dash = str(gt.get(f"{column}_dash_gt") or "").strip() == "1"
+            gt_dash = str(gt.get(f"{column}_dash_gt") or "").strip() == "1"
+            run_raw = run.get(f"{column}_raw") or ""
+            run_status = run.get(f"{column}_parse_status") or ""
+            run_dash = is_dash_cell(run_raw) or run_status == "dash"
             if expected is not None:
                 if column == "debit":
                     debit_total += 1
@@ -215,17 +231,32 @@ def score_page(page: int, gt_rows: list[dict[str, str]],
                         "run_review_reason": run.get("review_reason", ""),
                     })
             elif actual is not None:
-                # GT says no amount (empty or dash); a value here is spurious.
+                # GT says no amount (blank or dash); a value here is spurious.
                 row_wrong = True
                 errors.append({
                     "pdf_page": page, "gt_row_id": gt.get("gt_row_id", ""),
                     "field": f"{column}_spurious",
-                    "gt_value": "dash" if dash else "",
+                    "gt_value": "dash" if gt_dash else "blank",
                     "run_value": str(actual),
                     "run_label_raw": run.get("label_raw", ""),
                     "run_review_status": run.get("review_status", ""),
                     "run_review_reason": run.get("review_reason", ""),
                 })
+            elif gt_dash != run_dash:
+                # Both have no value, but a printed dash and an empty cell are
+                # different states and must not be scored as a match.
+                row_dash_mismatch = True
+                errors.append({
+                    "pdf_page": page, "gt_row_id": gt.get("gt_row_id", ""),
+                    "field": f"{column}_state",
+                    "gt_value": "dash" if gt_dash else "blank",
+                    "run_value": "dash" if run_dash else "blank",
+                    "run_label_raw": run.get("label_raw", ""),
+                    "run_review_status": run.get("review_status", ""),
+                    "run_review_reason": run.get("review_reason", ""),
+                })
+        if row_dash_mismatch:
+            dash_mismatch_rows += 1
         if row_wrong:
             wrong_amount_rows += 1
             if run.get("review_status") == "auto_check_pass":
@@ -260,6 +291,7 @@ def score_page(page: int, gt_rows: list[dict[str, str]],
         "credit_exact_rate": round(credit_exact / credit_total, 4) if credit_total else None,
         "wrong_amount_rows": wrong_amount_rows,
         "auto_pass_wrong_amount_rows": auto_pass_wrong,
+        "dash_mismatch_rows": dash_mismatch_rows,
         "review_rate": round(review_rows / matched, 4) if matched else None,
     }
     return metrics, errors
@@ -302,6 +334,7 @@ def merge_metrics(per_page: dict[int, dict[str, object]]) -> dict[str, object]:
         "credit_exact_rate": round(total("credit_exact") / credit_rows, 4) if credit_rows else None,
         "wrong_amount_rows": total("wrong_amount_rows"),
         "auto_pass_wrong_amount_rows": total("auto_pass_wrong_amount_rows"),
+        "dash_mismatch_rows": total("dash_mismatch_rows"),
     }
 
 
@@ -418,6 +451,7 @@ def main() -> int:
     print(f"Credit: exact={o['credit_exact_rate']} (n={o['credit_rows']})")
     print(f"Wrong amounts: {o['wrong_amount_rows']} rows, "
           f"of which auto_check_pass: {o['auto_pass_wrong_amount_rows']}")
+    print(f"Dash/blank state mismatches: {o['dash_mismatch_rows']} rows")
     print(f"Report: {out_dir / 'score_report.json'}")
     print(f"Errors: {out_dir / 'score_errors.csv'}")
     return 0

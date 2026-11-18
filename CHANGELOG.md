@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.1
+
+- **Ground truth scoring fix:** `match_rows()` now pairs rows by reading order only when both sides genuinely lack coordinates. Rows with coordinates outside the tolerance stay unmatched, so one missing row plus one spurious row can no longer cancel out and inflate `alignment_f1`. Added regression tests for missing/spurious rows and coordinate-less rows.
+- **Blank vs dash are now distinct:** `parse_amount()` returns `blank` for an empty cell and `dash` for a printed `-`/`—`/`–`/`−`; only `blank`/`dash` are treated as legitimate empty states in review logic. `gt_build_sheet.py` decides `*_dash_gt` from the cell's OCR text, not from a conflated parse status. `gt_score.py` compares blank/dash/value states independently and reports `dash_mismatch_rows` plus `*_state` errors.
+- Repaired the existing issue-45 GT dash flags (522 cells had been pre-filled as dash because the status was `dash_or_blank`); recorded in `ground_truth/issue45_2026/gt_changelog.md`. Dashes with no OCR text should still be confirmed visually.
+- Added second-pass timing per page (`amount_second_pass_seconds`) alongside cell/fill counts.
+- Upgraded version strings to v0.2.1 across `APP_VERSION`, README, SKILL, README_AGENT, MACOS_SETUP and `config.example.json`.
+- README notes that `--vision-level fast` on a `zh-Hant` page only affects the Latin/digit regions; Chinese regions always run at `accurate`.
+- Tests: 82 passing (new GT matcher, dash/blank parser and scorer tests).
+
 ## v0.2.0
 
 - Added native macOS Apple Vision OCR via `vision_ocr_worker.swift` and `--engine vision`.

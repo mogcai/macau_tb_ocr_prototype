@@ -1,381 +1,381 @@
 ﻿pdf_page,gt_row_id,bbox_y0,bbox_y1,y_frac,label_gt,debit_gt,credit_gt,debit_dash_gt,credit_dash_gt,orig_label_ocr,orig_debit_ocr,orig_credit_ocr,orig_debit_status,orig_credit_status,gt_note,verified,reviewer,reviewed_at
-7,p0007_r001,156.38,212.17,0.035,現金,,,1,1,現金,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r002,217.42,283.38,0.04866,-澳門元,119366280.10,,0,1,-澳門元,"119.366,280.10",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r003,285.87,348.81,0.06398,-外幣,124604700.01,,0,1,-外幣,124.604.700.01,,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r004,353.8,415.5,0.07919,AMCM存款,,,1,1,AMCM存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r005,421.67,485.73,0.09438,-澳門元,2496722065.08,,0,1,-澳門元,"2.496.722,065.08",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r006,483.36,545.06,0.10818,-外幣,0.00,,0,1,-外幣,0.00,,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r007,551.15,613.26,0.12335,應收帳項,114442609.02,,0,1,居收帳項,"114,442,609.02",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r008,612.92,680.79,0.13718,在本地之其他信用機構活期存款,405228717.57,,0,1,在杰地之其他信用機構活期存款,"405.228,717.57",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r009,680.64,749.07,0.15234,在外地之其他信用機構活期存款,20637090314.71,,0,1,在外地之其他信用機構活期存款,"20.637,090,314.71",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r010,752.18,816.51,0.16835,金、銀,0.00,,0,1,金、銀,0.00,,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r011,816.44,884.87,0.18273,其他流動資產,595846.01,,0,1,其他流動贊產,"595,846.01",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r012,889.1,952.01,0.19899,放款,114848136590.05,,0,1,放款,"114,848,136.590.05",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r013,945.56,1016.06,0.21163,在本澳信用機構拆放,1000000.00,,0,1,在本澳信用機構拆放,"1,000,000.00",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r014,1013.94,1081.8,0.22693,在外地信用機構之通知及定期存款,742127136.94,,0,1,在外地信用機構之通知及定期存統,"742.127,136.94",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r015,1080.52,1143.89,0.24184,股票、債券及股權,65045622601.52,,0,1,股票、債券及股權,65.045.622.601.52,,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r016,1149.67,1211.36,0.25731,承銷資金投資,0.00,,0,1,承銷貢金投買,0.00,,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r017,1217.53,1279.64,0.2725,債務人,1840186291.98,,0,1,货務人,"1,840.186,291.98",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r018,1282.79,1349.69,0.28711,其他投資,13621420464.09,,0,1,其他投育,"13.621,420.464.09",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r019,1353.26,1409.13,0.30288,活期存款,,,1,1,活期存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r020,1412.01,1482.78,0.31603,-澳門元,,4903974610.68,1,0,-澳門元,,"4,903,974.610.68",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r021,1482.82,1549.46,0.33188,-外幣,,33879025441.17,1,0,-外祭,,"33.879,025,441.17",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r022,1550.39,1612.67,0.347,通知存款,,,1,1,通知存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r023,1618.55,1680.73,0.36225,-澳門元,,863015.59,1,0,-澳門元,,"863,015.59",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r024,1682.58,1750.71,0.37658,-外幣,,879368348.96,1,0,-外幣,,"879,368.348.96",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r025,1752.87,1817.38,0.39232,定期存款,,,1,1,定期存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r026,1820.62,1885.36,0.40748,-澳門元,,12671687175.84,1,0,-澳門元,,"12,671,687.175.84",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r027,1883.83,1953.9,0.42163,-外幣,,103188351672.07,1,0,-外幣,,"103,188,351,672.07",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r028,1951.38,2024.65,0.43675,公共機構存款,,14702016826.10,1,0,公共祝構存款,,"14.702,016,826,10",dash_or_blank,ambiguous_format,"來源印刷第一個千分位看似「.」（14.702,016,826,10）；GT 以數值 14702016826.10 記錄。",1,tonyfong,2026-11-17
-7,p0007_r029,2015.18,2081.26,0.45103,本地信用機構資金,,2615790348.53,1,0,本地信用機構貢金,,"2,615,790,348.53",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r030,2080.23,2142.95,0.46558,其他本地機構資金,,0.00,1,0,其他本地機構食金,,0.00,dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r031,2141.82,2204.91,0.47937,外幣借款,,27063765678.50,1,0,外带款,,"27.063,765.678.50",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r032,2205.54,2276.83,0.49363,債券借款,,9766893799.08,1,0,債券借款,,"9.766,893,799.08",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r033,2272.55,2340.79,0.50863,承銷資金債權人,,0.00,1,0,承銷育金債椎人,,0.00,dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r034,2339.48,2411.32,0.52361,應付支票及票據,,129697765.71,1,0,馬付支桌及票拔,,"129,697.765.71",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r035,2402.62,2469.3,0.53774,債權人,,286539768.56,1,0,價樸人,,"286,539.768.56",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r036,2469.23,2532.22,0.55265,各項負債,,6041499.40,1,0,各項負債,,"6,04 1,499.40",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r037,2537.25,2600.04,0.56787,財務投資,8684286.33,,0,1,財務投買,"8,684,286.33",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r038,2605.48,2673.53,0.58314,不動產,566393537.81,,0,1,不動產,"566,393,537.81",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r039,2670.41,2734.39,0.59767,設備,34218581.45,,0,1,投備,"34,218,581.45",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r040,2734.76,2802.92,0.61208,遞延費用,0.00,,0,1,|逸延費用,0.00,,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r041,2796.62,2866.46,0.62592,開辦費用,31874968.14,,0,1,開辦香用,"31,874.968.14",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r042,2872.04,2932.64,0.6428,未完成不動產,305845786.48,,0,1,未兌成不動產,"305,845,786.48",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r043,2938.09,3007.17,0.65759,其他固定資產,976275210.92,,0,1,其他国定貨產,"976.275,210.92",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
+7,p0007_r001,156.38,212.17,0.035,現金,,,0,0,現金,,,blank,blank,,1,tonyfong,2026-11-17
+7,p0007_r002,217.42,283.38,0.04866,-澳門元,119366280.10,,0,0,-澳門元,"119.366,280.10",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r003,285.87,348.81,0.06398,-外幣,124604700.01,,0,0,-外幣,124.604.700.01,,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r004,353.8,415.5,0.07919,AMCM存款,,,0,0,AMCM存款,,,blank,blank,,1,tonyfong,2026-11-17
+7,p0007_r005,421.67,485.73,0.09438,-澳門元,2496722065.08,,0,0,-澳門元,"2.496.722,065.08",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r006,483.36,545.06,0.10818,-外幣,0.00,,0,0,-外幣,0.00,,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r007,551.15,613.26,0.12335,應收帳項,114442609.02,,0,0,居收帳項,"114,442,609.02",,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r008,612.92,680.79,0.13718,在本地之其他信用機構活期存款,405228717.57,,0,0,在杰地之其他信用機構活期存款,"405.228,717.57",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r009,680.64,749.07,0.15234,在外地之其他信用機構活期存款,20637090314.71,,0,0,在外地之其他信用機構活期存款,"20.637,090,314.71",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r010,752.18,816.51,0.16835,金、銀,0.00,,0,0,金、銀,0.00,,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r011,816.44,884.87,0.18273,其他流動資產,595846.01,,0,0,其他流動贊產,"595,846.01",,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r012,889.1,952.01,0.19899,放款,114848136590.05,,0,0,放款,"114,848,136.590.05",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r013,945.56,1016.06,0.21163,在本澳信用機構拆放,1000000.00,,0,0,在本澳信用機構拆放,"1,000,000.00",,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r014,1013.94,1081.8,0.22693,在外地信用機構之通知及定期存款,742127136.94,,0,0,在外地信用機構之通知及定期存統,"742.127,136.94",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r015,1080.52,1143.89,0.24184,股票、債券及股權,65045622601.52,,0,0,股票、債券及股權,65.045.622.601.52,,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r016,1149.67,1211.36,0.25731,承銷資金投資,0.00,,0,0,承銷貢金投買,0.00,,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r017,1217.53,1279.64,0.2725,債務人,1840186291.98,,0,0,货務人,"1,840.186,291.98",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r018,1282.79,1349.69,0.28711,其他投資,13621420464.09,,0,0,其他投育,"13.621,420.464.09",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r019,1353.26,1409.13,0.30288,活期存款,,,0,0,活期存款,,,blank,blank,,1,tonyfong,2026-11-17
+7,p0007_r020,1412.01,1482.78,0.31603,-澳門元,,4903974610.68,0,0,-澳門元,,"4,903,974.610.68",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r021,1482.82,1549.46,0.33188,-外幣,,33879025441.17,0,0,-外祭,,"33.879,025,441.17",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r022,1550.39,1612.67,0.347,通知存款,,,0,0,通知存款,,,blank,blank,,1,tonyfong,2026-11-17
+7,p0007_r023,1618.55,1680.73,0.36225,-澳門元,,863015.59,0,0,-澳門元,,"863,015.59",blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r024,1682.58,1750.71,0.37658,-外幣,,879368348.96,0,0,-外幣,,"879,368.348.96",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r025,1752.87,1817.38,0.39232,定期存款,,,0,0,定期存款,,,blank,blank,,1,tonyfong,2026-11-17
+7,p0007_r026,1820.62,1885.36,0.40748,-澳門元,,12671687175.84,0,0,-澳門元,,"12,671,687.175.84",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r027,1883.83,1953.9,0.42163,-外幣,,103188351672.07,0,0,-外幣,,"103,188,351,672.07",blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r028,1951.38,2024.65,0.43675,公共機構存款,,14702016826.10,0,0,公共祝構存款,,"14.702,016,826,10",blank,ambiguous_format,"來源印刷第一個千分位看似「.」（14.702,016,826,10）；GT 以數值 14702016826.10 記錄。",1,tonyfong,2026-11-17
+7,p0007_r029,2015.18,2081.26,0.45103,本地信用機構資金,,2615790348.53,0,0,本地信用機構貢金,,"2,615,790,348.53",blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r030,2080.23,2142.95,0.46558,其他本地機構資金,,0.00,0,0,其他本地機構食金,,0.00,blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r031,2141.82,2204.91,0.47937,外幣借款,,27063765678.50,0,0,外带款,,"27.063,765.678.50",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r032,2205.54,2276.83,0.49363,債券借款,,9766893799.08,0,0,債券借款,,"9.766,893,799.08",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r033,2272.55,2340.79,0.50863,承銷資金債權人,,0.00,0,0,承銷育金債椎人,,0.00,blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r034,2339.48,2411.32,0.52361,應付支票及票據,,129697765.71,0,0,馬付支桌及票拔,,"129,697.765.71",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r035,2402.62,2469.3,0.53774,債權人,,286539768.56,0,0,價樸人,,"286,539.768.56",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r036,2469.23,2532.22,0.55265,各項負債,,6041499.40,0,0,各項負債,,"6,04 1,499.40",blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r037,2537.25,2600.04,0.56787,財務投資,8684286.33,,0,0,財務投買,"8,684,286.33",,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r038,2605.48,2673.53,0.58314,不動產,566393537.81,,0,0,不動產,"566,393,537.81",,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r039,2670.41,2734.39,0.59767,設備,34218581.45,,0,0,投備,"34,218,581.45",,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r040,2734.76,2802.92,0.61208,遞延費用,0.00,,0,0,|逸延費用,0.00,,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r041,2796.62,2866.46,0.62592,開辦費用,31874968.14,,0,0,開辦香用,"31,874.968.14",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r042,2872.04,2932.64,0.6428,未完成不動產,305845786.48,,0,0,未兌成不動產,"305,845,786.48",,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r043,2938.09,3007.17,0.65759,其他固定資產,976275210.92,,0,0,其他国定貨產,"976.275,210.92",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
 7,p0007_r044,3012.43,3077.35,0.67422,內部及調整帳,4433048314.04,2561307959.42,0,0,內部及調整帳,"4.433,048,314.04","2,561.307,959.42",recovered_ocr_separator,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r045,3093.05,3154.75,0.69227,各項風險備用金,,2264921667.44,1,0,各項風险機用金,,"2.264,921,667.44",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r046,3154.1,3222.53,0.70593,股本,,3054603000.00,1,0,股本,,"3,054,603,000.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r047,3222.24,3285.7,0.72118,法定儲備,,2163640092.78,1,0,法定储街,,"2,163,640,092.78",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r048,3289.79,3352.46,0.7363,自定儲備,,0.00,1,0,自定儲備,,0.00,dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r049,3355.15,3420.03,0.75093,其他儲備,,3528242257.12,1,0,其他储備,,"3,528,242,257.12",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r050,3419.84,3485.88,0.76541,歴年營業結果,,2562717423.62,1,0,歴年營業結果,,"2,562,717,423.62",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r051,3498.13,3561.96,0.78293,總收入,,5206576572.46,1,0,德收入,,"5,206.576,572.46",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r052,3566.08,3637.22,0.79814,總支出,5083140620.78,,0,1,總支出,"5,083,140,620 78",,ambiguous_format,dash_or_blank,"來源印「5,083,140,620 78」，小數位置係空格；GT 以數值 5083140620.78 記錄。",1,tonyfong,2026-11-17
-7,p0007_r053,3634.6,3705.19,0.81347,代客保管帳,0,,0,1,代客保管帳,0 00,,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r054,3703.83,3765.52,0.82897,代收帳,0,,0,1,代收帳,0 00,,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r055,3775.58,3834.79,0.84503,抵押帳,147100264290.51,,0,1,抵押帐,"147,100.264,290.51",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r056,3839.56,3901.4,0.85935,保證及擔保付款（借方）,1124505170.20,,0,1,保经及擔保付款（借方）,"1,124,505.170.20",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r057,3907.25,3975.68,0.8745,信用狀（借方）,4619871511.31,,0,1,信用狀（借方）,"4.619,871,511.31",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-7,p0007_r058,3970.01,4043.52,0.88854,代客保管帳（貸方）,,0.00,1,0,代客保管帳（貸方）,,0.00,dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r059,4041.48,4111.48,0.90454,代收帳（貸方）,,0.00,1,0,代收帳（貸方）,,0.00,dash_or_blank,parsed,,1,tonyfong,2026-11-17
-7,p0007_r060,4102.6,4178.06,0.91822,抵押帳（貸方）,,147100264290.51,1,0,抵押帳（食方）,,"147,100.264,290.51",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r061,4171.53,4242.67,0.93365,保證及擔保付款,,1124505170.20,1,0,保證及擔保付款,,"1,124,505.170.20",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-7,p0007_r062,4239.2,4310.4,0.94879,信用狀,,4619871511.31,1,0,信用狀,,"4,619,871,511.31",dash_or_blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r045,3093.05,3154.75,0.69227,各項風險備用金,,2264921667.44,0,0,各項風险機用金,,"2.264,921,667.44",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r046,3154.1,3222.53,0.70593,股本,,3054603000.00,0,0,股本,,"3,054,603,000.00",blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r047,3222.24,3285.7,0.72118,法定儲備,,2163640092.78,0,0,法定储街,,"2,163,640,092.78",blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r048,3289.79,3352.46,0.7363,自定儲備,,0.00,0,0,自定儲備,,0.00,blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r049,3355.15,3420.03,0.75093,其他儲備,,3528242257.12,0,0,其他储備,,"3,528,242,257.12",blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r050,3419.84,3485.88,0.76541,歴年營業結果,,2562717423.62,0,0,歴年營業結果,,"2,562,717,423.62",blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r051,3498.13,3561.96,0.78293,總收入,,5206576572.46,0,0,德收入,,"5,206.576,572.46",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r052,3566.08,3637.22,0.79814,總支出,5083140620.78,,0,0,總支出,"5,083,140,620 78",,ambiguous_format,blank,"來源印「5,083,140,620 78」，小數位置係空格；GT 以數值 5083140620.78 記錄。",1,tonyfong,2026-11-17
+7,p0007_r053,3634.6,3705.19,0.81347,代客保管帳,0,,0,0,代客保管帳,0 00,,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r054,3703.83,3765.52,0.82897,代收帳,0,,0,0,代收帳,0 00,,parsed,blank,,1,tonyfong,2026-11-17
+7,p0007_r055,3775.58,3834.79,0.84503,抵押帳,147100264290.51,,0,0,抵押帐,"147,100.264,290.51",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r056,3839.56,3901.4,0.85935,保證及擔保付款（借方）,1124505170.20,,0,0,保经及擔保付款（借方）,"1,124,505.170.20",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r057,3907.25,3975.68,0.8745,信用狀（借方）,4619871511.31,,0,0,信用狀（借方）,"4.619,871,511.31",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+7,p0007_r058,3970.01,4043.52,0.88854,代客保管帳（貸方）,,0.00,0,0,代客保管帳（貸方）,,0.00,blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r059,4041.48,4111.48,0.90454,代收帳（貸方）,,0.00,0,0,代收帳（貸方）,,0.00,blank,parsed,,1,tonyfong,2026-11-17
+7,p0007_r060,4102.6,4178.06,0.91822,抵押帳（貸方）,,147100264290.51,0,0,抵押帳（食方）,,"147,100.264,290.51",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r061,4171.53,4242.67,0.93365,保證及擔保付款,,1124505170.20,0,0,保證及擔保付款,,"1,124,505.170.20",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+7,p0007_r062,4239.2,4310.4,0.94879,信用狀,,4619871511.31,0,0,信用狀,,"4,619,871,511.31",blank,parsed,,1,tonyfong,2026-11-17
 7,p0007_r063,4306.9,4379.71,0.96394,其他備查帳,70838603219.43,70838603219.43,0,0,其他備查帳,"70.838,603,219.43","70,838,603,219.43",recovered_ocr_separator,parsed,,1,tonyfong,2026-11-17
-10,p0010_r001,531.38,614.74,0.07599,CAIXA,,,1,1,CAIXA,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r002,631.0,718.43,0.09023,PATACAS,2726742.50,,0,1,PATACAS,"2,726,742.50",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r003,727.52,819.67,0.10404,MOEDAS EXTERNAS,8973026.28,,0,1,MOEDAS EXTERNAS,"8,973,026.28",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r004,811.07,915.31,0.11598,DEPÓSITOS NA AMCM,,,1,1,DEPÓSITOS NA AMCM,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r005,928.31,1009.33,0.13275,PATACAS,111234818.36,,0,1,PATACAS,"111,234,818.36",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r006,1022.89,1114.52,0.14627,MOEDAS EXTERNAS,71923922.24,,0,1,MOEDAS EXTERNAS,"71,923,922.24",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r007,1122.96,1212.86,0.16058,VALORES A COBRAR,12419288.42,,0,1,VALORES A COBRAR,"12,419,288.42",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r008,1210.28,1307.49,0.17307,DEPÓSITOS À ORDEM NOUTRAS INSTITUIÇÕES DE CREDITO NO TERRITÓRIO,140682572.72,,0,1,DEPÓSITOS À ORDEM NOUTRAS INSTITUIÇÕES DE CREDITO NO TERRITÓRIO,"140,682,572.72",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r009,1306.92,1403.83,0.18689,DEPÓSITOS À ORDEM NO EXTERIOR,292376910.50,,0,1,DEPÓSITOS À ORDEM NO EXTERIOR,"292,376,910.50",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r010,1412.94,1500.27,0.20205,OURO E PRATA,,,1,1,OURO E PRATA,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r011,1509.7,1596.6,0.21589,OUTROS VALORES,,,1,1,OUTROS VALORES,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r012,1605.72,1699.44,0.22962,CRÉDITO CONCEDIDO,5060452844.17,,0,1,CRÉDITO CONCEDIDO,"5,060,452,844.17",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r013,1702.82,1800.14,0.2435,APLICAÇÕES EM INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,,,1,1,APLICAÇÕES EM INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r014,1799.38,1900.62,0.25731,DEPÓSITOS COM PRÉ-AVISO E A PRAZO NO EXTERIOR,3580229157.98,,0,1,DEPÓSITOS COM PRÉ-AVISO E A PRAZO NO EXTERIOR,"3,580,229,157.98",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r015,1895.71,1992.92,0.27109,ACÇÕES. OBRIGAÇÕES E QUOTAS,,,1,1,ACÇÕES. OBRIGAÇÕES E QUOTAS,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r016,2002.15,2089.06,0.28631,APLICAÇÕES DE RECURSOS CONSIGNADOS,,,1,1,APLICAÇÕES DE RECURSOS CONSIGNADOS,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r017,2108.37,2185.62,0.3015,DEVEDORES,,,1,1,DEVEDORES,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r018,2195.27,2282.91,0.31392,OUTRAS APLICAÇÕES,,,1,1,OUTRAS APLICAÇÕES,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r019,2291.14,2378.74,0.32763,DEPÓSITOS À ORDEM,,,1,1,DEPÓSTTOS À ORDEM,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r020,2393.98,2489.02,0.34234,PATACAS,,252515098.86,1,0,PATACAS,,"252,515,098.86",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-10,p0010_r021,2493.81,2591.17,0.35662,MOEDAS EXTERNAS,,462765650.18,1,0,MOEDAS EXTERNAS,,"462,765,650.18",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-10,p0010_r022,2591.02,2678.34,0.37052,DEPÓSITOS COM PRÉ-AVISO,,,1,1,DEPÓSITOS COM PRE-AVISO,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r023,2697.39,2774.64,0.38573,PATACAS,,,1,1,PATACAS,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r024,2793.68,2881.0,0.3995,MOEDAS EXTERNAS,,,1,1,MOEDAS EXTERNAS,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r025,2886.94,2983.31,0.41283,DEPÓSITOS A PRAZO,,,1,1,DEPOSITOS A PRAZO,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r026,2996.18,3079.63,0.42845,PATACAS,,49554474.86,1,0,PATACAS,,"49,554.474.86",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-10,p0010_r027,3093.28,3179.26,0.44234,MOEDAS EXTERNAS,,704372721.03,1,0,MOEDAS EXTERNAS,,704.372.721.03,dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-10,p0010_r028,3180.19,3267.09,0.45477,DEPÓSITOS DO SECTOR PUBLICO,,,1,1,DEPÓSITOS DO SECTOR PUBLICO,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r029,3276.44,3373.65,0.46853,RECURSOS DE INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,,,1,1,RECURSOS DE INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r030,3377.32,3479.92,0.48296,RECURSOS DE OUTRAS ENTIDADES LOCAIS,,,1,1,RECURSOS DE OUTRAS ENTIDADES LOCAIS,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r031,3467.63,3575.14,0.49587,EMPRÉSTIMOS EM MOEDAS EXTERNAS,,5841546504.67,1,0,EMPRÉSTIMOS EM MOEDAS EXTERNAS,,"5,841,546,504.67",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-10,p0010_r032,3576.09,3663.64,0.51138,EMPRÉSTIMOS POR OBRIGAÇÕES,,,1,1,EMPRÉSTIMOS POR OBRIGAÇÕES,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r033,3681.77,3759.55,0.52649,CREDORES POR RECURSOS CONSIGNADOS,,,1,1,CREDORES POR RECURSOS CONSIGNADOS,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r034,3775.82,3866.3,0.53994,CHEQUES E ORDENS A PAGAR,,9992764.41,1,0,CHEQUES E ORDENS A PAGAR,,"9,992,764.41",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-10,p0010_r035,3875.42,3952.67,0.55419,CREDORES,,,1,1,CREDORES,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r036,3971.75,4049.23,0.56796,EXIGIBILIDADES DIVERSAS,,,1,1,EXIGIBILIDADES DIVERSAS,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r037,4068.54,4155.45,0.5818,PARTICIPAÇÕES FINANCEIRAS,,,1,1,PARTICIPAÇÕES FINANCEIRAS,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r038,4164.36,4252.76,0.5955,IMÓVEIS,,,1,1,IMOVEIS,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r039,4271.32,4358.22,0.6108,EQUIPAMENTO,419284.34,,0,1,EQUIPAMENTO,"419,284.34",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r040,4367.19,4445.13,0.62451,CUSTOS PLURIENAIS,,,1,1,CUSTOS PLURIENAIS,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r041,4454.52,4551.73,0.637,DESPESAS DE INSTALAÇÃO,,,1,1,DESPESAS DE INSTALAÇÃO,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r042,4551.35,4647.91,0.65084,IMOBILIZAÇÕES EM CURSO,,,1,1,IMOBILIZAÇÕES EM CURSO,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r043,4638.25,4754.39,0.66327,OUTROS VALORES IMOBILIZADOS,117247.25,,0,1,OUTROS VALORES IMOBILIZADOS,"117,247.25",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
+10,p0010_r001,531.38,614.74,0.07599,CAIXA,,,0,0,CAIXA,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r002,631.0,718.43,0.09023,PATACAS,2726742.50,,0,0,PATACAS,"2,726,742.50",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r003,727.52,819.67,0.10404,MOEDAS EXTERNAS,8973026.28,,0,0,MOEDAS EXTERNAS,"8,973,026.28",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r004,811.07,915.31,0.11598,DEPÓSITOS NA AMCM,,,0,0,DEPÓSITOS NA AMCM,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r005,928.31,1009.33,0.13275,PATACAS,111234818.36,,0,0,PATACAS,"111,234,818.36",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r006,1022.89,1114.52,0.14627,MOEDAS EXTERNAS,71923922.24,,0,0,MOEDAS EXTERNAS,"71,923,922.24",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r007,1122.96,1212.86,0.16058,VALORES A COBRAR,12419288.42,,0,0,VALORES A COBRAR,"12,419,288.42",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r008,1210.28,1307.49,0.17307,DEPÓSITOS À ORDEM NOUTRAS INSTITUIÇÕES DE CREDITO NO TERRITÓRIO,140682572.72,,0,0,DEPÓSITOS À ORDEM NOUTRAS INSTITUIÇÕES DE CREDITO NO TERRITÓRIO,"140,682,572.72",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r009,1306.92,1403.83,0.18689,DEPÓSITOS À ORDEM NO EXTERIOR,292376910.50,,0,0,DEPÓSITOS À ORDEM NO EXTERIOR,"292,376,910.50",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r010,1412.94,1500.27,0.20205,OURO E PRATA,,,0,0,OURO E PRATA,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r011,1509.7,1596.6,0.21589,OUTROS VALORES,,,0,0,OUTROS VALORES,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r012,1605.72,1699.44,0.22962,CRÉDITO CONCEDIDO,5060452844.17,,0,0,CRÉDITO CONCEDIDO,"5,060,452,844.17",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r013,1702.82,1800.14,0.2435,APLICAÇÕES EM INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,,,0,0,APLICAÇÕES EM INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r014,1799.38,1900.62,0.25731,DEPÓSITOS COM PRÉ-AVISO E A PRAZO NO EXTERIOR,3580229157.98,,0,0,DEPÓSITOS COM PRÉ-AVISO E A PRAZO NO EXTERIOR,"3,580,229,157.98",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r015,1895.71,1992.92,0.27109,ACÇÕES. OBRIGAÇÕES E QUOTAS,,,0,0,ACÇÕES. OBRIGAÇÕES E QUOTAS,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r016,2002.15,2089.06,0.28631,APLICAÇÕES DE RECURSOS CONSIGNADOS,,,0,0,APLICAÇÕES DE RECURSOS CONSIGNADOS,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r017,2108.37,2185.62,0.3015,DEVEDORES,,,0,0,DEVEDORES,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r018,2195.27,2282.91,0.31392,OUTRAS APLICAÇÕES,,,0,0,OUTRAS APLICAÇÕES,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r019,2291.14,2378.74,0.32763,DEPÓSITOS À ORDEM,,,0,0,DEPÓSTTOS À ORDEM,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r020,2393.98,2489.02,0.34234,PATACAS,,252515098.86,0,0,PATACAS,,"252,515,098.86",blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r021,2493.81,2591.17,0.35662,MOEDAS EXTERNAS,,462765650.18,0,0,MOEDAS EXTERNAS,,"462,765,650.18",blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r022,2591.02,2678.34,0.37052,DEPÓSITOS COM PRÉ-AVISO,,,0,0,DEPÓSITOS COM PRE-AVISO,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r023,2697.39,2774.64,0.38573,PATACAS,,,0,0,PATACAS,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r024,2793.68,2881.0,0.3995,MOEDAS EXTERNAS,,,0,0,MOEDAS EXTERNAS,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r025,2886.94,2983.31,0.41283,DEPÓSITOS A PRAZO,,,0,0,DEPOSITOS A PRAZO,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r026,2996.18,3079.63,0.42845,PATACAS,,49554474.86,0,0,PATACAS,,"49,554.474.86",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+10,p0010_r027,3093.28,3179.26,0.44234,MOEDAS EXTERNAS,,704372721.03,0,0,MOEDAS EXTERNAS,,704.372.721.03,blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+10,p0010_r028,3180.19,3267.09,0.45477,DEPÓSITOS DO SECTOR PUBLICO,,,0,0,DEPÓSITOS DO SECTOR PUBLICO,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r029,3276.44,3373.65,0.46853,RECURSOS DE INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,,,0,0,RECURSOS DE INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r030,3377.32,3479.92,0.48296,RECURSOS DE OUTRAS ENTIDADES LOCAIS,,,0,0,RECURSOS DE OUTRAS ENTIDADES LOCAIS,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r031,3467.63,3575.14,0.49587,EMPRÉSTIMOS EM MOEDAS EXTERNAS,,5841546504.67,0,0,EMPRÉSTIMOS EM MOEDAS EXTERNAS,,"5,841,546,504.67",blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r032,3576.09,3663.64,0.51138,EMPRÉSTIMOS POR OBRIGAÇÕES,,,0,0,EMPRÉSTIMOS POR OBRIGAÇÕES,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r033,3681.77,3759.55,0.52649,CREDORES POR RECURSOS CONSIGNADOS,,,0,0,CREDORES POR RECURSOS CONSIGNADOS,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r034,3775.82,3866.3,0.53994,CHEQUES E ORDENS A PAGAR,,9992764.41,0,0,CHEQUES E ORDENS A PAGAR,,"9,992,764.41",blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r035,3875.42,3952.67,0.55419,CREDORES,,,0,0,CREDORES,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r036,3971.75,4049.23,0.56796,EXIGIBILIDADES DIVERSAS,,,0,0,EXIGIBILIDADES DIVERSAS,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r037,4068.54,4155.45,0.5818,PARTICIPAÇÕES FINANCEIRAS,,,0,0,PARTICIPAÇÕES FINANCEIRAS,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r038,4164.36,4252.76,0.5955,IMÓVEIS,,,0,0,IMOVEIS,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r039,4271.32,4358.22,0.6108,EQUIPAMENTO,419284.34,,0,0,EQUIPAMENTO,"419,284.34",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r040,4367.19,4445.13,0.62451,CUSTOS PLURIENAIS,,,0,0,CUSTOS PLURIENAIS,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r041,4454.52,4551.73,0.637,DESPESAS DE INSTALAÇÃO,,,0,0,DESPESAS DE INSTALAÇÃO,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r042,4551.35,4647.91,0.65084,IMOBILIZAÇÕES EM CURSO,,,0,0,IMOBILIZAÇÕES EM CURSO,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r043,4638.25,4754.39,0.66327,OUTROS VALORES IMOBILIZADOS,117247.25,,0,0,OUTROS VALORES IMOBILIZADOS,"117,247.25",,parsed,blank,,1,tonyfong,2026-11-17
 10,p0010_r044,4734.62,4860.34,0.67705,CONTAS INTERNAS E DE REGULARIZAÇÃO,21306252.48,39456260.61,0,0,CONTAS INTERNAS E DE REGULARIZAÇÃO,"21,306,252.48","39.456,260.61",parsed,recovered_ocr_separator,,1,tonyfong,2026-11-17
-10,p0010_r045,4821.71,4947.24,0.68951,PROVISÕES PARA RISCOS DIVERSOS,,100261968.86,1,0,PROVISÕES PARA RISCOS DIVERSOS,,"100,261,968.86",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-10,p0010_r046,4927.39,5044.38,0.70462,FUNDO DE MANEIO,,150000000.00,1,0,FUNDO DE MANEIO,,"150,000,000.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-10,p0010_r047,5034.15,5140.36,0.71988,RESERVA LEGAL,,,1,1,RESERVA LEGAL,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r048,5121.05,5237.15,0.73231,RESERVA ESTATUTÁRIA,,,1,1,RESERVA ESTATUTÁRIA,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r049,5227.27,5335.27,0.7475,OUTRAS RESERVAS,,59317549.20,1,0,OUTRAS RESERVAS,,"59,317,549.20",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-10,p0010_r050,5323.83,5439.82,0.76131,RESERVA DA REAVALIAÇÃO,,,1,1,RESERVA DA REAVALIAÇÃO,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r051,5420.04,5537.03,0.77507,RESULTADOS TRANSITADOS DE EXERCÍCIOS ANTERIORES,,1625480613.88,1,0,RESULTADOS TRANSITADOS DE EXERCÍCIOS ANTERIORES,,"1,625,480,613.88",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-10,p0010_r052,5526.6,5632.82,0.7903,CUSTOS POR NATUREZA,199471633.18,,0,1,CUSTOS POR NATUREZA,"199,471.633.18",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r053,5622.71,5739.69,0.80405,PROVEITOS POR NATUREZA,,207070093.86,1,0,PROVEITOS POR NATUREZA,,"207.070,093.86",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-10,p0010_r054,5710.03,5835.6,0.81654,VALORES RECEBIDOS EM DEPÓSITO,,,1,1,VALORES RECEBIDOS EM DEPÓSITO,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r055,5815.48,5932.46,0.83161,VALORES RECEBIDOS PARA COBRANÇA,3150607.80,,0,1,VALORES RECEBIDOS PARA COBRANÇA,"3,150,607.80",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r056,5912.69,6028.72,0.84552,VALORES RECEBIDOS EM CAUÇÃO,19616221842.97,,0,1,VALORES RECEBIDOS EM CAUÇÃO,"19,616,221,842.97",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r057,6019.06,6115.62,0.86073,DEVEDORES POR GARANTIAS E AVALES PRESTADOS,237810670.69,,0,1,DEVEDORES POR GARANTIAS E AVALES PRESTADOS,"237,810,670.69",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r058,6105.47,6208.79,0.87308,DEVEDORES POR CRÉDITOS ABERTOS,68637482.38,,0,1,DEVEDORES POR CRÉDITOS ABERTOS,"68,637,482.38",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r059,6192.79,6308.74,0.88557,CREDORES POR VALORES RECEBIDOS EM DEPÓSITO,,,1,1,CREDORES POR VALORES RECEBIDOS EM DEPÓSITO,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-10,p0010_r060,6299.09,6415.23,0.90077,CREDORES POR VALORES RECEBIDOS PARA COBRANÇA,,3150607.80,1,0,CREDORES POR VALORES RECEBIDOS PARA COBRANÇA,,"3,150,607.80",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-10,p0010_r061,6385.57,6511.52,0.91314,CREDORES POR VALORES RECEBIDOS EM CAUÇÃO,,19616221842.97,1,0,CREDORES POR VALORES RECEBIDOS EM CAUÇÃO,,"19,616,221,842.97",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-10,p0010_r062,6492.21,6598.42,0.92839,GARANTIAS E AVALES PRESTADOS,,237810670.69,1,0,GARANTIAS E AVALES PRESTADOS,,"237,810,670.69",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-10,p0010_r063,6578.35,6698.44,0.9407,CRÉDITOS ABERTOS,,68637482.38,1,0,CRÉDITOS ABERTOS,,"68,637,482.38",dash_or_blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r045,4821.71,4947.24,0.68951,PROVISÕES PARA RISCOS DIVERSOS,,100261968.86,0,0,PROVISÕES PARA RISCOS DIVERSOS,,"100,261,968.86",blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r046,4927.39,5044.38,0.70462,FUNDO DE MANEIO,,150000000.00,0,0,FUNDO DE MANEIO,,"150,000,000.00",blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r047,5034.15,5140.36,0.71988,RESERVA LEGAL,,,0,0,RESERVA LEGAL,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r048,5121.05,5237.15,0.73231,RESERVA ESTATUTÁRIA,,,0,0,RESERVA ESTATUTÁRIA,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r049,5227.27,5335.27,0.7475,OUTRAS RESERVAS,,59317549.20,0,0,OUTRAS RESERVAS,,"59,317,549.20",blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r050,5323.83,5439.82,0.76131,RESERVA DA REAVALIAÇÃO,,,0,0,RESERVA DA REAVALIAÇÃO,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r051,5420.04,5537.03,0.77507,RESULTADOS TRANSITADOS DE EXERCÍCIOS ANTERIORES,,1625480613.88,0,0,RESULTADOS TRANSITADOS DE EXERCÍCIOS ANTERIORES,,"1,625,480,613.88",blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r052,5526.6,5632.82,0.7903,CUSTOS POR NATUREZA,199471633.18,,0,0,CUSTOS POR NATUREZA,"199,471.633.18",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+10,p0010_r053,5622.71,5739.69,0.80405,PROVEITOS POR NATUREZA,,207070093.86,0,0,PROVEITOS POR NATUREZA,,"207.070,093.86",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+10,p0010_r054,5710.03,5835.6,0.81654,VALORES RECEBIDOS EM DEPÓSITO,,,0,0,VALORES RECEBIDOS EM DEPÓSITO,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r055,5815.48,5932.46,0.83161,VALORES RECEBIDOS PARA COBRANÇA,3150607.80,,0,0,VALORES RECEBIDOS PARA COBRANÇA,"3,150,607.80",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r056,5912.69,6028.72,0.84552,VALORES RECEBIDOS EM CAUÇÃO,19616221842.97,,0,0,VALORES RECEBIDOS EM CAUÇÃO,"19,616,221,842.97",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r057,6019.06,6115.62,0.86073,DEVEDORES POR GARANTIAS E AVALES PRESTADOS,237810670.69,,0,0,DEVEDORES POR GARANTIAS E AVALES PRESTADOS,"237,810,670.69",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r058,6105.47,6208.79,0.87308,DEVEDORES POR CRÉDITOS ABERTOS,68637482.38,,0,0,DEVEDORES POR CRÉDITOS ABERTOS,"68,637,482.38",,parsed,blank,,1,tonyfong,2026-11-17
+10,p0010_r059,6192.79,6308.74,0.88557,CREDORES POR VALORES RECEBIDOS EM DEPÓSITO,,,0,0,CREDORES POR VALORES RECEBIDOS EM DEPÓSITO,,,blank,blank,,1,tonyfong,2026-11-17
+10,p0010_r060,6299.09,6415.23,0.90077,CREDORES POR VALORES RECEBIDOS PARA COBRANÇA,,3150607.80,0,0,CREDORES POR VALORES RECEBIDOS PARA COBRANÇA,,"3,150,607.80",blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r061,6385.57,6511.52,0.91314,CREDORES POR VALORES RECEBIDOS EM CAUÇÃO,,19616221842.97,0,0,CREDORES POR VALORES RECEBIDOS EM CAUÇÃO,,"19,616,221,842.97",blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r062,6492.21,6598.42,0.92839,GARANTIAS E AVALES PRESTADOS,,237810670.69,0,0,GARANTIAS E AVALES PRESTADOS,,"237,810,670.69",blank,parsed,,1,tonyfong,2026-11-17
+10,p0010_r063,6578.35,6698.44,0.9407,CRÉDITOS ABERTOS,,68637482.38,0,0,CRÉDITOS ABERTOS,,"68,637,482.38",blank,parsed,,1,tonyfong,2026-11-17
 10,p0010_r064,6685.33,6791.54,0.956,OUTRAS CONTAS EXTRAPATRIMONIAIS,2919824260.60,2919824260.60,0,0,OUTRAS CONTAS EXTRAPATRIMONIAIS,"2,919,824.260.60","2,919,824,260.60",recovered_ocr_separator,parsed,,1,tonyfong,2026-11-17
-9,p0009_r001,341.66,457.76,0.04881,現金,,,1,1,現金,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r002,440.77,555.07,0.06297,-澳門元,15843323.70,,0,1,-澳門元,"15,843,323.70",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r003,547.97,650.96,0.07828,-外幣,26755258.03,,0,1,-外幣,"26,755,258.03",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r004,658.97,758.94,0.09414,AMCM存款,,,1,1,AMCM存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r005,748.76,857.39,0.10697,-澳門元,138928593.69,,0,1,•澳門元,"138,928,593.69",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r006,863.49,960.8,0.12336,-外幣,,,1,1,-外幣,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r007,960.26,1056.92,0.13718,應收賬項,,,1,1,應收賬項,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r008,1046.56,1163.66,0.14951,在本地之其他信用機構活期存款,80445932.16,,0,1,在本地之其他信用機構活期存款,"80,445,932.16",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r009,1152.44,1259.9,0.16463,在外地之其他信用機構活期存款,62519720.07,,0,1,在外地之其他信用機構活期存款,"62,519,720.07",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r010,1269.22,1366.53,0.18132,金、銀,,,1,1,金、銀,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r011,1353.16,1470.27,0.19331,其他流動資產,,,1,1,其他流動資產,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r012,1456.13,1569.39,0.20802,放款,5954252288.46,,0,1,放款,"5,954,252,288.46",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r013,1557.15,1665.86,0.22245,在本澳信用機構拆放,650000000.00,,0,1,在本澳信用機構拆放,"650,000,000.00",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r014,1656.19,1772.26,0.2366,在外地信用機構之通知及定期存款,,,1,1,在外地信用機構之通知及定期存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r015,1772.18,1869.57,0.25317,股票、價券及股權,,,1,1,股票、價券及股權,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r016,1866.9,1977.1,0.2667,承銷資金投資,,,1,1,承銷資金投資,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r017,1975.12,2072.43,0.28216,債務人,,,1,1,價務人,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r018,2061.26,2179.03,0.29447,其他投資,,,1,1,其他投資,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r019,2167.78,2275.49,0.30968,活期存款,,,1,1,活期存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r020,2271.7,2381.12,0.32453,-澳門元,,240295648.41,1,0,•澳門元,,"240,295,648.41",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r021,2375.46,2478.16,0.33935,-外幣,,667026265.93,1,0,-外幣,,"667,026,265.93",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r022,2476.16,2585.72,0.35374,通知存款,,,1,1,通知存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r023,2583.72,2690.92,0.3691,-澳門元,,,1,1,•澳門元,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r024,2682.89,2787.08,0.38327,-外幣,,85391.62,1,0,•外幣,,"85,391.62",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r025,2775.69,2895.12,0.39653,定期存款,,,1,1,定期存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r026,2883.74,2992.19,0.41196,-澳門元,,36382635.98,1,0,-澳門元,,"36,382,635.98",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r027,2987.03,3092.31,0.42672,-外幣,,1133612101.62,1,0,•外幣,,"1,133,612,101.62",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r028,3085.91,3193.84,0.44084,公共機構存款,,,1,1,公共機構存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r029,3183.37,3299.51,0.45477,本地信用機構資金,,948267.93,1,0,本地信用機構資金,,"948,267.93",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r030,3289.62,3396.82,0.46995,其他本地機構資金,,,1,1,其他本地機構資金,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r031,3383.71,3504.98,0.48339,外幣借款,,4521921938.49,1,0,外幣借款,,"4,521,921,938.49",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r032,3501.2,3600.14,0.50017,債券借款,,,1,1,僨劵借款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r033,3587.95,3706.7,0.51256,承銷資金債權人,,,1,1,承銷資金價權人,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r034,3695.35,3805.35,0.52791,應付支票及票據,,10044026.56,1,0,應付支票及票據,,"10,044,026.56",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r035,3801.47,3908.81,0.54307,債權人,,,1,1,債權人,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r036,3898.21,4007.92,0.55689,各項負債,,11522703.47,1,0,各項負價,,"11,522,703.47",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r037,3995.29,4101.61,0.57076,財務投資,,,1,1,財務投資,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r038,4101.08,4208.28,0.58587,不動産,,,1,1,不動産,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r039,4198.27,4311.01,0.59975,設備,755721.75,,0,1,設備,"755,721.75",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r040,4303.94,4411.15,0.61485,遞延費用,,,1,1,遞延費用,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r041,4398.19,4510.63,0.62831,開辦費用,332834.38,,0,1,開辦費用,"332,834.38",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r042,4493.89,4617.91,0.64198,未完成不動産,,,1,1,未完成不動産,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r043,4602.66,4715.14,0.65752,其他固定资產,10986.71,,0,1,其他固定资產,"10,986.71",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
+9,p0009_r001,341.66,457.76,0.04881,現金,,,0,0,現金,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r002,440.77,555.07,0.06297,-澳門元,15843323.70,,0,0,-澳門元,"15,843,323.70",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r003,547.97,650.96,0.07828,-外幣,26755258.03,,0,0,-外幣,"26,755,258.03",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r004,658.97,758.94,0.09414,AMCM存款,,,0,0,AMCM存款,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r005,748.76,857.39,0.10697,-澳門元,138928593.69,,0,0,•澳門元,"138,928,593.69",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r006,863.49,960.8,0.12336,-外幣,,,0,0,-外幣,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r007,960.26,1056.92,0.13718,應收賬項,,,0,0,應收賬項,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r008,1046.56,1163.66,0.14951,在本地之其他信用機構活期存款,80445932.16,,0,0,在本地之其他信用機構活期存款,"80,445,932.16",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r009,1152.44,1259.9,0.16463,在外地之其他信用機構活期存款,62519720.07,,0,0,在外地之其他信用機構活期存款,"62,519,720.07",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r010,1269.22,1366.53,0.18132,金、銀,,,0,0,金、銀,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r011,1353.16,1470.27,0.19331,其他流動資產,,,0,0,其他流動資產,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r012,1456.13,1569.39,0.20802,放款,5954252288.46,,0,0,放款,"5,954,252,288.46",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r013,1557.15,1665.86,0.22245,在本澳信用機構拆放,650000000.00,,0,0,在本澳信用機構拆放,"650,000,000.00",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r014,1656.19,1772.26,0.2366,在外地信用機構之通知及定期存款,,,0,0,在外地信用機構之通知及定期存款,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r015,1772.18,1869.57,0.25317,股票、價券及股權,,,0,0,股票、價券及股權,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r016,1866.9,1977.1,0.2667,承銷資金投資,,,0,0,承銷資金投資,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r017,1975.12,2072.43,0.28216,債務人,,,0,0,價務人,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r018,2061.26,2179.03,0.29447,其他投資,,,0,0,其他投資,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r019,2167.78,2275.49,0.30968,活期存款,,,0,0,活期存款,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r020,2271.7,2381.12,0.32453,-澳門元,,240295648.41,0,0,•澳門元,,"240,295,648.41",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r021,2375.46,2478.16,0.33935,-外幣,,667026265.93,0,0,-外幣,,"667,026,265.93",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r022,2476.16,2585.72,0.35374,通知存款,,,0,0,通知存款,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r023,2583.72,2690.92,0.3691,-澳門元,,,0,0,•澳門元,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r024,2682.89,2787.08,0.38327,-外幣,,85391.62,0,0,•外幣,,"85,391.62",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r025,2775.69,2895.12,0.39653,定期存款,,,0,0,定期存款,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r026,2883.74,2992.19,0.41196,-澳門元,,36382635.98,0,0,-澳門元,,"36,382,635.98",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r027,2987.03,3092.31,0.42672,-外幣,,1133612101.62,0,0,•外幣,,"1,133,612,101.62",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r028,3085.91,3193.84,0.44084,公共機構存款,,,0,0,公共機構存款,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r029,3183.37,3299.51,0.45477,本地信用機構資金,,948267.93,0,0,本地信用機構資金,,"948,267.93",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r030,3289.62,3396.82,0.46995,其他本地機構資金,,,0,0,其他本地機構資金,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r031,3383.71,3504.98,0.48339,外幣借款,,4521921938.49,0,0,外幣借款,,"4,521,921,938.49",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r032,3501.2,3600.14,0.50017,債券借款,,,0,0,僨劵借款,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r033,3587.95,3706.7,0.51256,承銷資金債權人,,,0,0,承銷資金價權人,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r034,3695.35,3805.35,0.52791,應付支票及票據,,10044026.56,0,0,應付支票及票據,,"10,044,026.56",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r035,3801.47,3908.81,0.54307,債權人,,,0,0,債權人,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r036,3898.21,4007.92,0.55689,各項負債,,11522703.47,0,0,各項負價,,"11,522,703.47",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r037,3995.29,4101.61,0.57076,財務投資,,,0,0,財務投資,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r038,4101.08,4208.28,0.58587,不動産,,,0,0,不動産,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r039,4198.27,4311.01,0.59975,設備,755721.75,,0,0,設備,"755,721.75",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r040,4303.94,4411.15,0.61485,遞延費用,,,0,0,遞延費用,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r041,4398.19,4510.63,0.62831,開辦費用,332834.38,,0,0,開辦費用,"332,834.38",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r042,4493.89,4617.91,0.64198,未完成不動産,,,0,0,未完成不動産,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r043,4602.66,4715.14,0.65752,其他固定资產,10986.71,,0,0,其他固定资產,"10,986.71",,parsed,blank,,1,tonyfong,2026-11-17
 9,p0009_r044,4714.9,4817.81,0.67356,內部及調整賬,31140589.01,49147599.73,0,0,內部及調整賬,"31,140,589.01","49,147,599.73",parsed,parsed,,1,tonyfong,2026-11-17
-9,p0009_r045,4816.47,4917.59,0.68807,各項風險備用金,,1990692.77,1,0,各項風險備用金,,"1,990,692.77",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r046,4922.43,5019.85,0.7032,股本,,,1,1,股本,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r047,5019.74,5124.72,0.71711,營運資金,,150000000.00,1,0,營運資金,,"150,000,000.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r048,5124.54,5224.47,0.73208,法定儲備,,,1,1,法定儲備,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r049,5230.42,5321.57,0.7472,自定儲備,,,1,1,自足儲備,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r050,5328.08,5426.89,0.76115,其他儲備,,71247645.23,1,0,其他儲備,,"71,247,645.23",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r051,5432.37,5529.19,0.77605,歴年營業結果,,49280506.66,1,0,歴年營業結果,,"49,280,506.66",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r052,5531.79,5632.37,0.79026,總收人,,204038151.66,1,0,總收人,,"204,038,151.66",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r053,5630.61,5731.79,0.80437,總支出,186558328.10,,0,1,總支出,"186,558,328.10",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r054,5732.42,5834.46,0.81892,代客保管賬,,,1,1,代客保管賬,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r055,5840.36,5936.23,0.83434,代收帳,5322.75,,0,1,代收帳,"5,322.75",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r056,5928.43,6038.4,0.84692,扺押賬,2178987570.00,,0,1,扺押賬,"2,178,987,570.00",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r057,6034.06,6137.98,0.86201,保證及擔保付款〔借方〕,1019942487.50,,0,1,保證及擔保付款〔借方〕,"1,019,942,487.50",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r058,6129.28,6239.2,0.87561,信用狀（借方〕,4243538.91,,0,1,信用狀（借方〕,"4,243,538.91",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r059,6236.93,6334.39,0.89099,代客保管帳〔貸方〕,,,1,1,代客保管帳〔貸方〕,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-9,p0009_r060,6334.24,6431.55,0.90489,代收帳（貸方〕,,5322.75,1,0,代收帳（貸方〕,,"5,322.75",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r061,6439.49,6540.11,0.91993,抵押帳（貸万〕,,2178987570.00,1,0,抵押帳（貸万〕,,"2,178,987,570.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r062,6537.1,6640.43,0.93387,保證及擔保付款,,1019942487.50,1,0,保證及擔保付款,,"1,019,942,487.50",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-9,p0009_r063,6634.03,6738.34,0.94772,信用狀,,4243538.91,1,0,信用狀,,"4,243,538.91",dash_or_blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r045,4816.47,4917.59,0.68807,各項風險備用金,,1990692.77,0,0,各項風險備用金,,"1,990,692.77",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r046,4922.43,5019.85,0.7032,股本,,,0,0,股本,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r047,5019.74,5124.72,0.71711,營運資金,,150000000.00,0,0,營運資金,,"150,000,000.00",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r048,5124.54,5224.47,0.73208,法定儲備,,,0,0,法定儲備,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r049,5230.42,5321.57,0.7472,自定儲備,,,0,0,自足儲備,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r050,5328.08,5426.89,0.76115,其他儲備,,71247645.23,0,0,其他儲備,,"71,247,645.23",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r051,5432.37,5529.19,0.77605,歴年營業結果,,49280506.66,0,0,歴年營業結果,,"49,280,506.66",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r052,5531.79,5632.37,0.79026,總收人,,204038151.66,0,0,總收人,,"204,038,151.66",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r053,5630.61,5731.79,0.80437,總支出,186558328.10,,0,0,總支出,"186,558,328.10",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r054,5732.42,5834.46,0.81892,代客保管賬,,,0,0,代客保管賬,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r055,5840.36,5936.23,0.83434,代收帳,5322.75,,0,0,代收帳,"5,322.75",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r056,5928.43,6038.4,0.84692,扺押賬,2178987570.00,,0,0,扺押賬,"2,178,987,570.00",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r057,6034.06,6137.98,0.86201,保證及擔保付款〔借方〕,1019942487.50,,0,0,保證及擔保付款〔借方〕,"1,019,942,487.50",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r058,6129.28,6239.2,0.87561,信用狀（借方〕,4243538.91,,0,0,信用狀（借方〕,"4,243,538.91",,parsed,blank,,1,tonyfong,2026-11-17
+9,p0009_r059,6236.93,6334.39,0.89099,代客保管帳〔貸方〕,,,0,0,代客保管帳〔貸方〕,,,blank,blank,,1,tonyfong,2026-11-17
+9,p0009_r060,6334.24,6431.55,0.90489,代收帳（貸方〕,,5322.75,0,0,代收帳（貸方〕,,"5,322.75",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r061,6439.49,6540.11,0.91993,抵押帳（貸万〕,,2178987570.00,0,0,抵押帳（貸万〕,,"2,178,987,570.00",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r062,6537.1,6640.43,0.93387,保證及擔保付款,,1019942487.50,0,0,保證及擔保付款,,"1,019,942,487.50",blank,parsed,,1,tonyfong,2026-11-17
+9,p0009_r063,6634.03,6738.34,0.94772,信用狀,,4243538.91,0,0,信用狀,,"4,243,538.91",blank,parsed,,1,tonyfong,2026-11-17
 9,p0009_r064,6729.65,6838.04,0.96138,其他備査賬,883838093.96,883838093.96,0,0,其他備査賬,"883,838,093.96","883,838,093.96",parsed,parsed,,1,tonyfong,2026-11-17
 9,p0009_r065,6838.92,6891.7,0.97699,總額,11234560589.18,11234560589.18,0,0,,11 234 560 599 19,11 274 560 580 18,parsed,parsed,"來源總額印 11,234,560,589.18（左右相同）；原 GT 漏咗小數點。",1,tonyfong,2026-11-17
-15,p0015_r001,423.97,488.81,0.06959,Caixa,,,1,1,Caixa,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r002,502.2,564.59,0.08244,- Patacas,,,1,1,- Patacas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r003,593.59,651.01,0.09744,- Moedas externas,,,1,1,- Moedas externas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r004,675.24,748.61,0.11084,Depósitos na A.M.C.M.,,,1,1,Depósitos na A.M.C.M.,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r005,755.79,813.2,0.12406,- Patacas,,,1,1,- Patacas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r006,837.35,902.2,0.13745,- Moedas externas,,,1,1,- Moedas externas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r007,917.26,990.96,0.15057,Valores a cobrar,,,1,1,Valores a cobrar,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r008,999.46,1073.0,0.16406,Depósitos à ordem noutras instituições de crédito,,,1,1,Depósitos à ordem noutras instituições de crédito,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r009,1086.46,1153.62,0.17834,no Território,3247260.47,,0,1,no Território,L092L26,,invalid_characters,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r010,1169.17,1235.2,0.19192,Depósitos à ordem no exterior,,,1,1,Depósitos à ordem no exterior,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r011,1256.19,1334.44,0.2062,Ouro e prata,,,1,1,Ouro e prata,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r012,1339.9,1396.64,0.21994,Outros Valores,143376,,0,1,Outros Valores,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r013,1420.36,1486.39,0.23315,Crédito concedido,,,1,1,Crédito concedido,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r014,1502.01,1566.86,0.24655,Aplicações em instituições de crédito no Território,132913233.79,,0,1,Aplicações em instituições de crédito no Território,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r015,1582.56,1656.02,0.25978,Depósitos com pré-aviso e a prazo no exterior,,,1,1,Depósitos com pré-aviso e a prazo no exterior,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r016,1671.0,1745.18,0.27429,"Acções, obrigações e quotas",104698182.6,,0,1,"Acções, obrigações e quotas",9281869001,,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r017,1753.28,1818.13,0.2878,Aplicações de recursos consignados,,,1,1,Aplicações de recursos consignados,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r018,1830.99,1894.43,0.30056,Devedores,5316670.76,,0,1,Devedores,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r019,1923.5,1988.77,0.31574,Outras aplicações,,,1,1,Outras aplicações,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r020,1995.95,2077.76,0.32763,Depósitos à ordem,,,1,1,Depósitos à ordem,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r021,2084.94,2142.35,0.34224,- Patacas,,,1,1,- Patacas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r022,2164.49,2238.29,0.3553,- Moedas externas,,,1,1,- Moedas externas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r023,2255.75,2320.68,0.37028,Depósitos com pré-aviso,,,1,1,Depósitos com pré-aviso,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r024,2336.89,2393.63,0.3836,- Patacas,,,1,1,- Patacas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r025,2417.94,2475.36,0.3969,- Moedas externas,,,1,1,- Moedas externas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r026,2498.32,2564.35,0.4101,Depósitos a prazo,,,1,1,Depósitos a prazo,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r027,2588.16,2644.9,0.42485,- Patacas,,,1,1,- Patacas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r028,2669.13,2726.55,0.43814,- Moedas externas,,,1,1,- Moedas externas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r029,2750.27,2823.22,0.45146,Depósitos do sector público,,,1,1,Depósitos do sector público,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r030,2831.33,2896.17,0.46476,Recursos de instituições de crédito no Território,,,1,1,Recursos de instituições de crédito no Território,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r031,2911.71,2985.34,0.47796,Recursos de outras entidades locais,,,1,1,Recursos de outras entidades locais,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r032,2985.57,3067.79,0.49008,Empréstimos em moedas externas,,,1,1,Empréstimos em moedas externas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r033,3082.52,3147.45,0.50599,Empréstimos por obrigações,,,1,1,Empréstimos por obrigações,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r034,3163.66,3236.61,0.51931,Credores por recursos consignados,,,1,1,Credores por recursos consignados,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r035,3252.82,3317.92,0.53395,Cheques e ordens a pagar,,,1,1,Cheques e ordens a pagar,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r036,3331.87,3400.73,0.54693,Credores,,5672430,1,0,Credores,,":5,672,430.00",dash_or_blank,invalid_characters,,1,tonyfong,2026-11-17
-15,p0015_r037,3414.93,3487.88,0.56056,Exigibilidades diversas,,,1,1,Exigibilidades diversas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r038,3495.9,3569.11,0.57385,Participações financeiras,,,1,1,Participações financeiras,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r039,3575.9,3651.14,0.58698,Imóveis,,,1,1,Imóveis,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r040,3664.25,3739.16,0.60149,Equipamento,11088.56,,0,1,Equipamento,11.088.56,,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r041,3747.09,3820.3,0.61508,Custos plurienais,,,1,1,Custos plurienais,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r042,3828.32,3909.37,0.62842,Despesas de instalação,,,1,1,Despesas de instalação,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r043,3909.29,3991.11,0.64171,Imobilizações em curso,,,1,1,Imobilizações em curso,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r044,3995.06,4061.73,0.65579,Outros valores imobilizados,35641.25,,0,1,Outros valores imobilizados,35.641.25,,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
+15,p0015_r001,423.97,488.81,0.06959,Caixa,,,0,0,Caixa,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r002,502.2,564.59,0.08244,- Patacas,,,0,0,- Patacas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r003,593.59,651.01,0.09744,- Moedas externas,,,0,0,- Moedas externas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r004,675.24,748.61,0.11084,Depósitos na A.M.C.M.,,,0,0,Depósitos na A.M.C.M.,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r005,755.79,813.2,0.12406,- Patacas,,,0,0,- Patacas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r006,837.35,902.2,0.13745,- Moedas externas,,,0,0,- Moedas externas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r007,917.26,990.96,0.15057,Valores a cobrar,,,0,0,Valores a cobrar,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r008,999.46,1073.0,0.16406,Depósitos à ordem noutras instituições de crédito,,,0,0,Depósitos à ordem noutras instituições de crédito,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r009,1086.46,1153.62,0.17834,no Território,3247260.47,,0,0,no Território,L092L26,,invalid_characters,blank,,1,tonyfong,2026-11-17
+15,p0015_r010,1169.17,1235.2,0.19192,Depósitos à ordem no exterior,,,0,0,Depósitos à ordem no exterior,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r011,1256.19,1334.44,0.2062,Ouro e prata,,,0,0,Ouro e prata,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r012,1339.9,1396.64,0.21994,Outros Valores,143376,,0,0,Outros Valores,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r013,1420.36,1486.39,0.23315,Crédito concedido,,,0,0,Crédito concedido,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r014,1502.01,1566.86,0.24655,Aplicações em instituições de crédito no Território,132913233.79,,0,0,Aplicações em instituições de crédito no Território,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r015,1582.56,1656.02,0.25978,Depósitos com pré-aviso e a prazo no exterior,,,0,0,Depósitos com pré-aviso e a prazo no exterior,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r016,1671.0,1745.18,0.27429,"Acções, obrigações e quotas",104698182.6,,0,0,"Acções, obrigações e quotas",9281869001,,parsed,blank,,1,tonyfong,2026-11-17
+15,p0015_r017,1753.28,1818.13,0.2878,Aplicações de recursos consignados,,,0,0,Aplicações de recursos consignados,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r018,1830.99,1894.43,0.30056,Devedores,5316670.76,,0,0,Devedores,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r019,1923.5,1988.77,0.31574,Outras aplicações,,,0,0,Outras aplicações,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r020,1995.95,2077.76,0.32763,Depósitos à ordem,,,0,0,Depósitos à ordem,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r021,2084.94,2142.35,0.34224,- Patacas,,,0,0,- Patacas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r022,2164.49,2238.29,0.3553,- Moedas externas,,,0,0,- Moedas externas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r023,2255.75,2320.68,0.37028,Depósitos com pré-aviso,,,0,0,Depósitos com pré-aviso,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r024,2336.89,2393.63,0.3836,- Patacas,,,0,0,- Patacas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r025,2417.94,2475.36,0.3969,- Moedas externas,,,0,0,- Moedas externas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r026,2498.32,2564.35,0.4101,Depósitos a prazo,,,0,0,Depósitos a prazo,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r027,2588.16,2644.9,0.42485,- Patacas,,,0,0,- Patacas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r028,2669.13,2726.55,0.43814,- Moedas externas,,,0,0,- Moedas externas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r029,2750.27,2823.22,0.45146,Depósitos do sector público,,,0,0,Depósitos do sector público,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r030,2831.33,2896.17,0.46476,Recursos de instituições de crédito no Território,,,0,0,Recursos de instituições de crédito no Território,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r031,2911.71,2985.34,0.47796,Recursos de outras entidades locais,,,0,0,Recursos de outras entidades locais,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r032,2985.57,3067.79,0.49008,Empréstimos em moedas externas,,,0,0,Empréstimos em moedas externas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r033,3082.52,3147.45,0.50599,Empréstimos por obrigações,,,0,0,Empréstimos por obrigações,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r034,3163.66,3236.61,0.51931,Credores por recursos consignados,,,0,0,Credores por recursos consignados,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r035,3252.82,3317.92,0.53395,Cheques e ordens a pagar,,,0,0,Cheques e ordens a pagar,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r036,3331.87,3400.73,0.54693,Credores,,5672430,0,0,Credores,,":5,672,430.00",blank,invalid_characters,,1,tonyfong,2026-11-17
+15,p0015_r037,3414.93,3487.88,0.56056,Exigibilidades diversas,,,0,0,Exigibilidades diversas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r038,3495.9,3569.11,0.57385,Participações financeiras,,,0,0,Participações financeiras,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r039,3575.9,3651.14,0.58698,Imóveis,,,0,0,Imóveis,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r040,3664.25,3739.16,0.60149,Equipamento,11088.56,,0,0,Equipamento,11.088.56,,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+15,p0015_r041,3747.09,3820.3,0.61508,Custos plurienais,,,0,0,Custos plurienais,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r042,3828.32,3909.37,0.62842,Despesas de instalação,,,0,0,Despesas de instalação,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r043,3909.29,3991.11,0.64171,Imobilizações em curso,,,0,0,Imobilizações em curso,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r044,3995.06,4061.73,0.65579,Outros valores imobilizados,35641.25,,0,0,Outros valores imobilizados,35.641.25,,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
 15,p0015_r045,4079.45,4152.54,0.66964,Contas internas e de regularização,2085964.07,3537968.00,0,0,Contas internas e de regularização,2.085.964.07,3.537.968:00,recovered_ocr_separator,invalid_characters,"來源印 3.537.968,00；原 GT 誤記 3,527,968（3→2）。",1,tonyfong,2026-11-17
-15,p0015_r046,4157.06,4243.16,0.68238,Provisões para riscos diversos,,4042.22,1,0,Provisões para riscos diversos,,4.042.22,dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-15,p0015_r047,4239.16,4329.35,0.69586,Capital,,50000000.00,1,0,Capital,,"50,000,000.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-15,p0015_r048,4326.6,4404.25,0.71021,Reserva legal,,30468400,1,0,Reserva legal,,30.468:400.00,dash_or_blank,invalid_characters,,1,tonyfong,2026-11-17
-15,p0015_r049,4411.67,4469.08,0.72417,Reserva estatutária,,,1,1,Reserva estatutária,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r050,4498.43,4564.3,0.73842,Outras reservas,298598.39,,0,1,Outras reservas,298.598.39,,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r051,4573.87,4647.01,0.7508,Resultados transitados de exercícios anteriores,,143546896.61,1,0,Resultados transitados de exercícios anteriores:,,143.546.896.61,dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
-15,p0015_r052,4653.69,4747.64,0.7639,Custos por natureza,9220081.97,,0,1,Custos por natureza,"9,220.081.97",,recovered_ocr_separator,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r053,4743.56,4823.77,0.77865,Proveitos por natureza,,24740361.03,1,0,Proveitos por natureza,,":24,740.361.03",dash_or_blank,invalid_characters,,1,tonyfong,2026-11-17
-15,p0015_r054,4824.9,4900.2,0.79201,Valores recebidos em depósito:,,,1,1,Valores recebidos em depósito:,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r055,4914.05,4979.31,0.80664,Valores recebidos para cobrança,,,1,1,Valores recebidos para cobrança,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r056,4995.53,5060.45,0.82001,Valores recebidos em caução,,,1,1,Valores recebidos em caução,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r057,5084.69,5165.74,0.83465,Devedores por garantias e avales prestadas,,,1,1,Devedores por garantias e avales prestadas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r058,5165.24,5231.26,0.84787,Devedores por créditos abertos,,,1,1,Devedores por créditos abertos,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r059,5246.8,5327.86,0.86126,Credores por valores recebidos em depósito,,,1,1,Credores por valores recebidos em depósito,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r060,5326.71,5409.23,0.87438,Credores por valores recebidos para cobrança,,,1,1,Credores por valores recebidos para cobrança,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r061,5416.43,5482.45,0.88911,Credores por valores recebidos em caução,,,1,1,Credores por valores recebidos em caução,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r062,5498.07,5579.13,0.90251,Garantias e avales prestadas,,,1,1,Garantias e avales prestadas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r063,5587.23,5652.08,0.91714,Créditos abertos,,,1,1,Créditos abertos,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-15,p0015_r064,5667.61,5741.24,0.93034,Outras contas extrapatrimoniais,,,1,1,Outras contas extrapatrimoniais,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
+15,p0015_r046,4157.06,4243.16,0.68238,Provisões para riscos diversos,,4042.22,0,0,Provisões para riscos diversos,,4.042.22,blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+15,p0015_r047,4239.16,4329.35,0.69586,Capital,,50000000.00,0,0,Capital,,"50,000,000.00",blank,parsed,,1,tonyfong,2026-11-17
+15,p0015_r048,4326.6,4404.25,0.71021,Reserva legal,,30468400,0,0,Reserva legal,,30.468:400.00,blank,invalid_characters,,1,tonyfong,2026-11-17
+15,p0015_r049,4411.67,4469.08,0.72417,Reserva estatutária,,,0,0,Reserva estatutária,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r050,4498.43,4564.3,0.73842,Outras reservas,298598.39,,0,0,Outras reservas,298.598.39,,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+15,p0015_r051,4573.87,4647.01,0.7508,Resultados transitados de exercícios anteriores,,143546896.61,0,0,Resultados transitados de exercícios anteriores:,,143.546.896.61,blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+15,p0015_r052,4653.69,4747.64,0.7639,Custos por natureza,9220081.97,,0,0,Custos por natureza,"9,220.081.97",,recovered_ocr_separator,blank,,1,tonyfong,2026-11-17
+15,p0015_r053,4743.56,4823.77,0.77865,Proveitos por natureza,,24740361.03,0,0,Proveitos por natureza,,":24,740.361.03",blank,invalid_characters,,1,tonyfong,2026-11-17
+15,p0015_r054,4824.9,4900.2,0.79201,Valores recebidos em depósito:,,,0,0,Valores recebidos em depósito:,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r055,4914.05,4979.31,0.80664,Valores recebidos para cobrança,,,0,0,Valores recebidos para cobrança,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r056,4995.53,5060.45,0.82001,Valores recebidos em caução,,,0,0,Valores recebidos em caução,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r057,5084.69,5165.74,0.83465,Devedores por garantias e avales prestadas,,,0,0,Devedores por garantias e avales prestadas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r058,5165.24,5231.26,0.84787,Devedores por créditos abertos,,,0,0,Devedores por créditos abertos,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r059,5246.8,5327.86,0.86126,Credores por valores recebidos em depósito,,,0,0,Credores por valores recebidos em depósito,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r060,5326.71,5409.23,0.87438,Credores por valores recebidos para cobrança,,,0,0,Credores por valores recebidos para cobrança,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r061,5416.43,5482.45,0.88911,Credores por valores recebidos em caução,,,0,0,Credores por valores recebidos em caução,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r062,5498.07,5579.13,0.90251,Garantias e avales prestadas,,,0,0,Garantias e avales prestadas,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r063,5587.23,5652.08,0.91714,Créditos abertos,,,0,0,Créditos abertos,,,blank,blank,,1,tonyfong,2026-11-17
+15,p0015_r064,5667.61,5741.24,0.93034,Outras contas extrapatrimoniais,,,0,0,Outras contas extrapatrimoniais,,,blank,blank,,1,tonyfong,2026-11-17
 15,p0015_r065,5913.22,5986.42,0.97065,TOTAIS,257970097.86,257970097.86,0,0,TOTAIS,257.970.097.86,"257,970,097.86",recovered_ocr_separator,parsed,,1,tonyfong,2026-11-17
-17,p0017_r001,236.38,318.96,0.04743,現金,,,1,1,現金,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r002,324.62,399.13,0.06513,Caixa,,,1,1,Caixa,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r003,401.08,491.5,0.08047,-澳門元,2164970.30,,0,1,-澳門元,"2,164,970.30",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r004,484.13,566.71,0.09714,Patacas,,,1,1,Patacas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r005,566.66,650.98,0.1137,-外幣,3944235.79,,0,1,-外幣,"3,944,235.79",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r006,639.17,735.13,0.12824,Moedas externas,,,1,1,Moedas externas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r007,723.98,822.36,0.14526,AMCM存款,,,1,1,AMCM存款AMCM7F#K,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r008,801.28,910.34,0.16077,Depósitos na AMCM,,,1,1,Depósitos na AMCM Depositos na AMCM,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r009,889.59,987.06,0.17849,-澳門元,35803820.07,,0,1,-澳門元,"35,803,820.07",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r010,979.63,1055.33,0.19655,Patacas,,,1,1,Patacas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r011,1054.62,1145.51,0.2116,應收賬項,2263863.50,,0,1,應收賬項ЛЧКЛЕТE,"2,263,863.50",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r012,1136.97,1228.33,0.22812,Valores a cobrar,,,1,1,Valores a cobrar,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r013,1213.62,1309.99,0.2435,在本地之其他信用機構活期存款,20059225.23,,0,1,tAUZНUàТ›ЮЖ在本地之其他信用機構活期存款,"20,059,225.23",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r014,1294.72,1397.73,0.25978,Depósitos à ordem noutras instituições de crédito no Território,,,1,1,Depósitos à ordem noutras instituições de crédito no Território Depositos a ordem noutras instituicies de credito no Territorio,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r015,1397.26,1470.5,0.28035,放款,156653428.70,,0,1,,"156,653,428.70",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r016,1468.25,1550.84,0.29459,Crédito concedido,,,1,1,Crédito concedido Credito concedido,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r017,1543.68,1647.18,0.30973,在本澳信用機構拆放,1351391732.60,,0,1,在本澳信用機構拆放,"1,351,391,732.60",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r018,1624.68,1723.16,0.32598,Aplicações em instituições de crédito no Território,,,1,1,Aplicações em instituições de crédito no Território Aplicacoes em instituigoes de credito no Territorio,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r019,1709.12,1802.32,0.34292,股票、債券及股權,91459000.00,,0,1,股票、債券及股權,"91,459,000.00",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r020,1798.5,1888.05,0.36085,"Acções, obrigações e quotas",,,1,1,"Acções, obrigações e quotas Acgies, obrigagies e quotas",,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r021,1874.29,1964.08,0.37606,債務人,83514.30,,0,1,1#ř⅘Л債務人,"83,514.30",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r022,1968.75,2041.34,0.39501,Devedores,,,1,1,Devedores,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r023,2035.69,2132.69,0.40845,其他投資,80000000.00,,0,1,其他投資#UKA,"80,000,000.00.",,ambiguous_format,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r024,2121.29,2212.25,0.42562,Outras aplicações,,,1,1,Outras aplicações Outras aplicacoes,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r025,2203.35,2302.24,0.44208,活期存款,,,1,1,活期存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r026,2287.02,2376.67,0.45887,Depósitos à ordem,,,1,1,Depósitos à ordem Depositos a ordem,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r027,2369.22,2459.64,0.47537,-澳門元,,14889452.38,1,0,-澳門元->APУ,,"14,889,452.38",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-17,p0017_r028,2466.14,2528.08,0.49481,Patacas,,,1,1,Patacas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r029,2534.79,2624.42,0.50859,定期存款,,,1,1,定期存款,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r030,2615.56,2708.99,0.52479,Depósitos a prazo,,,1,1,Depositos a prazo Depósitos a prazo,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r031,2700.13,2786.41,0.54176,-澳門元,,602050000.00,1,0,-澳門元->PЧů,,"602,050,000.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-17,p0017_r032,2782.71,2858.41,0.55833,Patacas,,,1,1,Patacas,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r033,2857.92,2948.37,0.57342,公共機構存款,,184016198.15,1,0,公共機構存款Д#Ж##,,"184,016,198.15",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-17,p0017_r034,2934.06,3030.46,0.5887,Depósitos do Sector Público,,,1,1,Depositos do Sector Piblico Depósitos do Sector Público,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r035,3023.31,3112.45,0.6066,債權人,,357400.23,1,0,1ЁNЁ^債權人,,"357,400.23",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-17,p0017_r036,3108.82,3190.67,0.62376,Credores,,,1,1,Credores,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r037,3188.75,3271.33,0.6398,不動產,,,1,1,不動產7Ф)·,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r038,3271.08,3354.46,0.65632,Imóveis,,,1,1,Imóveis Imoveis,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
+17,p0017_r001,236.38,318.96,0.04743,現金,,,0,0,現金,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r002,324.62,399.13,0.06513,Caixa,,,0,0,Caixa,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r003,401.08,491.5,0.08047,-澳門元,2164970.30,,0,0,-澳門元,"2,164,970.30",,parsed,blank,,1,tonyfong,2026-11-17
+17,p0017_r004,484.13,566.71,0.09714,Patacas,,,0,0,Patacas,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r005,566.66,650.98,0.1137,-外幣,3944235.79,,0,0,-外幣,"3,944,235.79",,parsed,blank,,1,tonyfong,2026-11-17
+17,p0017_r006,639.17,735.13,0.12824,Moedas externas,,,0,0,Moedas externas,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r007,723.98,822.36,0.14526,AMCM存款,,,0,0,AMCM存款AMCM7F#K,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r008,801.28,910.34,0.16077,Depósitos na AMCM,,,0,0,Depósitos na AMCM Depositos na AMCM,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r009,889.59,987.06,0.17849,-澳門元,35803820.07,,0,0,-澳門元,"35,803,820.07",,parsed,blank,,1,tonyfong,2026-11-17
+17,p0017_r010,979.63,1055.33,0.19655,Patacas,,,0,0,Patacas,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r011,1054.62,1145.51,0.2116,應收賬項,2263863.50,,0,0,應收賬項ЛЧКЛЕТE,"2,263,863.50",,parsed,blank,,1,tonyfong,2026-11-17
+17,p0017_r012,1136.97,1228.33,0.22812,Valores a cobrar,,,0,0,Valores a cobrar,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r013,1213.62,1309.99,0.2435,在本地之其他信用機構活期存款,20059225.23,,0,0,tAUZНUàТ›ЮЖ在本地之其他信用機構活期存款,"20,059,225.23",,parsed,blank,,1,tonyfong,2026-11-17
+17,p0017_r014,1294.72,1397.73,0.25978,Depósitos à ordem noutras instituições de crédito no Território,,,0,0,Depósitos à ordem noutras instituições de crédito no Território Depositos a ordem noutras instituicies de credito no Territorio,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r015,1397.26,1470.5,0.28035,放款,156653428.70,,0,0,,"156,653,428.70",,parsed,blank,,1,tonyfong,2026-11-17
+17,p0017_r016,1468.25,1550.84,0.29459,Crédito concedido,,,0,0,Crédito concedido Credito concedido,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r017,1543.68,1647.18,0.30973,在本澳信用機構拆放,1351391732.60,,0,0,在本澳信用機構拆放,"1,351,391,732.60",,parsed,blank,,1,tonyfong,2026-11-17
+17,p0017_r018,1624.68,1723.16,0.32598,Aplicações em instituições de crédito no Território,,,0,0,Aplicações em instituições de crédito no Território Aplicacoes em instituigoes de credito no Territorio,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r019,1709.12,1802.32,0.34292,股票、債券及股權,91459000.00,,0,0,股票、債券及股權,"91,459,000.00",,parsed,blank,,1,tonyfong,2026-11-17
+17,p0017_r020,1798.5,1888.05,0.36085,"Acções, obrigações e quotas",,,0,0,"Acções, obrigações e quotas Acgies, obrigagies e quotas",,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r021,1874.29,1964.08,0.37606,債務人,83514.30,,0,0,1#ř⅘Л債務人,"83,514.30",,parsed,blank,,1,tonyfong,2026-11-17
+17,p0017_r022,1968.75,2041.34,0.39501,Devedores,,,0,0,Devedores,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r023,2035.69,2132.69,0.40845,其他投資,80000000.00,,0,0,其他投資#UKA,"80,000,000.00.",,ambiguous_format,blank,,1,tonyfong,2026-11-17
+17,p0017_r024,2121.29,2212.25,0.42562,Outras aplicações,,,0,0,Outras aplicações Outras aplicacoes,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r025,2203.35,2302.24,0.44208,活期存款,,,0,0,活期存款,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r026,2287.02,2376.67,0.45887,Depósitos à ordem,,,0,0,Depósitos à ordem Depositos a ordem,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r027,2369.22,2459.64,0.47537,-澳門元,,14889452.38,0,0,-澳門元->APУ,,"14,889,452.38",blank,parsed,,1,tonyfong,2026-11-17
+17,p0017_r028,2466.14,2528.08,0.49481,Patacas,,,0,0,Patacas,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r029,2534.79,2624.42,0.50859,定期存款,,,0,0,定期存款,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r030,2615.56,2708.99,0.52479,Depósitos a prazo,,,0,0,Depositos a prazo Depósitos a prazo,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r031,2700.13,2786.41,0.54176,-澳門元,,602050000.00,0,0,-澳門元->PЧů,,"602,050,000.00",blank,parsed,,1,tonyfong,2026-11-17
+17,p0017_r032,2782.71,2858.41,0.55833,Patacas,,,0,0,Patacas,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r033,2857.92,2948.37,0.57342,公共機構存款,,184016198.15,0,0,公共機構存款Д#Ж##,,"184,016,198.15",blank,parsed,,1,tonyfong,2026-11-17
+17,p0017_r034,2934.06,3030.46,0.5887,Depósitos do Sector Público,,,0,0,Depositos do Sector Piblico Depósitos do Sector Público,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r035,3023.31,3112.45,0.6066,債權人,,357400.23,0,0,1ЁNЁ^債權人,,"357,400.23",blank,parsed,,1,tonyfong,2026-11-17
+17,p0017_r036,3108.82,3190.67,0.62376,Credores,,,0,0,Credores,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r037,3188.75,3271.33,0.6398,不動產,,,0,0,不動產7Ф)·,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r038,3271.08,3354.46,0.65632,Imóveis,,,0,0,Imóveis Imoveis,,,blank,blank,,1,tonyfong,2026-11-17
 17,p0017_r039,3347.56,3440.52,0.67166,內部及調整賬,10470492.49,16429375.07,0,0,內部及調整賬PУÈẞŁàAE,"10,470,492.49","16,429,375.07",parsed,parsed,,1,tonyfong,2026-11-17
-17,p0017_r040,3436.5,3525.96,0.68951,Contas internas e de regularização,,,1,1,Contas internas e de regularização Contas internas e de regularizagao,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r041,3511.72,3602.14,0.7046,各項風險備用金,,2284661.28,1,0,各項風險備用金,,"2,284,661.28",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-17,p0017_r042,3601.66,3691.49,0.72264,Provisões para riscos diversos,,,1,1,Provisões para riscos diversos Provisoes para riscos diversos,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r043,3677.37,3766.83,0.73784,股本,,653421175.35,1,0,股本,,"653,421,175.35",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-17,p0017_r044,3766.64,3849.42,0.75575,Capital,,,1,1,Capital,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r045,3842.53,3932.22,0.77097,法定儲備,,163355293.83,1,0,ДẦÈl#Іi法定儲備,,"163,355,293.83",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-17,p0017_r046,3924.62,4015.08,0.78744,Reserva Legal,,,1,1,Reserva Legal,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r047,4005.93,4098.94,0.80376,其他儲備,,92333927.44,1,0,其他儲備·1L1#,,"92,333,927.44",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-17,p0017_r048,4089.18,4173.98,0.82046,Outra Reserva,,,1,1,Outra Reserva,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r049,4172.87,4262.33,0.83725,總支出,32855134.90,,0,1,總支出,"32,855,134.90",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r050,4255.15,4344.92,0.85376,Custos por natureza,,,1,1,Custos por natureza,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r051,4338.04,4420.73,0.87039,總收入,,58011934.15,1,0,EEIEA總收入,,"58,011,934.15",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-17,p0017_r052,4427.5,4510.09,0.88834,Proveitos por natureza,,,1,1,Proveitos por natureza,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r053,4495.88,4588.26,0.90206,保證及擔保付款（借方）,3000000.00,,0,1,保證及擔保付款（借方）K(H),"3,000,000.00",,parsed,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r054,4578.91,4675.55,0.91872,Devedores por garantias e avales prestados,,,1,1,Devedores por garantias e avales prestados,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
-17,p0017_r055,4660.78,4751.66,0.93515,保證及擔保付款,,3000000.00,1,0,保證及擔保付款,,"3,000,000.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-17,p0017_r056,4738.06,4837.36,0.95065,Garantias e avales prestados,,,1,1,Garantias e avales prestados,,,dash_or_blank,dash_or_blank,,1,tonyfong,2026-11-17
+17,p0017_r040,3436.5,3525.96,0.68951,Contas internas e de regularização,,,0,0,Contas internas e de regularização Contas internas e de regularizagao,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r041,3511.72,3602.14,0.7046,各項風險備用金,,2284661.28,0,0,各項風險備用金,,"2,284,661.28",blank,parsed,,1,tonyfong,2026-11-17
+17,p0017_r042,3601.66,3691.49,0.72264,Provisões para riscos diversos,,,0,0,Provisões para riscos diversos Provisoes para riscos diversos,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r043,3677.37,3766.83,0.73784,股本,,653421175.35,0,0,股本,,"653,421,175.35",blank,parsed,,1,tonyfong,2026-11-17
+17,p0017_r044,3766.64,3849.42,0.75575,Capital,,,0,0,Capital,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r045,3842.53,3932.22,0.77097,法定儲備,,163355293.83,0,0,ДẦÈl#Іi法定儲備,,"163,355,293.83",blank,parsed,,1,tonyfong,2026-11-17
+17,p0017_r046,3924.62,4015.08,0.78744,Reserva Legal,,,0,0,Reserva Legal,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r047,4005.93,4098.94,0.80376,其他儲備,,92333927.44,0,0,其他儲備·1L1#,,"92,333,927.44",blank,parsed,,1,tonyfong,2026-11-17
+17,p0017_r048,4089.18,4173.98,0.82046,Outra Reserva,,,0,0,Outra Reserva,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r049,4172.87,4262.33,0.83725,總支出,32855134.90,,0,0,總支出,"32,855,134.90",,parsed,blank,,1,tonyfong,2026-11-17
+17,p0017_r050,4255.15,4344.92,0.85376,Custos por natureza,,,0,0,Custos por natureza,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r051,4338.04,4420.73,0.87039,總收入,,58011934.15,0,0,EEIEA總收入,,"58,011,934.15",blank,parsed,,1,tonyfong,2026-11-17
+17,p0017_r052,4427.5,4510.09,0.88834,Proveitos por natureza,,,0,0,Proveitos por natureza,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r053,4495.88,4588.26,0.90206,保證及擔保付款（借方）,3000000.00,,0,0,保證及擔保付款（借方）K(H),"3,000,000.00",,parsed,blank,,1,tonyfong,2026-11-17
+17,p0017_r054,4578.91,4675.55,0.91872,Devedores por garantias e avales prestados,,,0,0,Devedores por garantias e avales prestados,,,blank,blank,,1,tonyfong,2026-11-17
+17,p0017_r055,4660.78,4751.66,0.93515,保證及擔保付款,,3000000.00,0,0,保證及擔保付款,,"3,000,000.00",blank,parsed,,1,tonyfong,2026-11-17
+17,p0017_r056,4738.06,4837.36,0.95065,Garantias e avales prestados,,,0,0,Garantias e avales prestados,,,blank,blank,,1,tonyfong,2026-11-17
 17,p0017_r057,4822.64,4906.38,0.96762,總額TOTAIS,1790149417.88,1790149417.88,0,0,總額TOTAISBESRHTOTAIS,"1,790,149,417.88","1,790,149,417.88",parsed,parsed,,1,tonyfong,2026-11-17
-29,p0029_r001,373.05,447.64,0.07223,-澳門元,73740470.20,,0,1,,- RTS7C,"73,740,470.20",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r002,444.66,520.94,0.08609,-外幣,133999032.05,,0,1,,- 5h#3,"133,999,032.05",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r003,522.74,587.29,0.10121,AMCM存款,,,1,1,,AMCM БR,,invalid_characters,dash_or_blank,,1,tonyfong,2026-11-17
-29,p0029_r004,594.43,672.06,0.11509,-澳門元,1044967032.19,,0,1,,-2970,"1,044,967,032.19",parsed,parsed,,1,tonyfong,2026-11-17
-29,p0029_r005,750.9,817.62,0.14538,應收賬項,63918243.94,,0,1,,,"63,918,243.94",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r006,822.89,897.27,0.15932,在本地之其他信用機構活期存款,249995741.88,,0,1,,,"249,995,741.88",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r007,895.6,970.12,0.1734,在外地信用機構之活期存款,408535729.55,,0,1,,,"408,535,729.55",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r008,1046.27,1122.71,0.20257,其他流動資產,95128.15,,0,1,,,"95,128.15",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r009,1122.19,1199.73,0.21727,放款,14183111118.95,,0,1,,"1E5, 85L","14,183,111,118.95",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r010,1199.73,1272.51,0.23228,在本澳信用機構拆放,1065918000.00,,0,1,,,"1,065,918,000.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r011,1272.51,1345.29,0.24637,在外地信用機構之通知及定期存款,430219500.00,,0,1,,,"430,219,500.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r012,1345.29,1424.14,0.26046,股票、債券及股權,19602797793.55,,0,1,,,"19,602,797,793.55",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r013,1493.05,1578.03,0.28907,債務人,34064522.26,,0,1,,ABA,"34,064,522.26",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r014,1575.77,1648.55,0.30509,其他投資,12110000000.00,,0,1,,,"12,110,000,000.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r015,1720.72,1794.12,0.33315,-澳門元,,1000899775.99,1,0,,-2976,"1,000,899,775.99",parsed,parsed,,1,tonyfong,2026-11-17
-29,p0029_r016,1800.18,1879.03,0.34853,-外幣,,2365384059.85,1,0,,,"2,365,384,059.85",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r017,1948.79,2014.37,0.37731,,,,0,1,,- PRPSTC,,invalid_characters,dash_or_blank,,1,tonyfong,2026-11-17
+29,p0029_r001,373.05,447.64,0.07223,-澳門元,73740470.20,,0,0,,- RTS7C,"73,740,470.20",invalid_characters,parsed,,1,tonyfong,2026-11-17
+29,p0029_r002,444.66,520.94,0.08609,-外幣,133999032.05,,0,0,,- 5h#3,"133,999,032.05",invalid_characters,parsed,,1,tonyfong,2026-11-17
+29,p0029_r003,522.74,587.29,0.10121,AMCM存款,,,0,0,,AMCM БR,,invalid_characters,blank,,1,tonyfong,2026-11-17
+29,p0029_r004,594.43,672.06,0.11509,-澳門元,1044967032.19,,0,0,,-2970,"1,044,967,032.19",parsed,parsed,,1,tonyfong,2026-11-17
+29,p0029_r005,750.9,817.62,0.14538,應收賬項,63918243.94,,0,0,,,"63,918,243.94",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r006,822.89,897.27,0.15932,在本地之其他信用機構活期存款,249995741.88,,0,0,,,"249,995,741.88",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r007,895.6,970.12,0.1734,在外地信用機構之活期存款,408535729.55,,0,0,,,"408,535,729.55",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r008,1046.27,1122.71,0.20257,其他流動資產,95128.15,,0,0,,,"95,128.15",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r009,1122.19,1199.73,0.21727,放款,14183111118.95,,0,0,,"1E5, 85L","14,183,111,118.95",invalid_characters,parsed,,1,tonyfong,2026-11-17
+29,p0029_r010,1199.73,1272.51,0.23228,在本澳信用機構拆放,1065918000.00,,0,0,,,"1,065,918,000.00",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r011,1272.51,1345.29,0.24637,在外地信用機構之通知及定期存款,430219500.00,,0,0,,,"430,219,500.00",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r012,1345.29,1424.14,0.26046,股票、債券及股權,19602797793.55,,0,0,,,"19,602,797,793.55",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r013,1493.05,1578.03,0.28907,債務人,34064522.26,,0,0,,ABA,"34,064,522.26",invalid_characters,parsed,,1,tonyfong,2026-11-17
+29,p0029_r014,1575.77,1648.55,0.30509,其他投資,12110000000.00,,0,0,,,"12,110,000,000.00",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r015,1720.72,1794.12,0.33315,-澳門元,,1000899775.99,0,0,,-2976,"1,000,899,775.99",parsed,parsed,,1,tonyfong,2026-11-17
+29,p0029_r016,1800.18,1879.03,0.34853,-外幣,,2365384059.85,0,0,,,"2,365,384,059.85",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r017,1948.79,2014.37,0.37731,,,,0,0,,- PRPSTC,,invalid_characters,blank,,1,tonyfong,2026-11-17
 29,p0029_r018,2169.65,2242.94,0.42007,-澳門元,,8910878832.67,0,0,,- 2P97,"8,910,878,832.67",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r019,2249.01,2321.79,0.43543,-外幣,,30214693162.03,1,0,,,"30,214,693,162.03",dash_or_blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r019,2249.01,2321.79,0.43543,-外幣,,30214693162.03,0,0,,,"30,214,693,162.03",blank,parsed,,1,tonyfong,2026-11-17
 29,p0029_r020,2319.14,2394.57,0.44901,公共機構存款,,2622515033.98,0,0,,2#0175,"2,622,515,033.98",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r021,2375.04,2487.75,0.45983,本地信用機構資金,,382500000.00,1,0,,,"382,500,000.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r022,2441.27,2568.51,0.47266,其他本地機構資金,,15964474.28,1,0,,,"15,964,474.28",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r023,2529.72,2623.59,0.48978,外幣借款,,529629.99,1,0,,918873,"529,629.99",parsed,parsed,,1,tonyfong,2026-11-17
-29,p0029_r024,2619.89,2684.07,0.50724,承銷資金投資,,,0,1,,G56R,,invalid_characters,dash_or_blank,,1,tonyfong,2026-11-17
-29,p0029_r025,2770.18,2846.94,0.53634,應付支票及票據,,21382720.87,1,0,,,"21,382,720.87",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r026,2849.0,2922.71,0.5516,債務人,,8581712.30,1,0,,,"8,581,712.30",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r027,2919.43,3007.66,0.56523,各項負債,,1217089.97,1,0,,SAR0,"1,217,089.97",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r028,2990.72,3067.81,0.57904,財務投資,2475206.28,,0,1,,RA 8B 10 3,"2,475,206.28",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r029,3073.88,3146.66,0.59514,不動產,28961305.88,,0,1,,,"28,961,305.88",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r030,3140.4,3220.05,0.60802,設備,10614657.41,,0,1,,22 05,"10,614,657.41",parsed,parsed,,1,tonyfong,2026-11-17
-29,p0029_r031,3218.58,3300.56,0.62315,遞延費用,17626793.55,,0,1,,DE ROE S. FA3,"17,626,793.55",ambiguous_ocr_character,parsed,,1,tonyfong,2026-11-17
-29,p0029_r032,3290.86,3372.44,0.63715,開辦費用,1692305.67,,0,1,,,"1,692,305.67",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r033,3376.61,3450.45,0.65375,未完成不動產,10821860.42,,0,1,,,"10,821,860,42",dash_or_blank,ambiguous_format,,1,tonyfong,2026-11-17
+29,p0029_r021,2375.04,2487.75,0.45983,本地信用機構資金,,382500000.00,0,0,,,"382,500,000.00",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r022,2441.27,2568.51,0.47266,其他本地機構資金,,15964474.28,0,0,,,"15,964,474.28",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r023,2529.72,2623.59,0.48978,外幣借款,,529629.99,0,0,,918873,"529,629.99",parsed,parsed,,1,tonyfong,2026-11-17
+29,p0029_r024,2619.89,2684.07,0.50724,承銷資金投資,,,0,0,,G56R,,invalid_characters,blank,,1,tonyfong,2026-11-17
+29,p0029_r025,2770.18,2846.94,0.53634,應付支票及票據,,21382720.87,0,0,,,"21,382,720.87",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r026,2849.0,2922.71,0.5516,債務人,,8581712.30,0,0,,,"8,581,712.30",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r027,2919.43,3007.66,0.56523,各項負債,,1217089.97,0,0,,SAR0,"1,217,089.97",invalid_characters,parsed,,1,tonyfong,2026-11-17
+29,p0029_r028,2990.72,3067.81,0.57904,財務投資,2475206.28,,0,0,,RA 8B 10 3,"2,475,206.28",invalid_characters,parsed,,1,tonyfong,2026-11-17
+29,p0029_r029,3073.88,3146.66,0.59514,不動產,28961305.88,,0,0,,,"28,961,305.88",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r030,3140.4,3220.05,0.60802,設備,10614657.41,,0,0,,22 05,"10,614,657.41",parsed,parsed,,1,tonyfong,2026-11-17
+29,p0029_r031,3218.58,3300.56,0.62315,遞延費用,17626793.55,,0,0,,DE ROE S. FA3,"17,626,793.55",ambiguous_ocr_character,parsed,,1,tonyfong,2026-11-17
+29,p0029_r032,3290.86,3372.44,0.63715,開辦費用,1692305.67,,0,0,,,"1,692,305.67",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r033,3376.61,3450.45,0.65375,未完成不動產,10821860.42,,0,0,,,"10,821,860,42",blank,ambiguous_format,,1,tonyfong,2026-11-17
 29,p0029_r034,3517.64,3604.13,0.68105,內部及調整帳,289811663.72,513547006.08,0,0,,82824,"289,811,663.72 513,547,006.08",parsed,invalid_grouping,,1,tonyfong,2026-11-17
-29,p0029_r035,3601.55,3674.33,0.6973,各項風險備用金,,203445652.02,1,0,,,"203,445,652.02",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r036,3674.33,3747.11,0.71139,股本,,2750000000.00,1,0,,,"2,750,000,000.00",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r037,3740.88,3827.66,0.72427,法定儲備,,301892217.43,1,0,,,"301,892,217.43",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r038,3897.99,3978.35,0.75469,其他儲備,,3487051.24,1,0,,,"3,487,051.24",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r039,3973.54,4051.22,0.76932,歷年營業結果,,199988632.62,1,0,,,"199,988,632.62",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r040,4046.27,4123.16,0.7834,總支出,1038552534.38,,0,1,,æszШ,"1,038,552,534.38",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r041,4123.16,4195.94,0.79829,總收入,,1285011588.71,1,0,,,"1,285,011,588.71",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r042,4194.09,4262.17,0.81202,代客保管賬,,,1,1,,feRem,,invalid_characters,dash_or_blank,,1,tonyfong,2026-11-17
-29,p0029_r043,4267.36,4338.68,0.82621,代收帳,,,1,1,,FCЦRФE,,invalid_characters,dash_or_blank,,1,tonyfong,2026-11-17
-29,p0029_r044,4344.84,4420.35,0.84121,抵押帳,120287174500.97,,0,1,,ЛEУФФE,"120,287,174,500.97",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r045,4426.42,4493.14,0.857,保證及擔保付款（借方）,52275656.33,,0,1,,,"52,275,656.33",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r046,4494.1,4574.23,0.87011,信用狀（借方）,744307.04,,0,1,,EH (7),"744,307.04",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r047,4560.15,4639.87,0.88289,代客保管帳（貸方）,,,0,1,,ER (5),,invalid_characters,dash_or_blank,,1,tonyfong,2026-11-17
-29,p0029_r048,4637.88,4709.87,0.89794,代收帳（貸方）,,,0,1,,HKE (S>),,invalid_characters,dash_or_blank,,1,tonyfong,2026-11-17
-29,p0029_r049,4716.35,4790.33,0.91314,抵押帳（貸万〕,,120287174500.97,1,0,,HPE (15),"120,287,174,500.97",invalid_characters,parsed,,1,tonyfong,2026-11-17
-29,p0029_r050,4789.75,4863.69,0.92735,保證及擔保付款,,52275656.33,1,0,,,"52,275,656.33",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r051,4864.86,4938.26,0.94189,信用狀,,744307.04,1,0,,,"744,307.04",dash_or_blank,parsed,,1,tonyfong,2026-11-17
-29,p0029_r052,4948.03,5020.81,0.95799,其他備查帳,4462795104.01,4462795104.01,0,0,,,"4,462,795,104.01 4,462,795,104.01",dash_or_blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
+29,p0029_r035,3601.55,3674.33,0.6973,各項風險備用金,,203445652.02,0,0,,,"203,445,652.02",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r036,3674.33,3747.11,0.71139,股本,,2750000000.00,0,0,,,"2,750,000,000.00",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r037,3740.88,3827.66,0.72427,法定儲備,,301892217.43,0,0,,,"301,892,217.43",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r038,3897.99,3978.35,0.75469,其他儲備,,3487051.24,0,0,,,"3,487,051.24",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r039,3973.54,4051.22,0.76932,歷年營業結果,,199988632.62,0,0,,,"199,988,632.62",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r040,4046.27,4123.16,0.7834,總支出,1038552534.38,,0,0,,æszШ,"1,038,552,534.38",invalid_characters,parsed,,1,tonyfong,2026-11-17
+29,p0029_r041,4123.16,4195.94,0.79829,總收入,,1285011588.71,0,0,,,"1,285,011,588.71",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r042,4194.09,4262.17,0.81202,代客保管賬,,,0,0,,feRem,,invalid_characters,blank,,1,tonyfong,2026-11-17
+29,p0029_r043,4267.36,4338.68,0.82621,代收帳,,,0,0,,FCЦRФE,,invalid_characters,blank,,1,tonyfong,2026-11-17
+29,p0029_r044,4344.84,4420.35,0.84121,抵押帳,120287174500.97,,0,0,,ЛEУФФE,"120,287,174,500.97",invalid_characters,parsed,,1,tonyfong,2026-11-17
+29,p0029_r045,4426.42,4493.14,0.857,保證及擔保付款（借方）,52275656.33,,0,0,,,"52,275,656.33",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r046,4494.1,4574.23,0.87011,信用狀（借方）,744307.04,,0,0,,EH (7),"744,307.04",invalid_characters,parsed,,1,tonyfong,2026-11-17
+29,p0029_r047,4560.15,4639.87,0.88289,代客保管帳（貸方）,,,0,0,,ER (5),,invalid_characters,blank,,1,tonyfong,2026-11-17
+29,p0029_r048,4637.88,4709.87,0.89794,代收帳（貸方）,,,0,0,,HKE (S>),,invalid_characters,blank,,1,tonyfong,2026-11-17
+29,p0029_r049,4716.35,4790.33,0.91314,抵押帳（貸万〕,,120287174500.97,0,0,,HPE (15),"120,287,174,500.97",invalid_characters,parsed,,1,tonyfong,2026-11-17
+29,p0029_r050,4789.75,4863.69,0.92735,保證及擔保付款,,52275656.33,0,0,,,"52,275,656.33",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r051,4864.86,4938.26,0.94189,信用狀,,744307.04,0,0,,,"744,307.04",blank,parsed,,1,tonyfong,2026-11-17
+29,p0029_r052,4948.03,5020.81,0.95799,其他備查帳,4462795104.01,4462795104.01,0,0,,,"4,462,795,104.01 4,462,795,104.01",blank,recovered_ocr_separator,,1,tonyfong,2026-11-17
 29,p0029_r053,5044.73,5081.46,0.97671,總額,175604908208.38,175604908208.38,0,0,,46 25,49E 20 000 200 300 17E 274 008 370 301,parsed,invalid_characters,,1,tonyfong,2026-11-17
 7,p0007_r064,4384.25,4448.35,0.98126,總額,455119269114.48,455119269114.48,0,0,總額,"455,119,269,114.48","455.119,269,114.48",parsed,recovered_ocr_separator,sync_added_unverified,1,tonyfong,2026-11-18
 10,p0010_r065,6856.42,6948.66,0.98047,TOTAIS,32347978564.86,32347978564.86,0,0,TOTAIS,"32,347,978,564.86","32,347,978,564.86",parsed,parsed,sync_added_unverified,1,tonyfong,2026-11-18
-29,p0029_r054,274.43,339.74,0.05313,現金,,,1,1,現金,,,dash_or_blank,dash_or_blank,sync_added_unverified,1,tonyfong,2026-11-18
-29,p0029_r055,671.87,736.87,0.13008,-外幣,,,1,1,-外够,,,dash_or_blank,dash_or_blank,sync_added_unverified,1,tonyfong,2026-11-18
-29,p0029_r056,967.97,1033.54,0.18741,金、銀,,,1,1,金、銀,,,dash_or_blank,dash_or_blank,sync_added_unverified,1,tonyfong,2026-11-18
-29,p0029_r057,1412.91,1490.78,0.27355,承銷資金投資,,,1,1,承銷資金投薋,,,dash_or_blank,dash_or_blank,sync_added_unverified,1,tonyfong,2026-11-18
-29,p0029_r058,1646.53,1712.15,0.31879,活期存款,,,1,1,活期存数,,,dash_or_blank,dash_or_blank,sync_added_unverified,1,tonyfong,2026-11-18
-29,p0029_r059,1870.29,1935.72,0.36211,通知存款,,,1,1,運知存款,,,dash_or_blank,dash_or_blank,sync_added_unverified,1,tonyfong,2026-11-18
-29,p0029_r060,2021.87,2087.38,0.39146,-外幣,,,1,1,-外幣,,,dash_or_blank,dash_or_blank,sync_added_unverified,1,tonyfong,2026-11-18
-29,p0029_r061,2094.18,2160.03,0.40546,定期存款,,,1,1,定期存款,,,dash_or_blank,dash_or_blank,sync_added_unverified,1,tonyfong,2026-11-18
-29,p0029_r062,2693.48,2759.03,0.52149,承銷資金債權人,,,1,1,承銷資金價權人,,,dash_or_blank,dash_or_blank,sync_added_unverified,1,tonyfong,2026-11-18
-29,p0029_r063,3443.64,3511.59,0.66673,其他固定資產,,,1,1,其他固定資產,,,dash_or_blank,dash_or_blank,sync_added_unverified,1,tonyfong,2026-11-18
-29,p0029_r064,3820.29,3886.03,0.73965,自定儲備,,,1,1,自足餞備,,,dash_or_blank,dash_or_blank,sync_added_unverified,1,tonyfong,2026-11-18
+29,p0029_r054,274.43,339.74,0.05313,現金,,,0,0,現金,,,blank,blank,sync_added_unverified,1,tonyfong,2026-11-18
+29,p0029_r055,671.87,736.87,0.13008,-外幣,,,0,0,-外够,,,blank,blank,sync_added_unverified,1,tonyfong,2026-11-18
+29,p0029_r056,967.97,1033.54,0.18741,金、銀,,,0,0,金、銀,,,blank,blank,sync_added_unverified,1,tonyfong,2026-11-18
+29,p0029_r057,1412.91,1490.78,0.27355,承銷資金投資,,,0,0,承銷資金投薋,,,blank,blank,sync_added_unverified,1,tonyfong,2026-11-18
+29,p0029_r058,1646.53,1712.15,0.31879,活期存款,,,0,0,活期存数,,,blank,blank,sync_added_unverified,1,tonyfong,2026-11-18
+29,p0029_r059,1870.29,1935.72,0.36211,通知存款,,,0,0,運知存款,,,blank,blank,sync_added_unverified,1,tonyfong,2026-11-18
+29,p0029_r060,2021.87,2087.38,0.39146,-外幣,,,0,0,-外幣,,,blank,blank,sync_added_unverified,1,tonyfong,2026-11-18
+29,p0029_r061,2094.18,2160.03,0.40546,定期存款,,,0,0,定期存款,,,blank,blank,sync_added_unverified,1,tonyfong,2026-11-18
+29,p0029_r062,2693.48,2759.03,0.52149,承銷資金債權人,,,0,0,承銷資金價權人,,,blank,blank,sync_added_unverified,1,tonyfong,2026-11-18
+29,p0029_r063,3443.64,3511.59,0.66673,其他固定資產,,,0,0,其他固定資產,,,blank,blank,sync_added_unverified,1,tonyfong,2026-11-18
+29,p0029_r064,3820.29,3886.03,0.73965,自定儲備,,,0,0,自足餞備,,,blank,blank,sync_added_unverified,1,tonyfong,2026-11-18

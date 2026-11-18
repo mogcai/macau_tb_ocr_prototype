@@ -25,6 +25,13 @@
 
 **版本定位：** 技術概念驗證及 OCR 流程測試。
 
+### v0.2.1 — Ground Truth 評分修正
+
+- **GT 行配對修正**：只有真正缺少座標的行才按閱讀次序配對；有座標但超出容差的行保留為 unmatched，避免「漏一行 + 多一行」互相抵消而虛高 alignment F1。
+- **空白與橫線分開**：`blank`（空白）與 `dash`（印有 `-`／`—`）而家係唔同狀態；GT 建立同評分都會獨立比較，唔會再把空白格當成橫線。
+- **第二輪金額重讀**：新增 `--amount-second-pass ink`（預設），針對空白／低信心金額格做 3× 重讀，原 OCR 保留，採用值標示 `recovered_second_pass` 並入覆核。
+- 版本更新至 v0.2.1，新增 GT 工具與 82 個測試。
+
 ### v0.2 — Enhanced OCR Prototype
 
 在 v0.1 基礎上改善 OCR 引擎、語言處理及財務數字辨識。
@@ -94,6 +101,8 @@ python macau_tb_ocr.py input/anotariais-45-2026.pdf \
   --ocr-langs auto
 ```
 
+> 註：`zh-Hant` 在 Vision `fast` 沒有辨識器，worker 會自動將中文 header/label 區域改用 `accurate`；`fast` 只影響數字／葡文區域。
+
 處理指定頁面範圍：
 
 ```bash
@@ -139,5 +148,5 @@ python -m unittest discover -s tests -v
 ---
 
 **Project:** Macau Gazette Balancete OCR  
-**Current prototype:** v0.2  
+**Current prototype:** v0.2.1  
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

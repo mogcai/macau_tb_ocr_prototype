@@ -56,6 +56,13 @@ class NumberFormatTests(unittest.TestCase):
             ("14702016826.10", "recovered_ocr_separator"),
         )
 
+    def test_blank_and_dash_are_distinct_states(self):
+        self.assertEqual(parse_amount("", "comma_dot"), ("", "blank"))
+        self.assertEqual(parse_amount("   ", "comma_dot"), ("", "blank"))
+        self.assertEqual(parse_amount("-", "comma_dot"), ("", "dash"))
+        self.assertEqual(parse_amount("—", "comma_dot"), ("", "dash"))
+        self.assertEqual(parse_amount(".", "comma_dot"), ("", "invalid_characters"))
+
     def test_space_used_as_decimal_separator_is_flagged(self):
         # Source prints 5,083,140,620 78 (space instead of the decimal mark).
         self.assertEqual(

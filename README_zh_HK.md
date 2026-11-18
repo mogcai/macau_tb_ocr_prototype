@@ -1,6 +1,13 @@
-# 澳門公報 Balancete OCR Prototype v0.2.0
+# 澳門公報 Balancete OCR Prototype v0.2.1
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+
+## v0.2.1 重點修正
+
+1. **Ground Truth 行配對**：只有真正缺少座標的行才可按閱讀次序配對；有座標但超出容差的行會保留為 unmatched，唔會再出現「漏行 + 多行」互相抵消而令 alignment F1 虛高。
+2. **空白 vs 橫線**：`blank` 同 `dash` 分開處理，GT 建立同評分都獨立比較，唔會再把空白格當成印有橫線。
+3. **第二輪金額重讀**：`--amount-second-pass ink`（預設）會對空白／低信心金額格做 3× 重讀；原 OCR 保留，採用值標 `recovered_second_pass` 並入覆核。
+4. **版本及測試**：版本升到 v0.2.1，新增 GT 工具及回歸測試（82 個）。
 
 ## v0.2 重點升級
 

@@ -1,4 +1,4 @@
-# AI Agent Quick Start — Macau Gazette Balancete OCR v0.2.0
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.2.1
 
 Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`.
 

@@ -40,6 +40,13 @@ PAGE_FIELDS = [
     "page_note", "verified", "reviewer", "reviewed_at",
 ]
 
+DASH_RE = re.compile(r"^\s*[-－—–−]+\s*$")
+
+
+def is_dash_cell(raw: str) -> bool:
+    """True only when the cell itself prints a dash, not when it is blank."""
+    return bool(DASH_RE.match(raw or ""))
+
 
 def read_csv(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8-sig") as handle:
@@ -143,8 +150,8 @@ def sync_missing_rows(page: int, gt_rows: list[dict[str, str]],
             "label_gt": (run.get("label_raw") or "").strip(),
             "debit_gt": (run.get("debit_amount") or "").strip(),
             "credit_gt": (run.get("credit_amount") or "").strip(),
-            "debit_dash_gt": 1 if debit_status == "dash_or_blank" else 0,
-            "credit_dash_gt": 1 if credit_status == "dash_or_blank" else 0,
+            "debit_dash_gt": 1 if is_dash_cell(run.get("debit_raw", "")) else 0,
+            "credit_dash_gt": 1 if is_dash_cell(run.get("credit_raw", "")) else 0,
             "orig_label_ocr": (run.get("label_raw") or "").strip(),
             "orig_debit_ocr": (run.get("debit_raw") or "").strip(),
             "orig_credit_ocr": (run.get("credit_raw") or "").strip(),
@@ -362,8 +369,8 @@ def main() -> int:
                 "label_gt": label,
                 "debit_gt": (row.get("debit_amount") or "").strip(),
                 "credit_gt": (row.get("credit_amount") or "").strip(),
-                "debit_dash_gt": 1 if debit_status == "dash_or_blank" else 0,
-                "credit_dash_gt": 1 if credit_status == "dash_or_blank" else 0,
+                "debit_dash_gt": 1 if is_dash_cell(debit_ocr) else 0,
+                "credit_dash_gt": 1 if is_dash_cell(credit_ocr) else 0,
                 "orig_label_ocr": label,
                 "orig_debit_ocr": debit_ocr,
                 "orig_credit_ocr": credit_ocr,

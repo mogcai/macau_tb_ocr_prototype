@@ -1,4 +1,4 @@
-# Agent Skill: Macau Gazette Balancete OCR v0.2.0
+# Agent Skill: Macau Gazette Balancete OCR v0.2.1
 
 ## Purpose
 
