@@ -1,4 +1,4 @@
-# SQLite 整合資料庫（v0.5.1 / schema v4）
+# SQLite 整合資料庫（v0.5.2 / schema v4）
 
 呢份文件講清楚點解唔直接用
 `publication_date, statement_date, bank_name, parent_label_standard, label_standard`
@@ -228,6 +228,10 @@ ORDER BY publication_date DESC, bank_name;
 - `SCHEMA_VERSION` 是資料庫 schema version（現時 4），兩者獨立。
 - 開啟舊 DB 時會自動 migrate：v2 加 `source_pdf_sha256`、`is_published`、`published_at`、`published_by`，並將每個 source PDF 最新的既有 run 標為 published；v3 加 `source_pdf_sha256_source`（`ocr_report` / `import_time` / `missing`）；v4 加名稱 registry 表及 `line_items` mapping 欄位。
 - DB schema 比程式新時會拒絕開啟，避免舊程式寫壞新結構。
+
+## Standard line items
+
+`labels/line_item_standard.csv` is the human-maintained account master; `tools/standard_line_items.py export|apply` builds and applies it. See `STANDARD_LINE_ITEMS.md`. Once applied, unmatched OCR labels create `needs_new_standard` reviews instead of auto concepts.
 
 ## 名稱標準化 registry
 

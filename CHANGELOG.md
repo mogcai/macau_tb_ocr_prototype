@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.2
+
+- **Standard line-item master:** added `tools/standard_line_items.py` with `export` and `apply`. `labels/line_item_standard.csv` is the human-maintained chart of accounts; one economic account is one standard, and Chinese/Portuguese/combined OCR text are aliases.
+- **Draft master:** 65 standard rows, 59 with Chinese canonical names, 61 with Portuguese, 55 pt→zh merge keys and 6 unresolved pt-only rows. `labels/line_item_pt_zh_map.csv` records the curated proposals.
+- **Safe apply:** `apply` loads only `status=approved` rows by default; provisional rows are skipped. It merges old concepts, moves aliases, updates `line_item_concept_id` and audits the change.
+- **No auto concepts in standard mode:** after a standard master is loaded, unmatched OCR labels create a `needs_new_standard` review with no auto-created provisional concept.
+- **Docs/tests:** added `STANDARD_LINE_ITEMS.md` and tests for export/apply/merge/standard mode. **141 tests passing.**
+- Schema remains v4; the committed DB remains at the reviewed registry state until the standard master is approved and applied.
+
 ## v0.5.1
 
 - **Review CSV workflow:** `name_registry.py export` writes `data/name_review_queue.csv` with editable `decision`, `approved_entity_id` and `note` columns; `import-review` applies approve/reject decisions. 153 pending items currently exported (8 bank + 145 line item).

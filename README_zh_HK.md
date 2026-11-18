@@ -1,17 +1,23 @@
-# 澳門公報 Balancete OCR Prototype v0.5.1
+# 澳門公報 Balancete OCR Prototype v0.5.2
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV，並可整合成 SQLite 資料庫作跨期分析。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+
+## v0.5.2 Standard Line Item Master
+
+1. **Standard master**：`labels/line_item_standard.csv` 係人手維護的科目主檔；一個經濟科目一個 standard，中文／葡文／OCR variant 只係 aliases。
+2. **Draft**：65 條 standard rows，59 條有中文、61 條有葡文、55 條 pt→zh merge；6 條 pt-only 待決定。
+3. **Apply**：`tools/standard_line_items.py apply` 只套用 `status=approved`；provisional 不會自動生效。
+4. **No auto concepts**：standard mode 下，未匹配的 OCR name 只會產生 `needs_new_standard` review，不再自動建立 provisional concept。
+5. 詳見 [`STANDARD_LINE_ITEMS.md`](STANDARD_LINE_ITEMS.md)。
 
 ## v0.5.1 Review CSV 及銀行中文名
 
 1. **Review CSV**：`name_registry.py export` 輸出 `data/name_review_queue.csv`，可填 `decision` / `approved_entity_id` / `note`，再用 `import-review` 套用。
 2. **銀行中文名**：`labels/bank_name_translations.csv` 為 Latin-only 銀行提供 proposed 中文名；DB 填 `banks.canonical_zh` 並建立 pending `translation_seed` review。
 3. **三層名稱管理**：raw OCR 名稱 → pending review → approved registry；raw 永不覆寫。
-2. **Bank registry**：`banks` 加 canonical zh/pt、entity type、status；新增 `bank_name_aliases`。
-3. **Line item registry**：新增 `line_item_concepts`、`line_item_aliases`，支援中葡文 aliases 及 concept merge。
-4. **Review workflow**：`tools/name_registry.py build/list/approve/reject/remap`；只有 approved alias 才套用到 `line_items.line_item_concept_id`。
-5. **Bilingual candidate**：相鄰中葡行只會產生 pending candidate，批准後才合併 concept。
-6. 詳見 [`NAME_STANDARDIZATION.md`](NAME_STANDARDIZATION.md)。
+4. **Bank registry**：`banks` 加 canonical zh/pt、entity type、status；新增 `bank_name_aliases`。
+5. **Line item registry**：新增 `line_item_concepts`、`line_item_aliases`，支援中葡文 aliases 及 concept merge。
+6. **Bilingual candidate**：相鄰中葡行只會產生 pending candidate，批准後才合併 concept。
 
 ## v0.4.2 Provenance 及 Partial Publish 保護
 

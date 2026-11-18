@@ -1,68 +1,68 @@
 ﻿review_id,entity_type,raw_name,language,occurrence_count,source_issues,source_pages,match_method,match_score,current_entity_id,suggested_entity_id,suggested_canonical,decision,approved_entity_id,note
-1,bank,HANG SENG BANK LIMITED | SUCURSAL DE MACAU,pt,1,,,translation_seed,0.80,15,15,恒生銀行有限公司澳門分行,,,
-2,bank,"BANCO INDUSTRIAL E COMERCIAL DA CHINA (MACAU), S.A.",pt,1,,,translation_seed,0.80,17,17,中國工商銀行(澳門)股份有限公司,,,
-3,bank,"BANCO INDUSTRIAL E COMERCIAL DA CHINA (MACAU), S.A. (GRUPO)",pt,1,,,translation_seed,0.80,18,18,中國工商銀行(澳門)股份有限公司(集團),,,
-4,bank,"BANCO INDUSTRIAL E COMERCIAL DA CHINA S.A., SUCURSAL DE MACAU",pt,1,,,translation_seed,0.80,19,19,中國工商銀行股份有限公司澳門分行,,,
-5,bank,"SOCIEDADE FINANCEIRA ICBC (MACAU) CAPITAL, S.A.",pt,1,,,translation_seed,0.80,20,20,工銀(澳門)投資股份有限公司,,,
-6,bank,"STANDARD CHARTERED BANK, MACAU BRANCH",pt,1,,,translation_seed,0.80,32,32,渣打銀行澳門分行,,,
-7,bank,The Hongkong and Shanghai Banking Corporation Limited | Sucursal de Macau,pt,1,,,translation_seed,0.80,33,33,香港上海滙豐銀行有限公司澳門分行,,,
-8,bank,"BANCO NACIONAL ULTRAMARINO, S.A.",pt,1,,,translation_seed,0.80,37,37,大西洋銀行股份有限公司,,,
-9,line_item,-MOEDASEXTERNAS外幣,zh-Hant,4,2026-11-11,20,new_candidate,0.00,,121,-MOEDASEXTERNAS外幣,,,
-10,line_item,-PATACAS澳門元,zh-Hant,4,2026-11-11,20,new_candidate,0.00,,122,-PATACAS澳門元,,,
-11,line_item,代客保管帳(借方),zh-Hant,2,"2026-10-28,2026-11-11","12,21",fuzzy,0.86,,65,代客保管帳(貸方),,,
-12,line_item,保留溢利/(損失),zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,123,保留溢利/(損失),,,
-13,line_item,價權入,zh-Hant,2,2026-11-11,"22,21",new_candidate,0.00,,124,價權入,,,
-14,line_item,儲備,zh-Hant,2,2026-11-11,"31,8",fuzzy,0.67,,78,其他儲備,,,
-15,line_item,結欠關連公司之款項,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,125,結欠關連公司之款項,,,
-16,line_item,總公司之欠款,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,126,總公司之欠款,,,
-17,line_item,足期存款,zh-Hant,2,2026-11-11,"23,19",fuzzy,0.75,,92,定期存款,,,
-18,line_item,銀行結存,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,127,銀行結存,,,
-19,line_item,銀行貸款,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,128,銀行貸款,,,
-20,line_item,銀行透支,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,129,銀行透支,,,
-21,line_item,關連公司之欠款,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,130,關連公司之欠款,,,
-22,line_item,預付款項、按金及其他應收款項,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,131,預付款項、按金及其他應收款項,,,
-23,line_item,-PATACAS浜門元,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,132,-PATACAS浜門元,,,
-24,line_item,4/01円,zh-Hant,1,2026-11-11,26,new_candidate,0.00,,133,4/01円,,,
-25,line_item,"ACCOES,OBRIGACOESEQUOTAS股票、債芽及股權",zh-Hant,1,2026-11-11,20,new_candidate,0.00,,134,"ACCOES,OBRIGACOESEQUOTAS股票、債芽及股權",,,
-26,line_item,APLICACOESDERECURSOSCONSIGNADOS承銷資金投資,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,135,APLICACOESDERECURSOSCONSIGNADOS承銷資金投資,,,
-27,line_item,APLICACOESEMINSTITUICOESDECREDITONOTERRITORIO在本澳信用機構拆放,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,136,APLICACOESEMINSTITUICOESDECREDITONOTERRITORIO在本澳信用機構拆放,,,
-28,line_item,CAIXA - MOEDAS EXTERNAS,latin,1,2026-11-11,32,fuzzy,0.85,,38,Moedas externas,,,
-29,line_item,CAIXA - PATACAS,latin,1,2026-11-11,32,fuzzy,0.74,,48,Patacas,,,
-30,line_item,CAIXA現金,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,137,CAIXA現金,,,
-31,line_item,CAPITAL股本,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,138,CAPITAL股本,,,
-32,line_item,CERTIFICADOS DE DIVIDA DO GOVERNO DE MACAU,latin,1,2026-11-11,32,new_candidate,0.00,,139,CERTIFICADOS DE DIVIDA DO GOVERNO DE MACAU,,,
-33,line_item,CHEQUESEORDENSAPAGAR應付支票及葉據,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,140,CHEQUESEORDENSAPAGAR應付支票及葉據,,,
-34,line_item,CONTASINTERNASEDEREGULARIZACAO內部及調整帳,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,141,CONTASINTERNASEDEREGULARIZACAO內部及調整帳,,,
-35,line_item,CREDITOCONCEDIDO放款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,142,CREDITOCONCEDIDO放款,,,
-36,line_item,CREDITOSABERTOS信用狀,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,143,CREDITOSABERTOS信用狀,,,
-37,line_item,CREDORESPORRECURSOSCONSIGNADOS承銷資金債權人,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,144,CREDORESPORRECURSOSCONSIGNADOS承銷資金債權人,,,
-38,line_item,CREDORESPORVALORESRECEBIDOSEMCAUCAO抵押帳(貸方】,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,145,CREDORESPORVALORESRECEBIDOSEMCAUCAO抵押帳(貸方】,,,
-39,line_item,CREDORESPORVALORESRECEBIDOSEMDEPOSITO代客保管帳(貸方),zh-Hant,1,2026-11-11,20,new_candidate,0.00,,146,CREDORESPORVALORESRECEBIDOSEMDEPOSITO代客保管帳(貸方),,,
-40,line_item,CREDORESPORVALORESRECEBIDOSPARACOBRANCA代收帳(貸方),zh-Hant,1,2026-11-11,20,new_candidate,0.00,,147,CREDORESPORVALORESRECEBIDOSPARACOBRANCA代收帳(貸方),,,
-41,line_item,CREDORES價權入,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,148,CREDORES價權入,,,
-42,line_item,CUSTOSPLURIENAIS遞延費用,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,149,CUSTOSPLURIENAIS遞延費用,,,
-43,line_item,CUSTOSPORNATUREZA總支出,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,150,CUSTOSPORNATUREZA總支出,,,
-44,line_item,DEPOSITOS NA AMCM - MOEDAS EXTERNAS,latin,1,2026-11-11,32,fuzzy,0.68,,25,Depósitos na A.M.C.M.,,,
-45,line_item,DEPOSITOSAORDEMNOEXTERIOR在外地之其他信用機構活期存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,151,DEPOSITOSAORDEMNOEXTERIOR在外地之其他信用機構活期存款,,,
-46,line_item,DEPOSITOSAORDEM活期存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,152,DEPOSITOSAORDEM活期存款,,,
-47,line_item,DEPOSITOSAPRAZO定期存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,153,DEPOSITOSAPRAZO定期存款,,,
-48,line_item,DEPOSITOSCOMPRE-AVISOEAPRAZONOEXTERIOR在外地信用機構之通知及定期存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,154,DEPOSITOSCOMPRE-AVISOEAPRAZONOEXTERIOR在外地信用機構之通知及定期存款,,,
-49,line_item,DEPOSITOSCOMPRE-AVISO通知存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,155,DEPOSITOSCOMPRE-AVISO通知存款,,,
-50,line_item,DEPOSITOSDOSECTORPUBLICO公共機構存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,156,DEPOSITOSDOSECTORPUBLICO公共機構存款,,,
-51,line_item,DEPOSITOSNAAMCMAMCM存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,157,DEPOSITOSNAAMCMAMCM存款,,,
-52,line_item,DEPÓSITOS A ORDEM - MOEDAS EXTERNAS,latin,1,2026-11-11,32,fuzzy,0.78,,18,Depósitos à ordem no exterior,,,
-53,line_item,DEPÓSITOS A PRAZO - MOEDAS EXTERNAS,latin,1,2026-11-11,32,fuzzy,0.68,,21,Depósitos a prazo,,,
-54,line_item,DEPÓSITOS COM PRÉ - AVISO - MOEDAS EXTERNAS,latin,1,2026-11-11,32,fuzzy,0.74,,22,Depósitos com pré-aviso,,,
-55,line_item,DESPESASDEINSTALACAO開辦費用,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,158,DESPESASDEINSTALACAO開辦費用,,,
-56,line_item,DEVDORESPORCREDITOSABERTOS信用狀(借方),zh-Hant,1,2026-11-11,20,new_candidate,0.00,,159,DEVDORESPORCREDITOSABERTOS信用狀(借方),,,
-57,line_item,DEVEDORESPORGARANTIASEAVALESPRESTADOS保證及擔保付款(借方),zh-Hant,1,2026-11-11,20,new_candidate,0.00,,160,DEVEDORESPORGARANTIASEAVALESPRESTADOS保證及擔保付款(借方),,,
-58,line_item,DEVEDORES供務人,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,161,DEVEDORES供務人,,,
-59,line_item,EMPRESTIMOSEMMDEDASEXTERNAS外幣借款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,162,EMPRESTIMOSEMMDEDASEXTERNAS外幣借款,,,
-60,line_item,EMPRESTIMOSPOROBRIGACOES價券借款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,163,EMPRESTIMOSPOROBRIGACOES價券借款,,,
-61,line_item,EQUIPAMENTO設備,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,164,EQUIPAMENTO設備,,,
-62,line_item,EXIGIBILIDADESDIVERSAS各項負價,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,165,EXIGIBILIDADESDIVERSAS各項負價,,,
-63,line_item,GARANTIASEAVALESPRESTADOS保證及擔保付款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,166,GARANTIASEAVALESPRESTADOS保證及擔保付款,,,
-64,line_item,IMOBILIZACOESEMCURSO未完成不動產,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,167,IMOBILIZACOESEMCURSO未完成不動產,,,
+1,bank,HANG SENG BANK LIMITED | SUCURSAL DE MACAU,pt,1,,,translation_seed,0.80,15,15,恒生銀行有限公司澳門分行,Approve,,
+2,bank,"BANCO INDUSTRIAL E COMERCIAL DA CHINA (MACAU), S.A.",pt,1,,,translation_seed,0.80,17,17,中國工商銀行(澳門)股份有限公司,Approve,,
+3,bank,"BANCO INDUSTRIAL E COMERCIAL DA CHINA (MACAU), S.A. (GRUPO)",pt,1,,,translation_seed,0.80,18,18,中國工商銀行(澳門)股份有限公司(集團),Approve,,
+4,bank,"BANCO INDUSTRIAL E COMERCIAL DA CHINA S.A., SUCURSAL DE MACAU",pt,1,,,translation_seed,0.80,19,19,中國工商銀行股份有限公司澳門分行,Approve,,
+5,bank,"SOCIEDADE FINANCEIRA ICBC (MACAU) CAPITAL, S.A.",pt,1,,,translation_seed,0.80,20,20,工銀(澳門)投資股份有限公司,Approve,,
+6,bank,"STANDARD CHARTERED BANK, MACAU BRANCH",pt,1,,,translation_seed,0.80,32,32,渣打銀行澳門分行,Approve,,
+7,bank,The Hongkong and Shanghai Banking Corporation Limited | Sucursal de Macau,pt,1,,,translation_seed,0.80,33,33,香港上海滙豐銀行有限公司澳門分行,Approve,,
+8,bank,"BANCO NACIONAL ULTRAMARINO, S.A.",pt,1,,,translation_seed,0.80,37,37,大西洋銀行股份有限公司,Approve,,
+9,line_item,-MOEDASEXTERNAS外幣,zh-Hant,4,2026-11-11,20,new_candidate,0.00,,121,-MOEDASEXTERNAS外幣,Modify,,中葡統一用中文，Change to “-外幣”
+10,line_item,-PATACAS澳門元,zh-Hant,4,2026-11-11,20,new_candidate,0.00,,122,-PATACAS澳門元,Modify,,中葡統一用中文，Change to “-澳門元”
+11,line_item,代客保管帳(借方),zh-Hant,2,"2026-10-28,2026-11-11","12,21",fuzzy,0.86,,65,代客保管帳(貸方),Approve,,
+12,line_item,保留溢利/(損失),zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,123,保留溢利/(損失),Approve,,
+13,line_item,價權入,zh-Hant,2,2026-11-11,"22,21",new_candidate,0.00,,124,價權入,Modify,,"Change to “債權人"""
+14,line_item,儲備,zh-Hant,2,2026-11-11,"31,8",fuzzy,0.67,,78,其他儲備,Approve,,
+15,line_item,結欠關連公司之款項,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,125,結欠關連公司之款項,Approve,,
+16,line_item,總公司之欠款,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,126,總公司之欠款,Approve,,
+17,line_item,足期存款,zh-Hant,2,2026-11-11,"23,19",fuzzy,0.75,,92,定期存款,Approve,,
+18,line_item,銀行結存,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,127,銀行結存,Approve,,
+19,line_item,銀行貸款,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,128,銀行貸款,Approve,,
+20,line_item,銀行透支,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,129,銀行透支,Approve,,
+21,line_item,關連公司之欠款,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,130,關連公司之欠款,Approve,,
+22,line_item,預付款項、按金及其他應收款項,zh-Hant,2,2026-11-11,"31,8",new_candidate,0.00,,131,預付款項、按金及其他應收款項,Approve,,
+23,line_item,-PATACAS浜門元,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,132,-PATACAS浜門元,Modify,,中葡統一用中文，Change to “-澳門元”
+24,line_item,4/01円,zh-Hant,1,2026-11-11,26,new_candidate,0.00,,133,4/01円,Reject,,
+25,line_item,"ACCOES,OBRIGACOESEQUOTAS股票、債芽及股權",zh-Hant,1,2026-11-11,20,new_candidate,0.00,,134,"ACCOES,OBRIGACOESEQUOTAS股票、債芽及股權",Modify,,中葡統一用中文，Change to”股票、債券及股權
+26,line_item,APLICACOESDERECURSOSCONSIGNADOS承銷資金投資,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,135,APLICACOESDERECURSOSCONSIGNADOS承銷資金投資,Modify,,"中葡統一用中文，Change to”承銷資金投資"""
+27,line_item,APLICACOESEMINSTITUICOESDECREDITONOTERRITORIO在本澳信用機構拆放,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,136,APLICACOESEMINSTITUICOESDECREDITONOTERRITORIO在本澳信用機構拆放,Modify,,中葡統一用中文，Change to”在本澳信用機構拆放”
+28,line_item,CAIXA - MOEDAS EXTERNAS,latin,1,2026-11-11,32,fuzzy,0.85,,38,Moedas externas,Reject,,
+29,line_item,CAIXA - PATACAS,latin,1,2026-11-11,32,fuzzy,0.74,,48,Patacas,Reject,,
+30,line_item,CAIXA現金,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,137,CAIXA現金,Modify,,中葡統一用中文，”現金”
+31,line_item,CAPITAL股本,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,138,CAPITAL股本,Modify,,"中葡統一用中文，”股本"""
+32,line_item,CERTIFICADOS DE DIVIDA DO GOVERNO DE MACAU,latin,1,2026-11-11,32,new_candidate,0.00,,139,CERTIFICADOS DE DIVIDA DO GOVERNO DE MACAU,Approve,,
+33,line_item,CHEQUESEORDENSAPAGAR應付支票及葉據,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,140,CHEQUESEORDENSAPAGAR應付支票及葉據,Modify,,"中葡統一用中文，Change to “應付支票及票據"""
+34,line_item,CONTASINTERNASEDEREGULARIZACAO內部及調整帳,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,141,CONTASINTERNASEDEREGULARIZACAO內部及調整帳,Modify,,
+35,line_item,CREDITOCONCEDIDO放款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,142,CREDITOCONCEDIDO放款,Modify,,"中葡統一用中文，”放款"""
+36,line_item,CREDITOSABERTOS信用狀,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,143,CREDITOSABERTOS信用狀,Modify,,中葡統一用中文，”信用狀”
+37,line_item,CREDORESPORRECURSOSCONSIGNADOS承銷資金債權人,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,144,CREDORESPORRECURSOSCONSIGNADOS承銷資金債權人,Modify,,中葡統一用中文，”承銷資金債權人”
+38,line_item,CREDORESPORVALORESRECEBIDOSEMCAUCAO抵押帳(貸方】,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,145,CREDORESPORVALORESRECEBIDOSEMCAUCAO抵押帳(貸方】,Modify,,中葡統一用中文，抵押帳(貸方）
+39,line_item,CREDORESPORVALORESRECEBIDOSEMDEPOSITO代客保管帳(貸方),zh-Hant,1,2026-11-11,20,new_candidate,0.00,,146,CREDORESPORVALORESRECEBIDOSEMDEPOSITO代客保管帳(貸方),Modify,,中葡統一用中文，”代客保管帳(貸方)”
+40,line_item,CREDORESPORVALORESRECEBIDOSPARACOBRANCA代收帳(貸方),zh-Hant,1,2026-11-11,20,new_candidate,0.00,,147,CREDORESPORVALORESRECEBIDOSPARACOBRANCA代收帳(貸方),Modify,,中葡統一用中文，”代收帳(貸方)”
+41,line_item,CREDORES價權入,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,148,CREDORES價權入,Modify,,中葡統一用中文，”債權人”
+42,line_item,CUSTOSPLURIENAIS遞延費用,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,149,CUSTOSPLURIENAIS遞延費用,Modify,,中葡統一用中文，”遞延費用”
+43,line_item,CUSTOSPORNATUREZA總支出,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,150,CUSTOSPORNATUREZA總支出,Modify,,中葡統一用中文，”總支出”
+44,line_item,DEPOSITOS NA AMCM - MOEDAS EXTERNAS,latin,1,2026-11-11,32,fuzzy,0.68,,25,Depósitos na A.M.C.M.,Approve,,
+45,line_item,DEPOSITOSAORDEMNOEXTERIOR在外地之其他信用機構活期存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,151,DEPOSITOSAORDEMNOEXTERIOR在外地之其他信用機構活期存款,Modify,,在外地之其他信用機構活期存款
+46,line_item,DEPOSITOSAORDEM活期存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,152,DEPOSITOSAORDEM活期存款,Modify,,活期存款
+47,line_item,DEPOSITOSAPRAZO定期存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,153,DEPOSITOSAPRAZO定期存款,Modify,,定期存款
+48,line_item,DEPOSITOSCOMPRE-AVISOEAPRAZONOEXTERIOR在外地信用機構之通知及定期存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,154,DEPOSITOSCOMPRE-AVISOEAPRAZONOEXTERIOR在外地信用機構之通知及定期存款,Modify,,在外地信用機構之通知及定期存款
+49,line_item,DEPOSITOSCOMPRE-AVISO通知存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,155,DEPOSITOSCOMPRE-AVISO通知存款,Modify,,通知存款
+50,line_item,DEPOSITOSDOSECTORPUBLICO公共機構存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,156,DEPOSITOSDOSECTORPUBLICO公共機構存款,Modify,,公共機構存款
+51,line_item,DEPOSITOSNAAMCMAMCM存款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,157,DEPOSITOSNAAMCMAMCM存款,Modify,,存款
+52,line_item,DEPÓSITOS A ORDEM - MOEDAS EXTERNAS,latin,1,2026-11-11,32,fuzzy,0.78,,18,Depósitos à ordem no exterior,Modify,,Latin統一用全大寫
+53,line_item,DEPÓSITOS A PRAZO - MOEDAS EXTERNAS,latin,1,2026-11-11,32,fuzzy,0.68,,21,Depósitos a prazo,Modify,,Latin統一用全大寫
+54,line_item,DEPÓSITOS COM PRÉ - AVISO - MOEDAS EXTERNAS,latin,1,2026-11-11,32,fuzzy,0.74,,22,Depósitos com pré-aviso,Modify,,Latin統一用全大寫
+55,line_item,DESPESASDEINSTALACAO開辦費用,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,158,DESPESASDEINSTALACAO開辦費用,Modify,,開辦費用
+56,line_item,DEVDORESPORCREDITOSABERTOS信用狀(借方),zh-Hant,1,2026-11-11,20,new_candidate,0.00,,159,DEVDORESPORCREDITOSABERTOS信用狀(借方),Modify,,信用狀(借方)
+57,line_item,DEVEDORESPORGARANTIASEAVALESPRESTADOS保證及擔保付款(借方),zh-Hant,1,2026-11-11,20,new_candidate,0.00,,160,DEVEDORESPORGARANTIASEAVALESPRESTADOS保證及擔保付款(借方),Modify,,保證及擔保付款(借方)
+58,line_item,DEVEDORES供務人,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,161,DEVEDORES供務人,Modify,,債務人
+59,line_item,EMPRESTIMOSEMMDEDASEXTERNAS外幣借款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,162,EMPRESTIMOSEMMDEDASEXTERNAS外幣借款,Modify,,外幣借款
+60,line_item,EMPRESTIMOSPOROBRIGACOES價券借款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,163,EMPRESTIMOSPOROBRIGACOES價券借款,Modify,,價券借款
+61,line_item,EQUIPAMENTO設備,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,164,EQUIPAMENTO設備,Modify,,設備
+62,line_item,EXIGIBILIDADESDIVERSAS各項負價,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,165,EXIGIBILIDADESDIVERSAS各項負價,Modify,,各項負債
+63,line_item,GARANTIASEAVALESPRESTADOS保證及擔保付款,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,166,GARANTIASEAVALESPRESTADOS保證及擔保付款,Modify,,保證及擔保付款
+64,line_item,IMOBILIZACOESEMCURSO未完成不動產,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,167,IMOBILIZACOESEMCURSO未完成不動產,Modify,,未完成不動產
 65,line_item,LUCROS RELATIVOS A EXERCICIO ANTERIORES,latin,1,2026-11-11,27,fuzzy,0.69,,56,Resultados transitados de exercícios anteriores,,,
 66,line_item,NOTAS EM CIRCULAÇÃO,latin,1,2026-11-11,32,new_candidate,0.00,,168,NOTAS EM CIRCULAÇÃO,,,
 67,line_item,OUROEPRATA金、銀,zh-Hant,1,2026-11-11,20,new_candidate,0.00,,169,OUROEPRATA金、銀,,,

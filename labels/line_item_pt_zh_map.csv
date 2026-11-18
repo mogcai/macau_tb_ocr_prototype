@@ -1,0 +1,31 @@
+pt_key,zh_key,status,note
+lex:pt_002,lex:zh_035,proposed,Aplicações de recursos consignados → 承銷資金投資
+lex:pt_006,lex:zh_032,proposed,Cheques e ordens a pagar → 應付支票及票據
+lex:pt_009,lex:zh_009,proposed,Créditos abertos → 信用狀
+lex:pt_011,lex:zh_034,proposed,Credores por recursos consignados → 承銷資金債權人
+lex:pt_012,lex:zh_037,proposed,Credores por valores recebidos em caução → 抵押帳(貸方)
+lex:pt_013,lex:zh_004,proposed,Credores por valores recebidos em depósito → 代客保管帳(貸方)
+lex:pt_014,lex:zh_006,proposed,Credores por valores recebidos para cobrança → 代收帳(貸方)
+lex:pt_015,lex:zh_058,proposed,Custos plurienais → 遞延費用
+lex:pt_022,lex:zh_057,proposed,Depósitos com pré-aviso → 通知存款
+lex:pt_023,lex:zh_026,proposed,Depósitos com pré-aviso e a prazo no exterior → 在外地信用機構之通知及定期存款
+lex:pt_026,lex:zh_060,proposed,Despesas de instalação → 開辦費用
+lex:pt_028,lex:zh_010,proposed,Devedores por créditos abertos → 信用狀(借方)
+lex:pt_031,lex:zh_030,proposed,Empréstimos em moedas externas → 外幣借款
+lex:pt_032,lex:zh_011,proposed,Empréstimos por obrigações → 債券借款
+lex:pt_033,lex:zh_055,proposed,Equipamento → 設備
+lex:pt_034,lex:zh_022,proposed,Exigibilidades diversas → 各項負債
+lex:pt_035,lex:zh_045,proposed,FUNDO DE MANEIO → 營運資金
+lex:pt_038,lex:zh_039,proposed,Imobilizações em curso → 未完成不動產
+lex:pt_042,lex:zh_059,proposed,Ouro e prata → 金、銀
+lex:pt_045,lex:zh_016,proposed,Outras contas extrapatrimoniais → 其他備查帳
+lex:pt_048,lex:zh_018,proposed,Outros valores imobilizados → 其他固定資產
+lex:pt_049,lex:zh_056,proposed,Participações financeiras → 財務投資
+lex:pt_053,lex:zh_040,proposed,Recursos de instituições de crédito no Território → 本地信用機構資金
+lex:pt_054,lex:zh_020,proposed,Recursos de outras entidades locais → 其他本地機構資金
+lex:pt_056,lex:zh_054,proposed,Reserva estatutária → 自定儲備
+lex:pt_058,lex:zh_041,proposed,Resultados transitados de exercícios anteriores → 歷年營業結果
+lex:pt_059,lex:zh_050,proposed,TOTAIS → 總額
+lex:pt_061,lex:zh_036,proposed,Valores recebidos em caução → 抵押帳
+lex:pt_062,lex:zh_003,proposed,Valores recebidos em depósito → 代客保管帳
+lex:pt_063,lex:zh_005,proposed,Valores recebidos para cobrança → 代收帳

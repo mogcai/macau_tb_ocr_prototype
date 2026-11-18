@@ -573,9 +573,17 @@ def _nearest_concept(
     return best_id, best_name, best_score
 
 
+def _standard_master_loaded(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT value FROM schema_meta WHERE key = 'standard_master_loaded'"
+    ).fetchone()
+    return bool(row and str(row[0]) == "1")
+
+
 def generate_line_item_reviews(conn: sqlite3.Connection) -> Counter[str]:
     stats: Counter[str] = Counter()
     approved = _concept_lookup(conn)
+    standard_mode = _standard_master_loaded(conn)
     for row in _line_stats(conn):
         raw = normalize_text(row["raw_name"])
         language = normalize_text(row["language"]) or _language_of(raw)
@@ -591,25 +599,32 @@ def generate_line_item_reviews(conn: sqlite3.Connection) -> Counter[str]:
             conn, raw, language
         )
         if suggested is None or score < 0.55:
-            # New name: create a provisional concept so it can be reviewed
-            # without inventing a mapping to an existing account.
-            concept_key = f"auto:{language}:{key}"
-            suggested = _upsert_concept(
-                conn, concept_key,
-                canonical_zh=raw if language == "zh-Hant" else "",
-                canonical_pt=raw if language == "pt" else "",
-                level="parent",
-                status="provisional",
-                source="auto_discovery",
-            )
-            _upsert_line_alias(
-                conn, suggested, raw, language,
-                alias_type="official", status="pending",
-                source="auto_discovery",
-            )
-            canonical = raw
-            score = 0.0
-            method = "new_candidate"
+            if standard_mode:
+                # The standard master is the only source of concepts. Do not
+                # create an auto concept from an OCR variant.
+                suggested = 0
+                canonical = ""
+                score = 0.0
+                method = "needs_new_standard"
+            else:
+                # Legacy mode: create a provisional concept for discovery.
+                concept_key = f"auto:{language}:{key}"
+                suggested = _upsert_concept(
+                    conn, concept_key,
+                    canonical_zh=raw if language == "zh-Hant" else "",
+                    canonical_pt=raw if language == "pt" else "",
+                    level="parent",
+                    status="provisional",
+                    source="auto_discovery",
+                )
+                _upsert_line_alias(
+                    conn, suggested, raw, language,
+                    alias_type="official", status="pending",
+                    source="auto_discovery",
+                )
+                canonical = raw
+                score = 0.0
+                method = "new_candidate"
         else:
             method = "fuzzy" if score < 0.999 else "exact"
         _add_review(
@@ -909,8 +924,11 @@ def approve_review(
                 )
             entity_type = review["entity_type"]
             target = concept_id or review["suggested_entity_id"]
-            if target is None:
-                raise RuntimeError("review has no suggested entity")
+            if target in (None, 0):
+                raise RuntimeError(
+                    "review has no suggested standard; create/choose a "
+                    "concept first and pass --concept-id"
+                )
             if entity_type == "line_item":
                 target = _resolve_concept(conn, int(target)) or int(target)
                 current = review["current_entity_id"]

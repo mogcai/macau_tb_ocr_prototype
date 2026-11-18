@@ -36,7 +36,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable
 
-APP_VERSION = "0.5.1"
+APP_VERSION = "0.5.2"
 SCHEMA_VERSION = 4
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 

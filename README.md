@@ -12,6 +12,14 @@
 
 ## 版本簡介
 
+### v0.5.2 — Standard Line Item Master
+
+- 新增 `tools/standard_line_items.py`：由現有 registry + bilingual pairs 匯出 `labels/line_item_standard.csv`，再將 approved standard apply 回 DB。
+- 新增 `labels/line_item_pt_zh_map.csv`：curated pt→zh standard proposals。
+- 65 條 standard draft：59 條有中文、61 條有葡文、55 條 pt→zh merge；6 條 pt-only 待決定。
+- `apply` 預設只套用 `status=approved`；provisional 不會靜默生效。
+- Standard mode 下唔會再為每個 OCR variant 自動建立 provisional concept。
+
 ### v0.5.1 — Review CSV 及銀行中文名
 
 - `name_registry.py export` 輸出 `data/name_review_queue.csv`，可直接填 `decision` / `approved_entity_id` / `note`，再用 `import-review` 匯入。
@@ -247,6 +255,6 @@ python -m unittest discover -s tests -v
 
 **Project:** Macau Gazette Balancete OCR
 
-**Current prototype:** v0.5.1
+**Current prototype:** v0.5.2
 
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.
