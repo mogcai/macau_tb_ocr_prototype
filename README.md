@@ -12,6 +12,15 @@
 
 ## 版本簡介
 
+### v0.5.0 — Name Standardization Registry
+
+- 新增 `tools/name_registry.py`：建立 bank / line-item 的名稱標準化主檔、待審候選及 audit。
+- 新增 `banks` registry 欄位、`bank_name_aliases`、`line_item_concepts`、`line_item_aliases`、`name_mapping_review`、`name_mapping_audit`。
+- `line_items` 新增 `line_item_concept_id`、`mapping_status`、`mapping_version`；OCR raw 欄位永不改寫。
+- 同語言 lexicon alias 會自動 approve；跨語言 bilingual pair 只會產生 pending review，批准後才合併 concept。
+- 支援 `build` / `list` / `approve` / `reject` / `remap` CLI。
+- 詳見 [`NAME_STANDARDIZATION.md`](NAME_STANDARDIZATION.md)。
+
 ### v0.4.2 — Provenance 及 Partial Publish 保護
 
 - `--publish` 會比較新舊 run 的 PDF 頁碼集合；如果新 run 缺少已發布 run 的頁數，會拒絕發布，必須明確使用 `--force-publish`。
@@ -233,6 +242,6 @@ python -m unittest discover -s tests -v
 
 **Project:** Macau Gazette Balancete OCR
 
-**Current prototype:** v0.4.2
+**Current prototype:** v0.5.0
 
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

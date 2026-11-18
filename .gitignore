@@ -11,5 +11,6 @@ ground_truth/**/crops/
 data/*
 !data/macau_balancete.sqlite
 !data/macau_balancete_import_report.json
+!data/macau_balancete_name_registry_report.json
 *.sqlite-wal
 *.sqlite-shm

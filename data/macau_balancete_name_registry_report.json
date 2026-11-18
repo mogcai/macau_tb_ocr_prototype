@@ -1,0 +1,26 @@
+{
+  "database": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/macau_balancete.sqlite",
+  "schema_version": 4,
+  "registry_version": 3,
+  "counts": {
+    "banks": 38,
+    "concepts": 216,
+    "approved_line_item_aliases": 123,
+    "line_item_mapping": {
+      "concept_exact": 2214,
+      "concept_unmapped": 140,
+      "concept_missing_label": 6,
+      "concept_alias": 1
+    },
+    "pending_reviews": {
+      "line_item": 145
+    }
+  },
+  "seed": {
+    "concepts": 120,
+    "banks": 38,
+    "line_item_reviews": 122,
+    "bilingual_reviews": 29
+  },
+  "generated_at": "2026-11-18T10:17:40+00:00"
+}

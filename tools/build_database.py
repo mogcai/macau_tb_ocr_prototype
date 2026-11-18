@@ -36,8 +36,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable
 
-APP_VERSION = "0.4.2"
-SCHEMA_VERSION = 3
+APP_VERSION = "0.5.0"
+SCHEMA_VERSION = 4
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 
 SCHEMA_SQL = """
@@ -72,6 +72,13 @@ CREATE TABLE IF NOT EXISTS banks (
     bank_key TEXT NOT NULL UNIQUE,
     display_name TEXT NOT NULL,
     normalized_name TEXT NOT NULL,
+    canonical_zh TEXT,
+    canonical_pt TEXT,
+    canonical_en TEXT,
+    entity_type TEXT NOT NULL DEFAULT 'bank'
+        CHECK (entity_type IN ('bank', 'branch', 'group', 'other', 'unknown')),
+    registry_status TEXT NOT NULL DEFAULT 'provisional'
+        CHECK (registry_status IN ('approved', 'provisional', 'pending', 'rejected')),
     first_seen_run TEXT REFERENCES runs(run_id) ON DELETE SET NULL,
     notes TEXT
 );
@@ -167,6 +174,9 @@ CREATE TABLE IF NOT EXISTS line_items (
     credit_parse_status TEXT,
     review_reason TEXT,
     review_status TEXT,
+    line_item_concept_id INTEGER,
+    mapping_status TEXT,
+    mapping_version INTEGER,
     row_confidence REAL,
     row_average_confidence REAL,
     source_image TEXT,
@@ -186,6 +196,102 @@ CREATE TABLE IF NOT EXISTS row_verification (
     verified_by TEXT,
     note TEXT
 );
+
+CREATE TABLE IF NOT EXISTS bank_name_aliases (
+    alias_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bank_id INTEGER NOT NULL REFERENCES banks(bank_id) ON DELETE CASCADE,
+    raw_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    language TEXT,
+    alias_type TEXT NOT NULL DEFAULT 'official'
+        CHECK (alias_type IN ('official', 'branch', 'group', 'historical',
+                              'ocr_variant', 'combined', 'other')),
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('approved', 'pending', 'rejected')),
+    source TEXT,
+    note TEXT,
+    UNIQUE (bank_id, normalized_name)
+);
+
+CREATE TABLE IF NOT EXISTS line_item_concepts (
+    concept_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    concept_key TEXT NOT NULL UNIQUE,
+    canonical_zh TEXT,
+    canonical_pt TEXT,
+    canonical_en TEXT,
+    parent_concept_id INTEGER REFERENCES line_item_concepts(concept_id),
+    level TEXT NOT NULL DEFAULT 'parent'
+        CHECK (level IN ('parent', 'child')),
+    category TEXT,
+    status TEXT NOT NULL DEFAULT 'approved'
+        CHECK (status IN ('approved', 'provisional', 'pending', 'merged')),
+    merged_into_concept_id INTEGER REFERENCES line_item_concepts(concept_id),
+    source TEXT,
+    note TEXT
+);
+
+CREATE TABLE IF NOT EXISTS line_item_aliases (
+    alias_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    concept_id INTEGER NOT NULL
+        REFERENCES line_item_concepts(concept_id) ON DELETE CASCADE,
+    raw_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    language TEXT,
+    alias_type TEXT NOT NULL DEFAULT 'official'
+        CHECK (alias_type IN ('official', 'ocr_variant', 'abbreviation',
+                              'historical', 'translation', 'other')),
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('approved', 'pending', 'rejected')),
+    source TEXT,
+    note TEXT,
+    UNIQUE (concept_id, normalized_name)
+);
+
+CREATE TABLE IF NOT EXISTS name_mapping_review (
+    review_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL
+        CHECK (entity_type IN ('bank', 'line_item')),
+    raw_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    language TEXT,
+    current_entity_id INTEGER,
+    suggested_entity_id INTEGER,
+    suggested_canonical TEXT,
+    match_method TEXT,
+    match_score REAL,
+    occurrence_count INTEGER NOT NULL DEFAULT 0,
+    source_issues TEXT,
+    source_pages TEXT,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    note TEXT,
+    UNIQUE (entity_type, normalized_name, suggested_entity_id)
+);
+
+CREATE TABLE IF NOT EXISTS name_mapping_audit (
+    audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL,
+    raw_name TEXT NOT NULL,
+    action TEXT NOT NULL,
+    old_entity_id INTEGER,
+    new_entity_id INTEGER,
+    actor TEXT,
+    at TEXT,
+    note TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bank_aliases_approved
+    ON bank_name_aliases (normalized_name)
+    WHERE status = 'approved';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_line_aliases_approved
+    ON line_item_aliases (normalized_name, COALESCE(language, ''))
+    WHERE status = 'approved';
+CREATE INDEX IF NOT EXISTS idx_name_review_status
+    ON name_mapping_review (entity_type, status, occurrence_count DESC);
+CREATE INDEX IF NOT EXISTS idx_line_items_concept
+    ON line_items (line_item_concept_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_line_items_natural
     ON line_items (statement_id, label_path_key, occurrence);
@@ -446,6 +552,81 @@ SELECT run_id,
        line_item_count,
        review_row_count
 FROM runs;
+
+DROP VIEW IF EXISTS v_bank_registry;
+CREATE VIEW v_bank_registry AS
+SELECT b.bank_id,
+       b.bank_key,
+       b.display_name,
+       b.canonical_zh,
+       b.canonical_pt,
+       b.canonical_en,
+       b.entity_type,
+       b.registry_status,
+       COUNT(a.alias_id) AS alias_count,
+       SUM(CASE WHEN a.status = 'approved' THEN 1 ELSE 0 END)
+           AS approved_alias_count
+FROM banks b
+LEFT JOIN bank_name_aliases a ON a.bank_id = b.bank_id
+GROUP BY b.bank_id;
+
+DROP VIEW IF EXISTS v_line_item_concepts;
+CREATE VIEW v_line_item_concepts AS
+SELECT c.concept_id,
+       c.concept_key,
+       c.canonical_zh,
+       c.canonical_pt,
+       c.canonical_en,
+       c.parent_concept_id,
+       c.level,
+       c.category,
+       c.status,
+       c.merged_into_concept_id,
+       COUNT(a.alias_id) AS alias_count,
+       SUM(CASE WHEN a.status = 'approved' THEN 1 ELSE 0 END)
+           AS approved_alias_count
+FROM line_item_concepts c
+LEFT JOIN line_item_aliases a ON a.concept_id = c.concept_id
+GROUP BY c.concept_id;
+
+DROP VIEW IF EXISTS v_name_mapping_pending;
+CREATE VIEW v_name_mapping_pending AS
+SELECT *
+FROM name_mapping_review
+WHERE status = 'pending';
+
+DROP VIEW IF EXISTS v_line_item_concept_map;
+CREATE VIEW v_line_item_concept_map AS
+SELECT li.line_item_id,
+       li.statement_id,
+       li.pdf_page,
+       li.row_order,
+       li.label_raw,
+       li.label_standard,
+       li.label_language,
+       li.line_item_concept_id,
+       li.mapping_status,
+       li.mapping_version,
+       c.concept_key,
+       c.canonical_zh,
+       c.canonical_pt,
+       c.canonical_en,
+       c.status AS concept_status
+FROM line_items li
+LEFT JOIN line_item_concepts c
+       ON c.concept_id = li.line_item_concept_id;
+
+DROP VIEW IF EXISTS v_unmapped_line_item_names;
+CREATE VIEW v_unmapped_line_item_names AS
+SELECT COALESCE(NULLIF(label_standard, ''), label_raw) AS raw_name,
+       label_language,
+       COUNT(*) AS occurrence_count,
+       COUNT(DISTINCT statement_id) AS statement_count
+FROM v_current_line_items
+WHERE COALESCE(NULLIF(label_standard, ''), label_raw) <> ''
+  AND COALESCE(mapping_status, 'concept_unmapped') = 'concept_unmapped'
+GROUP BY raw_name, label_language
+ORDER BY occurrence_count DESC;
 
 DROP VIEW IF EXISTS v_statement_index;
 CREATE VIEW v_statement_index AS
@@ -1511,6 +1692,34 @@ def _migrate_schema(conn: sqlite3.Connection, from_version: int) -> None:
                 "THEN 'import_time' ELSE 'missing' END "
                 "WHERE source_pdf_sha256_source IS NULL"
             )
+    if from_version < 4:
+        banks_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'banks'"
+        ).fetchone()
+        if banks_exists:
+            columns = _table_columns(conn, "banks")
+            for name, ddl in (
+                ("canonical_zh", "TEXT"),
+                ("canonical_pt", "TEXT"),
+                ("canonical_en", "TEXT"),
+                ("entity_type", "TEXT NOT NULL DEFAULT 'bank'"),
+                ("registry_status", "TEXT NOT NULL DEFAULT 'provisional'"),
+            ):
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE banks ADD COLUMN {name} {ddl}")
+        line_items_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'line_items'"
+        ).fetchone()
+        if line_items_exists:
+            columns = _table_columns(conn, "line_items")
+            for name, ddl in (
+                ("line_item_concept_id", "INTEGER"),
+                ("mapping_status", "TEXT"),
+                ("mapping_version", "INTEGER"),
+            ):
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE line_items ADD COLUMN {name} {ddl}")
 
 
 def _schema(conn: sqlite3.Connection) -> None:

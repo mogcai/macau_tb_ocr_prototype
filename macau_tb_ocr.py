@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Macau Gazette Balancete OCR prototype v0.4.2.
+"""Macau Gazette Balancete OCR prototype v0.5.0.
 
 Extract embedded statement images, run native Apple Vision on macOS or an optional
 PaddleOCR/Tesseract backend, reconstruct Account/Debit/Credit rows, normalize
@@ -30,7 +30,7 @@ from typing import Any, Iterable
 
 import fitz  # PyMuPDF
 
-APP_VERSION = "0.4.2"
+APP_VERSION = "0.5.0"
 TB_TERMS = (
     "試算表", "BALANCETE", "TRIAL BALANCE", "BALANCE OF THE LEDGER",
     "BALANCETE DO RAZAO", "BALANCETE DO RAZÃO",
@@ -2475,7 +2475,7 @@ def parse_page_range(value: str, total_pages: int) -> tuple[int, int]:
 
 def build_parser() -> argparse.ArgumentParser:
     default_engine = "vision" if sys.platform == "darwin" else "paddle"
-    p = argparse.ArgumentParser(description="澳門公報 Balancete OCR / Excel / CSV prototype v0.4.2")
+    p = argparse.ArgumentParser(description="澳門公報 Balancete OCR / Excel / CSV prototype v0.5.0")
     p.add_argument("pdf", help="輸入 PDF 路徑")
     p.add_argument("--outdir", default="output", help="輸出資料夾（預設：output）")
     p.add_argument("--pages", default="all", help="處理頁數，例如 7-32；預設 all")

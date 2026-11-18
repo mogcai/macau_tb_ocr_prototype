@@ -1,4 +1,4 @@
-# SQLite 整合資料庫（v0.4.2 / schema v3）
+# SQLite 整合資料庫（v0.5.0 / schema v4）
 
 呢份文件講清楚點解唔直接用
 `publication_date, statement_date, bank_name, parent_label_standard, label_standard`
@@ -61,6 +61,11 @@ bank_aliases      alias → canonical bank_key（可選 CSV）
 | `statements` | `statement_id`, `paper_key`, `publication_date`, `publication_date_source`, `statement_date`, `statement_date_source`, `bank_id`, `identity_status`, `pdf_pages` | 一個報表 |
 | `line_items` | `label_raw`, `label_standard`, `parent_label_standard`, `label_path`, `occurrence`, `natural_key_status`, `debit_amount`, `credit_amount`, `debit_cents`, `credit_cents`, `review_status` | 逐行資料及 provenance |
 | `row_verification` | `line_item_id`, `status`, `verified_at`, `verified_by`, `note` | `verified` / `rejected` / `pending`，只可由人手寫入 |
+| `bank_name_aliases` | `bank_id`, `raw_name`, `language`, `alias_type`, `status` | 銀行名稱 registry（approved / pending / rejected） |
+| `line_item_concepts` | `concept_id`, `canonical_zh`, `canonical_pt`, `canonical_en`, `status`, `merged_into_concept_id` | 科目 concept registry |
+| `line_item_aliases` | `concept_id`, `raw_name`, `language`, `alias_type`, `status` | 科目名稱 aliases |
+| `name_mapping_review` | `entity_type`, `raw_name`, `suggested_entity_id`, `match_method`, `status` | 待批名稱配對 |
+| `name_mapping_audit` | `entity_type`, `action`, `old_entity_id`, `new_entity_id`, `actor` | 批准／拒絕／merge audit |
 
 `identity_status` 可能是：
 
@@ -169,6 +174,10 @@ python tools/build_database.py output_partial --db data/macau_balancete.sqlite \
 | `v_statement_index` | 每 statement 的行數、review 數、缺失 label、重複 key、全部及已核實總額 |
 | `v_natural_key_duplicates` | 五欄 key 的重複組（唔計 `missing_label`） |
 | `v_review_queue` / `v_published_review_queue` | 仍需 review 且未 `verified` 的行（current／published） |
+| `v_bank_registry` / `v_line_item_concepts` | 名稱 registry 及 alias 數目 |
+| `v_name_mapping_pending` | 待批名稱配對 |
+| `v_line_item_concept_map` | 逐行 label 與 concept |
+| `v_unmapped_line_item_names` | 仍未 approved 的名稱及出現次數 |
 
 例子：
 
@@ -216,9 +225,20 @@ ORDER BY publication_date DESC, bank_name;
 ## Schema migration
 
 - `VERSION` 是 project version（v0.4.1）。
-- `SCHEMA_VERSION` 是資料庫 schema version（現時 3），兩者獨立。
-- 開啟舊 DB 時會自動 migrate：v2 加 `source_pdf_sha256`、`is_published`、`published_at`、`published_by`，並將每個 source PDF 最新的既有 run 標為 published；v3 加 `source_pdf_sha256_source`（`ocr_report` / `import_time` / `missing`）。
+- `SCHEMA_VERSION` 是資料庫 schema version（現時 4），兩者獨立。
+- 開啟舊 DB 時會自動 migrate：v2 加 `source_pdf_sha256`、`is_published`、`published_at`、`published_by`，並將每個 source PDF 最新的既有 run 標為 published；v3 加 `source_pdf_sha256_source`（`ocr_report` / `import_time` / `missing`）；v4 加名稱 registry 表及 `line_items` mapping 欄位。
 - DB schema 比程式新時會拒絕開啟，避免舊程式寫壞新結構。
+
+## 名稱標準化 registry
+
+`tools/name_registry.py` 建立銀行／科目名稱主檔及 review workflow；approved alias 才會寫入 `line_items.line_item_concept_id`。完整流程見 [`NAME_STANDARDIZATION.md`](NAME_STANDARDIZATION.md)。
+
+```bash
+python tools/name_registry.py build --db data/macau_balancete.sqlite
+python tools/name_registry.py list --db data/macau_balancete.sqlite
+python tools/name_registry.py approve --db data/macau_balancete.sqlite \
+  --id 124 --by reviewer
+```
 
 ## 限制
 

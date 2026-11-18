@@ -1,8 +1,8 @@
 {
   "database": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/macau_balancete.sqlite",
-  "app_version": "0.4.2",
-  "schema_version": 3,
-  "generated_at": "2026-11-18T10:08:41+00:00",
+  "app_version": "0.5.0",
+  "schema_version": 4,
+  "generated_at": "2026-11-18T10:16:18+00:00",
   "run_dirs": [
     "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue42_2026_full",
     "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue43_2026_full",

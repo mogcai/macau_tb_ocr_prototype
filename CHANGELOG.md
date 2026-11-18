@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.0
+
+- **Name Standardization Registry:** added `tools/name_registry.py` with `build`, `list`, `approve`, `reject` and `remap` commands. Raw OCR names are never overwritten.
+- **Bank registry:** `banks` gains `canonical_zh`, `canonical_pt`, `canonical_en`, `entity_type`, `registry_status`; added `bank_name_aliases`.
+- **Line-item concepts:** added `line_item_concepts`, `line_item_aliases`; `line_items` gains `line_item_concept_id`, `mapping_status`, `mapping_version`.
+- **Review workflow:** same-language lexicon aliases are approved seeds. Cross-language adjacent Chinese/Portuguese lines become `bilingual_pair` pending candidates only; approving one merges the old concept into the target, moves aliases, updates `line_item_concept_id`, and writes `name_mapping_audit`.
+- **New views:** `v_bank_registry`, `v_line_item_concepts`, `v_name_mapping_pending`, `v_line_item_concept_map`, `v_unmapped_line_item_names`.
+- **Schema v4:** v3 databases migrate in place with the registry tables/columns.
+- **Docs:** added `NAME_STANDARDIZATION.md` and cross-references in README, README_zh_HK, README_AGENT, SKILL and DATABASE.
+- **Current seed:** 216 concepts (120 lexicon + 96 provisional discovery candidates), 123 approved line-item aliases, 145 pending line-item reviews, 38 bank entities; 2214 line items map `concept_exact`, 1 `concept_alias`, 140 `concept_unmapped`, 6 `concept_missing_label`.
+- **Tests:** 135 passing.
+
 ## v0.4.2
 
 - **Partial publish guard:** `--publish` now compares the new run's `pages.pdf_page` set with every currently published run for the same source PDF. A run missing any published page is refused unless `--force-publish` is passed. This prevents a single-page test run from removing the rest of a full published issue.

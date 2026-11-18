@@ -1,6 +1,15 @@
-# 澳門公報 Balancete OCR Prototype v0.4.2
+# 澳門公報 Balancete OCR Prototype v0.5.0
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV，並可整合成 SQLite 資料庫作跨期分析。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+
+## v0.5.0 Name Standardization Registry
+
+1. **三層名稱管理**：raw OCR 名稱 → pending review → approved registry；raw 永不覆寫。
+2. **Bank registry**：`banks` 加 canonical zh/pt、entity type、status；新增 `bank_name_aliases`。
+3. **Line item registry**：新增 `line_item_concepts`、`line_item_aliases`，支援中葡文 aliases 及 concept merge。
+4. **Review workflow**：`tools/name_registry.py build/list/approve/reject/remap`；只有 approved alias 才套用到 `line_items.line_item_concept_id`。
+5. **Bilingual candidate**：相鄰中葡行只會產生 pending candidate，批准後才合併 concept。
+6. 詳見 [`NAME_STANDARDIZATION.md`](NAME_STANDARDIZATION.md)。
 
 ## v0.4.2 Provenance 及 Partial Publish 保護
 

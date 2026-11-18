@@ -671,6 +671,24 @@ class DatabaseTests(unittest.TestCase):
         }
         self.assertTrue({"source_pdf_sha256", "source_pdf_sha256_source",
                          "is_published", "published_at", "published_by"} <= columns)
+        bank_columns = {
+            row[1] for row in self.query("PRAGMA table_info(banks)")
+        }
+        self.assertTrue({"canonical_zh", "canonical_pt", "entity_type",
+                         "registry_status"} <= bank_columns)
+        line_columns = {
+            row[1] for row in self.query("PRAGMA table_info(line_items)")
+        }
+        self.assertTrue({"line_item_concept_id", "mapping_status",
+                         "mapping_version"} <= line_columns)
+        tables = {
+            row[0] for row in self.query(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        self.assertTrue({"bank_name_aliases", "line_item_concepts",
+                         "line_item_aliases", "name_mapping_review",
+                         "name_mapping_audit"} <= tables)
         version = self.query(
             "SELECT value FROM schema_meta WHERE key = 'schema_version'"
         )[0]["value"]
