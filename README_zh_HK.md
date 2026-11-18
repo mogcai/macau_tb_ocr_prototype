@@ -1,6 +1,13 @@
-# 澳門公報 Balancete OCR Prototype v0.6.2
+# 澳門公報 Balancete OCR Prototype v0.6.3
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV，並可整合成 SQLite 資料庫作跨期分析。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+
+## v0.6.3 More standards + split combined reserve row
+
+1. 支援 Portuguese-only parent standards（`user:pt:...`）。
+2. `一般監管儲備特定監管儲備投資重估儲備` 拆成 3 個 standards。
+3. `澳門特區負價證明書`→負債；`其他應付款項及應計負償`→負債；Reject rows 不再建立 standard。
+4. 標準 88（85 approved + 3 provisional）；未 map 31 行 / 20 distinct。
 
 ## v0.6.2 Map obvious OCR typos / merged strings
 

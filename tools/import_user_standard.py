@@ -201,8 +201,13 @@ def read_cleaned_csv(path: Path) -> list[dict[str, Any]]:
                 "raw_child_zh": child_zh,
                 "raw_parent_pt": parent_pt,
                 "raw_child_pt": child_pt,
-                "status": normalize_text(row.get("status")).lower()
-                or "provisional",
+                "status": {
+                    "approve": "approved", "approved": "approved",
+                    "provisional": "provisional",
+                    "reject": "rejected", "rejected": "rejected",
+                }.get(
+                    normalize_text(row.get("status")).lower(), "provisional"
+                ),
                 "note": normalize_text(row.get("note")),
             })
     return rows
@@ -220,8 +225,13 @@ def write_cleaned_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writerows([{key: row.get(key, "") for key in fields} for row in rows])
 
 
-def _standard_key(parent_zh: str, child_zh: str = "") -> str:
-    return f"user:{parent_zh}" + (f">{child_zh}" if child_zh else "")
+def _parent_key(parent_zh: str, parent_pt: str = "") -> str:
+    return f"user:{parent_zh}" if parent_zh else f"user:pt:{parent_pt}"
+
+
+def _standard_key(parent_zh: str, child_zh: str = "", parent_pt: str = "") -> str:
+    base = _parent_key(parent_zh, parent_pt)
+    return f"{base}>{child_zh}" if child_zh else base
 
 
 def apply_repairs(
@@ -282,25 +292,37 @@ def import_standards(
     try:
         _schema(conn)
         with conn:
-            # Parents first.
+            # Parents first. A parent may be Portuguese-only (中文後補).
             parent_id: dict[str, int] = {}
-            parent_status: dict[str, str] = {}
-            parent_pt: dict[str, str] = {}
+            parent_key_by_zh: dict[str, str] = {}
+            parent_key_by_pt: dict[str, str] = {}
+            parent_zh_by_key: dict[str, str] = {}
+            parent_pt_by_key: dict[str, str] = {}
+            parent_status_by_key: dict[str, str] = {}
             for row in rows:
-                zh = row["parent_zh"]
-                if not zh:
+                if row["status"] == "rejected":
                     continue
+                zh = row["parent_zh"]
+                pt = row["parent_pt"]
+                if not zh and not pt:
+                    continue
+                key = _parent_key(zh, pt)
+                if zh:
+                    parent_key_by_zh[zh] = key
+                if pt:
+                    parent_key_by_pt[pt] = key
+                parent_zh_by_key.setdefault(key, zh)
+                parent_pt_by_key.setdefault(key, pt)
                 if row["child_zh"]:
                     continue
-                parent_pt.setdefault(zh, row["parent_pt"])
-                parent_status[zh] = (
+                parent_status_by_key[key] = (
                     "provisional"
-                    if parent_status.get(zh) == "provisional"
+                    if parent_status_by_key.get(key) == "provisional"
                     or row["status"] == "provisional"
                     else "approved"
                 )
-            for zh, pt in parent_pt.items():
-                key = _standard_key(zh)
+            for key, pt in parent_pt_by_key.items():
+                zh = parent_zh_by_key.get(key, "")
                 conn.execute(
                     """
                     INSERT INTO standard_labels (
@@ -308,30 +330,42 @@ def import_standards(
                         status, source, note
                     ) VALUES (?, ?, ?, 'parent', ?, 'user_csv', ?)
                     ON CONFLICT(standard_key) DO UPDATE SET
-                        canonical_zh = excluded.canonical_zh,
+                        canonical_zh = COALESCE(NULLIF(excluded.canonical_zh, ''),
+                                                standard_labels.canonical_zh),
                         canonical_pt = COALESCE(NULLIF(excluded.canonical_pt, ''),
                                                 standard_labels.canonical_pt),
                         status = excluded.status,
                         note = COALESCE(NULLIF(excluded.note, ''),
                                        standard_labels.note)
                     """,
-                    (key, zh, pt, parent_status.get(zh, "approved"), None),
+                    (key, zh or None, pt or None,
+                     parent_status_by_key.get(key, "approved"), None),
                 )
-                parent_id[zh] = int(conn.execute(
+                parent_id[key] = int(conn.execute(
                     "SELECT standard_id FROM standard_labels WHERE standard_key = ?",
                     (key,),
                 ).fetchone()[0])
             # Children.
             child_rows: dict[tuple[str, str], dict[str, Any]] = {}
             for row in rows:
-                if not row["child_zh"] or not row["parent_zh"]:
+                if row["status"] == "rejected":
                     continue
-                child_rows[(row["parent_zh"], row["child_zh"])] = row
-            for (parent_zh, child_zh), row in child_rows.items():
-                pid = parent_id.get(parent_zh)
+                if not row["child_zh"]:
+                    continue
+                parent_key = (
+                    parent_key_by_zh.get(row["parent_zh"])
+                    or parent_key_by_pt.get(row["parent_pt"])
+                )
+                if not parent_key:
+                    continue
+                child_rows[(parent_key, row["child_zh"])] = row
+            for (parent_key, child_zh), row in child_rows.items():
+                pid = parent_id.get(parent_key)
                 if pid is None:
                     continue
-                key = _standard_key(parent_zh, child_zh)
+                key = _standard_key(
+                    row["parent_zh"], child_zh, row["parent_pt"]
+                )
                 conn.execute(
                     """
                     INSERT INTO standard_labels (
@@ -351,8 +385,18 @@ def import_standards(
                 )
             # Aliases for parents and children.
             for row in rows:
+                if row["status"] == "rejected":
+                    continue
                 if row["child_zh"]:
-                    key = _standard_key(row["parent_zh"], row["child_zh"])
+                    parent_key = (
+                        parent_key_by_zh.get(row["parent_zh"])
+                        or parent_key_by_pt.get(row["parent_pt"])
+                    )
+                    if not parent_key:
+                        continue
+                    key = _standard_key(
+                        row["parent_zh"], row["child_zh"], row["parent_pt"]
+                    )
                     standard_id = conn.execute(
                         "SELECT standard_id FROM standard_labels WHERE standard_key = ?",
                         (key,),
@@ -367,7 +411,7 @@ def import_standards(
                         (row["raw_child_pt"], "pt"),
                     ]
                 else:
-                    key = _standard_key(row["parent_zh"])
+                    key = _parent_key(row["parent_zh"], row["parent_pt"])
                     standard_id = conn.execute(
                         "SELECT standard_id FROM standard_labels WHERE standard_key = ?",
                         (key,),

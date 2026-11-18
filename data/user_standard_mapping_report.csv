@@ -3,37 +3,19 @@
 Depósitos à ordem noutras instituições de crédito,,pt,unmapped,,,,4,4
 Moedas externas,,pt,unmapped,,,,2,2
 Patacas,,pt,unmapped,,,,2,2
-代客保管帳（借方）,,zh-Hant,unmapped,,,,2,2
 外幣,,zh-Hant,unmapped,,,,2,2
 4/01円,,zh-Hant,unmapped,,,,1,1
-CERTIFICADOS DE DIVIDA DO GOVERNO DE MACAU,,latin,unmapped,,,,1,1
-LUCROS RELATIVOS A EXERCICIO ANTERIORES,,latin,unmapped,,,,1,1
-NOTAS EM CIRCULAÇÃO,,latin,unmapped,,,,1,1
-PERDAS RELATIVAS A EXERCICIOS ANTERIORES,,latin,unmapped,,,,1,1
-TESOURO PÚBLICO - CONTA CORRENTE,,latin,unmapped,,,,1,1
-VALORES EM CONTA COM O TESOURO PÚBLICO,,latin,unmapped,,,,1,1
 no Território,,pt,unmapped,,,,1,1
 ※門元,,zh-Hant,unmapped,,,,1,1
 一外带,,zh-Hant,unmapped,,,,1,1
 一外景,,zh-Hant,unmapped,,,,1,1
-一般監管儲備,,zh-Hant,unmapped,,,,1,1
 其他慈懽,,zh-Hant,unmapped,,,,1,1
-其他應付款項及應計負債,,zh-Hant,unmapped,,,,1,1
-其他應付款項及應計負償,,zh-Hant,unmapped,,,,1,1
-其他資產,,zh-Hant,unmapped,,,,1,1
-其他资產,,zh-Hant,unmapped,,,,1,1
 戴怨我用,,zh-Hant,unmapped,,,,1,1
-投資重估儲備,,zh-Hant,unmapped,,,,1,1
 撼押鋹,,zh-Hant,unmapped,,,,1,1
 浅定体值,,zh-Hant,unmapped,,,,1,1
 液門元,,zh-Hant,unmapped,,,,1,1
-澳門特區紙幣流通額,,zh-Hant,unmapped,,,,1,1
-澳門特區負價證明書,,zh-Hant,unmapped,,,,1,1
-特定監管儲備,,zh-Hant,unmapped,,,,1,1
-稅項,,zh-Hant,unmapped,,,,1,1
 變,,zh-Hant,unmapped,,,,1,1
 財務負價租貨,,zh-Hant,unmapped,,,,1,1
-資本公積,,zh-Hant,unmapped,,,,1,1
 运押限,,zh-Hant,unmapped,,,,1,1
 銀戸名袋,,zh-Hant,unmapped,,,,1,1
 馈拳借款,,zh-Hant,unmapped,,,,1,1
@@ -168,6 +150,7 @@ Patacas,Caixa,pt,child_path_exact,user:現金>澳門元,澳門元,PATACAS,6,6
 FUNDO DE MANEIO,,pt,parent_exact,user:營運資金,營運資金,FUNDO DE MANEIO,3,3
 營運資金,,zh-Hant,parent_exact,user:營運資金,營運資金,FUNDO DE MANEIO,3,3
 RESERVA DA REAVALIAÇÃO,,pt,parent_exact,user:重估儲備,重估儲備,RESERVA DA REAVALIAÇÃO,2,2
+代客保管帳（借方）,,zh-Hant,raw_parent_exact,user:代客保管帳(借方),代客保管帳(借方),DEVEDORES POR VALORES RECEBIDOS EM DEPÓSITO,2,2
 保留溢利/（損失）,,zh-Hant,raw_parent_exact,user:保留溢利/(損失),保留溢利/(損失),,2,2
 價權入,,zh-Hant,raw_parent_exact,user:債權人,債權人,CREDORES,2,2
 儲備,,zh-Hant,raw_parent_exact,user:儲備,儲備,RESERVA,2,2
@@ -198,6 +181,7 @@ CAIXA - MOEDAS EXTERNAS,,latin,raw_child_unique,user:現金>外幣,外幣,MOEDAS
 CAIXA - PATACAS,,latin,raw_child_unique,user:現金>澳門元,澳門元,PATACAS,1,1
 CAIXA現金,,zh-Hant,raw_parent_exact,user:現金,現金,CAIXA,1,1
 CAPITAL股本,,zh-Hant,raw_parent_exact,user:股本,股本,CAPITAL,1,1
+CERTIFICADOS DE DIVIDA DO GOVERNO DE MACAU,,latin,raw_parent_exact,user:澳門特區負債證明書,澳門特區負債證明書,CERTIFICADOS DE DIVIDA DO GOVERNO DE MACAU,1,1
 CHEQUESEORDENSAPAGAR應付支票及葉據,,zh-Hant,raw_parent_exact,user:應付支票及票據,應付支票及票據,CHEQUES E ORDENS A PAGAR,1,1
 CONTASINTERNASEDEREGULARIZACAO內部及調整帳,,zh-Hant,raw_parent_exact,user:內部及調整帳,內部及調整帳,CONTAS INTERNAS E DE REGULARIZAÇÃO,1,1
 CREDITOCONCEDIDO放款,,zh-Hant,raw_parent_exact,user:放款,放款,CRÉDITO CONCEDIDO,1,1
@@ -230,6 +214,8 @@ EQUIPAMENTO設備,,zh-Hant,raw_parent_exact,user:設備,設備,EQUIPAMENTO,1,1
 EXIGIBILIDADESDIVERSAS各項負價,,zh-Hant,raw_parent_exact,user:各項負債,各項負債,EXIGIBILIDADES DIVERSAS,1,1
 GARANTIASEAVALESPRESTADOS保證及擔保付款,,zh-Hant,raw_parent_exact,user:保證及擔保付款,保證及擔保付款,GARANTIAS E AVALES PRESTADOS,1,1
 IMOBILIZACOESEMCURSO未完成不動產,,zh-Hant,raw_parent_exact,user:未完成不動產,未完成不動產,IMOBILIZAÇÕES EM CURSO,1,1
+LUCROS RELATIVOS A EXERCICIO ANTERIORES,,latin,raw_parent_exact,user:前期收益,前期收益,LUCROS RELATIVOS A EXERCICIO ANTERIORES,1,1
+NOTAS EM CIRCULAÇÃO,,latin,raw_parent_exact,user:澳門特區紙幣流通額,澳門特區紙幣流通額,NOTAS EM CIRCULAÇÃO,1,1
 OUROEPRATA金、銀,,zh-Hant,raw_parent_exact,user:金、銀,金、銀,OURO E PRATA,1,1
 OUTRASAPLICACOES其他投資,,zh-Hant,raw_parent_exact,user:其他投資,其他投資,OUTRAS APLICAÇÕES,1,1
 OUTRASCONTASEXTRAPATRIMONIAIS其他備查帳,,zh-Hant,raw_parent_exact,user:其他備查帳,其他備查帳,OUTRAS CONTAS EXTRAPATRIMONIAIS,1,1
@@ -238,6 +224,7 @@ OUTROSVALORESIMOBILIZADOS其他固定资產,,zh-Hant,raw_parent_exact,user:其�
 OUTROSVALORES其他流動資產,,zh-Hant,raw_parent_exact,user:其他流動資產,其他流動資產,OUTROS VALORES,1,1
 Outra Reserva,,pt,parent_exact,user:其他儲備,其他儲備,OUTRAS RESERVAS,1,1
 PARTICIPACOESFINANCEIRAS財務投資,,zh-Hant,raw_parent_exact,user:財務投資,財務投資,PARTICIPAÇÕES FINANCEIRAS,1,1
+PERDAS RELATIVAS A EXERCICIOS ANTERIORES,,latin,raw_parent_exact,user:前期損失,前期損失,PERDAS RELATIVAS A EXERCICIOS ANTERIORES,1,1
 PROVEITOSPORNATUREZA總收入,,zh-Hant,raw_parent_exact,user:總收入,總收入,PROVEITOS POR NATUREZA,1,1
 PROVISOESPARARISCOSDIVERSOS各項風險備用金,,zh-Hant,raw_parent_exact,user:各項風險備用金,各項風險備用金,PROVISÕES PARA RISCOS DIVERSOS,1,1
 RECURSOSDEINSTITUICOESDECREDITONOTERRITORIO本地信用機橘資金,,zh-Hant,raw_parent_exact,user:本地信用機構資金,本地信用機構資金,RECURSOS DE INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,1,1
@@ -245,12 +232,15 @@ RECURSOSDEOUTRASENTIDADESLOCAIS其他本地機構資金,,zh-Hant,raw_parent_exac
 RESERVAESTATUTARIA自定儲備,,zh-Hant,raw_parent_exact,user:自定儲備,自定儲備,RESERVA ESTATUTÁRIA,1,1
 RESERVALEGAL法定儲備,,zh-Hant,raw_parent_exact,user:法定儲備,法定儲備,RESERVA LEGAL,1,1
 RESULTADOSTRANSITADOSDEEXERCICIOSANTERIORES歷年營業結果,,zh-Hant,raw_parent_exact,user:歷年營業結果,歷年營業結果,RESULTADOS TRANSITADOS DE EXERCÍCIOS ANTERIORES,1,1
+TESOURO PÚBLICO - CONTA CORRENTE,,latin,raw_parent_exact,user:pt:TESOURO PÚBLICO - CONTA CORRENTE,,TESOURO PÚBLICO - CONTA CORRENTE,1,1
+VALORES EM CONTA COM O TESOURO PÚBLICO,,latin,raw_parent_exact,user:pt:VALORES EM CONTA COM O TESOURO PÚBLICO,,VALORES EM CONTA COM O TESOURO PÚBLICO,1,1
 VALORESACOBRAR應收寝項,,zh-Hant,raw_parent_exact,user:應收帳項,應收帳項,VALORES A COBRAR,1,1
 VALORESRECEBIDOSEMCAUCAO抵押帳,,zh-Hant,raw_parent_exact,user:抵押帳,抵押帳,VALORES RECEBIDOS EM CAUÇÃO,1,1
 VALORESRECEBIDOSEMDEPOSITO代客保管帳,,zh-Hant,raw_parent_exact,user:代客保管帳,代客保管帳,VALORES RECEBIDOS EM DEPÓSITO,1,1
 VALORESRECEBIDOSPARACOBRANCA代收帳,,zh-Hant,raw_parent_exact,user:代收帳,代收帳,VALORES RECEBIDOS PARA COBRANÇA,1,1
 •MOEDASEXTERNAS外幣,,zh-Hant,raw_child_path_exact,user:通知存款>外幣,外幣,MOEDAS EXTERNAS,1,1
 •本地信用機構資金,公共機構存款,zh-Hant,raw_parent_exact,user:本地信用機構資金,本地信用機構資金,RECURSOS DE INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,1,1
+一般監管儲備,,zh-Hant,raw_parent_exact,user:一般監管儲備,一般監管儲備,,1,1
 代客保管帳（货方）,,zh-Hant,raw_parent_exact,user:代客保管帳(貸方),代客保管帳(貸方),CREDORES POR VALORES RECEBIDOS EM DEPÓSITO,1,1
 代客保管股（貸力）,,zh-Hant,raw_parent_exact,user:代客保管帳(貸方),代客保管帳(貸方),CREDORES POR VALORES RECEBIDOS EM DEPÓSITO,1,1
 保證及擔保付款（借力）,,zh-Hant,raw_parent_exact,user:保證及擔保付款(借方),保證及擔保付款(借方),DEVEDORES POR GARANTIAS E AVALES PRESTADOS,1,1
@@ -261,15 +251,25 @@ VALORESRECEBIDOSPARACOBRANCA代收帳,,zh-Hant,raw_parent_exact,user:代收帳,�
 價械人,,zh-Hant,raw_parent_exact,user:債權人,債權人,CREDORES,1,1
 價権入,,zh-Hant,raw_parent_exact,user:債權人,債權人,CREDORES,1,1
 價輪入,,zh-Hant,raw_parent_exact,user:債權人,債權人,CREDORES,1,1
+其他應付款項及應計負債,,zh-Hant,raw_parent_exact,user:其他應付款項及應計負債,其他應付款項及應計負債,,1,1
+其他應付款項及應計負償,,zh-Hant,raw_parent_exact,user:其他應付款項及應計負債,其他應付款項及應計負債,,1,1
+其他資產,,zh-Hant,raw_parent_exact,user:其他資產,其他資產,,1,1
+其他资產,,zh-Hant,raw_parent_exact,user:其他資產,其他資產,,1,1
 外幣,Caixa,zh-Hant,child_path_exact,user:現金>外幣,外幣,MOEDAS EXTERNAS,1,1
+投資重估儲備,,zh-Hant,raw_parent_exact,user:投資重估儲備,投資重估儲備,,1,1
 本家成不動産,,zh-Hant,raw_parent_exact,user:未完成不動產,未完成不動產,IMOBILIZAÇÕES EM CURSO,1,1
 澳門元,Caixa,zh-Hant,child_path_exact,user:現金>澳門元,澳門元,PATACAS,1,1
 澳門元,Depósitos a prazo,zh-Hant,child_path_exact,user:定期存款>澳門元,澳門元,PATACAS,1,1
 澳門元,Depósitos na A.M.C.M.,zh-Hant,child_path_exact,user:AMCM存款>澳門元,澳門元,PATACAS,1,1
 澳門元,Depósitos à ordem,zh-Hant,child_path_exact,user:活期存款>澳門元,澳門元,PATACAS,1,1
+澳門特區紙幣流通額,,zh-Hant,raw_parent_exact,user:澳門特區紙幣流通額,澳門特區紙幣流通額,NOTAS EM CIRCULAÇÃO,1,1
+澳門特區負價證明書,,zh-Hant,raw_parent_exact,user:澳門特區負債證明書,澳門特區負債證明書,CERTIFICADOS DE DIVIDA DO GOVERNO DE MACAU,1,1
+特定監管儲備,,zh-Hant,raw_parent_exact,user:特定監管儲備,特定監管儲備,,1,1
 禾元成不動産,,zh-Hant,raw_parent_exact,user:未完成不動產,未完成不動產,IMOBILIZAÇÕES EM CURSO,1,1
+稅項,,zh-Hant,raw_parent_exact,user:稅項,稅項,,1,1
 結欠總公司之款項,,zh-Hant,raw_parent_exact,user:總公司之欠款,總公司之欠款,,1,1
 结欠總公司之款項,,zh-Hant,raw_parent_exact,user:總公司之欠款,總公司之欠款,,1,1
+資本公積,,zh-Hant,raw_parent_exact,user:資本公積,資本公積,,1,1
 重估儲備,,zh-Hant,raw_parent_exact,user:重估儲備,重估儲備,RESERVA DA REAVALIAÇÃO,1,1
 重佔儲備,,zh-Hant,raw_parent_exact,user:重估儲備,重估儲備,RESERVA DA REAVALIAÇÃO,1,1
 重佶儲備,,zh-Hant,raw_parent_exact,user:重估儲備,重估儲備,RESERVA DA REAVALIAÇÃO,1,1

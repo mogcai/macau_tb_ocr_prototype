@@ -31,3 +31,5 @@ DEPÓSITOS COM PRÉ - AVISO - MOEDAS EXTERNAS,user:通知存款>外幣,pt,merged
 结欠總公司之款項,user:總公司之欠款,zh-Hant,synonym OCR variant
 結欠關連公司之款項,user:關連公司之欠款,zh-Hant,synonym
 DEVDORESPORCREDITOSABERTOS信用狀（借方）,user:信用狀(借方),zh-Hant,OCR typo (missing E)
+其他應付款項及應計負償,user:其他應付款項及應計負債,zh-Hant,OCR typo 負償->負債
+澳門特區負價證明書,user:澳門特區負債證明書,zh-Hant,OCR typo 負價->負債

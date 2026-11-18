@@ -1,10 +1,17 @@
-# AI Agent Quick Start — Macau Gazette Balancete OCR v0.6.2
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.6.3
 
 Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`; name registry workflow is in `NAME_STANDARDIZATION.md`.
 
 ## Purpose
 
 Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review.
+
+## v0.6.3 changes
+
+- Support Portuguese-only parent standards (`user:pt:...`) for the TESOURO PÚBLICO rows.
+- Split the combined `一般監管儲備特定監管儲備投資重估儲備` cell into three standards.
+- Normalize `Reject` to rejected and skip rejected rows entirely.
+- Correct 負價→負債 and 負償→負債; standards now 88 (85 approved, 3 provisional); 31 rows / 20 distinct unmapped.
 
 ## v0.6.2 changes
 

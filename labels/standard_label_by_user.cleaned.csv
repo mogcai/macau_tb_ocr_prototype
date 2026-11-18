@@ -1,4 +1,4 @@
-source_row,parent_zh,child_zh,parent_pt,child_pt,status,note
+﻿source_row,parent_zh,child_zh,parent_pt,child_pt,status,note
 2,現金,,CAIXA,,approved,
 3,現金,澳門元,CAIXA,PATACAS,approved,
 4,現金,外幣,CAIXA,MOEDAS EXTERNAS,approved,
@@ -73,3 +73,20 @@ source_row,parent_zh,child_zh,parent_pt,child_pt,status,note
 72,總公司之欠款,,,,approved,葡文之後再補
 73,關連公司之欠款,,,,approved,葡文之後再補
 74,儲備,,RESERVA,,approved,
+75,代客保管帳(借方),,DEVEDORES POR VALORES RECEBIDOS EM DEPÓSITO,,approved,
+76,澳門特區紙幣流通額,,NOTAS EM CIRCULAÇÃO,,approved,
+77,,,TESOURO PÚBLICO - CONTA CORRENTE,,provisional,中文後補 Chinese canonical missing
+78,,,VALORES EM CONTA COM O TESOURO PÚBLICO ,,provisional,中文後補 Chinese canonical missing
+79,澳門特區負債證明書,,CERTIFICADOS DE DIVIDA DO GOVERNO DE MACAU,,provisional,corrected 負價→負債 (dívida = debt)
+80,前期收益,,LUCROS RELATIVOS A EXERCICIO ANTERIORES,,approved,
+81,前期損失,,PERDAS RELATIVAS A EXERCICIOS ANTERIORES,,approved,
+82a,一般監管儲備,,,,approved,split from combined row 82
+82b,特定監管儲備,,,,approved,split from combined row 82
+82c,投資重估儲備,,,,approved,split from combined row 82
+83,稅項,,,,approved,
+84,資本公積,,,,approved,
+85,財務負價租貨,,,,rejected,不明
+86,其他應付款項及應計負債,,,,approved,
+87,其他資產,,,,approved,
+88,,,Depósitos à ordem noutras instituições de crédito,,rejected,係一個項目嘅前半部: DEPÓSITOS À ORDEM NOUTRAS INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO
+89,,,no Território,,rejected,係一個項目嘅後半部: DEPÓSITOS À ORDEM NOUTRAS INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO

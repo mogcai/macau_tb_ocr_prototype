@@ -12,6 +12,13 @@
 
 ## 版本簡介
 
+### v0.6.3 — More standards + split combined reserve row
+
+- 支援 Portuguese-only parent standards（`user:pt:...`），處理 TESOURO PÚBLICO 兩行。
+- 將合併格 `一般監管儲備特定監管儲備投資重估儲備` 拆成 3 個 standards。
+- 修正 `澳門特區負價證明書`→負債、`其他應付款項及應計負償`→負債；Reject rows 不再建立 standard。
+- 標準增至 88（85 approved + 3 provisional）；未 map 降至 31 行 / 20 distinct。
+
 ### v0.6.2 — Map obvious OCR typos and merged strings
 
 - 新增 `labels/user_standard_ocr_repairs.csv`：32 條明確 OCR typo / 合併字串 alias，例如 `CAIXA現金`→現金、`EMPRESTIMOSEMMDEDASEXTERNAS外幣借款`→外幣借款、`足期存款`→定期存款。
@@ -275,6 +282,6 @@ python -m unittest discover -s tests -v
 
 **Project:** Macau Gazette Balancete OCR
 
-**Current prototype:** v0.6.2
+**Current prototype:** v0.6.3
 
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

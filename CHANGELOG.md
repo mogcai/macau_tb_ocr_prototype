@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.3
+
+- **Portuguese-only parent standards:** the cleaned CSV now supports rows with Chinese pending (`parent_zh` blank, `parent_pt` set), stored as `user:pt:<PT name>`. The two TESOURO PÚBLICO rows are loaded this way and marked provisional.
+- **Split combined cell:** `一般監管儲備特定監管儲備投資重估儲備` was split into three standards (一般監管儲備 / 特定監管儲備 / 投資重估儲備).
+- **Rejected rows:** `Reject` is normalized to `rejected` and skipped; 財務負價租貨 and the two deposit fragments are not imported.
+- **Typo repairs:** 澳門特區負價證明書→澳門特區負債證明書; 其他應付款項及應計負償→其他應付款項及應計負債.
+- **Result:** 88 standards (85 approved + 3 provisional), 2328 rows mapped and 31 rows / 20 distinct unmapped.
+- **Tests:** 146 passing.
+
 ## v0.6.2
 
 - **OCR repair aliases:** added `labels/user_standard_ocr_repairs.csv` with 32 high-confidence merged-string/typo mappings (e.g. `CAIXA現金`→現金, `EMPRESTIMOSEMMDEDASEXTERNAS外幣借款`→外幣借款, `足期存款`→定期存款, `重佔儲備`→重估儲備). Repairs create aliases only; no new standards.
