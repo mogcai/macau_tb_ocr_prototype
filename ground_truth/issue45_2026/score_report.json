@@ -1,7 +1,7 @@
 {
   "generated_at": "2026-11-18T11:52:16",
   "ground_truth_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/ground_truth/issue45_2026",
-  "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v08_issue45_2026",
+  "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/gt_reference/issue45_2026_v031",
   "pages": [
     7,
     9,

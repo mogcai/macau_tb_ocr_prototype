@@ -1,4 +1,4 @@
-# Agent Skill: Macau Gazette Balancete OCR v0.6.4
+# Agent Skill: Macau Gazette Balancete OCR v0.7.0
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Process Macau Government Gazette PDFs and extract bank / financial-institution B
 - `MACOS_VISION_OCR.md`: Apple Vision architecture, ROI and language constraints.
 - `NAME_STANDARDIZATION.md`: bank / line-item registry, review and approval workflow.
 
-## 2. Architecture (v0.6.4)
+## 2. Architecture (v0.7.0)
 
 ### Input and extraction
 
@@ -136,11 +136,11 @@ For issue 45 of 2026, examples are PDF page 7 (Traditional Chinese) and PDF page
 
 ```bash
 python macau_tb_ocr.py /path/to/anotariais-45-2026.pdf \
-  --outdir output_v02_p07 --pages 7 \
+  --outdir outputs/runs/issue45_p07 --pages 7 \
   --engine vision --vision-level accurate --ocr-langs auto
 
 python macau_tb_ocr.py /path/to/anotariais-45-2026.pdf \
-  --outdir output_v02_p10 --pages 10 \
+  --outdir outputs/runs/issue45_p10 --pages 10 \
   --engine vision --vision-level accurate --ocr-langs auto
 ```
 
@@ -257,7 +257,7 @@ Stores unmodified OCR text, actual recognition language, header/table region, co
 `tools/build_database.py` merges run folders without overwriting earlier observations:
 
 ```bash
-python tools/build_database.py output_v08_issue45_2026 output_v06_issue44_2026 \
+python tools/build_database.py outputs/runs/issue45_2026 outputs/runs/issue44_2026 \
   --db data/macau_balancete.sqlite
 ```
 
@@ -274,12 +274,13 @@ python tools/build_database.py output_v08_issue45_2026 output_v06_issue44_2026 \
   `*_total_approx` columns are REAL sums for quick checks only.
 - Read `DATABASE.md` before writing SQL. Do not change schema fields without a rebuild plan.
 
-## 7.2 Data-integrity workflow (v0.6.4)
+## 7.2 Data-integrity workflow (v0.7.0)
 
 - **Portuguese-only standards:** parent keys may be `user:pt:<PT name>` when Chinese is pending; rejected rows are not imported.
 - **OCR repair priority:** an approved `ocr_repair` alias for `label_raw` wins over a non-empty but wrong `label_standard`.
 - **OCR repair aliases:** `labels/user_standard_ocr_repairs.csv` maps only obvious merged strings/typos; ambiguous or genuinely new names stay unmapped.
 - **Cleaned user standard:** use `--from-cleaned` to import the edited `standard_label_by_user.cleaned.csv`; raw fallback maps blank `label_standard` through `label_raw`.
+- **One-command import:** `tools/import_issue.py` downloads a Gazette PDF URL, runs OCR, imports SQLite and remaps names. New issues are staging until `--publish`.
 - **User standard import:** `tools/import_user_standard.py` loads `labels/standard_label_by_user.csv` into `standard_labels` / `standard_label_aliases` and maps `line_items.user_standard_label_id`; unmatched labels stay visible in `v_user_standard_unmapped`.
 - **Standard master:** `tools/standard_line_items.py export` writes `labels/line_item_standard.csv`; `apply` only loads `status=approved` rows. Bilingual/combined OCR strings are aliases, not concepts.
 - **Name registry:** use `export` / `import-review` for the CSV review workflow. Bank Chinese-name seeds are proposed (`translation_seed`) until approved. Bank aliases and line-item concepts are separate from OCR. Same-language lexicon aliases are approved seeds; bilingual pairs are pending candidates. Only approved aliases populate `line_items.line_item_concept_id`.

@@ -1,7 +1,7 @@
 {
   "issue": "issue45_2026",
   "created_at": "2026-11-17T23:01:57",
-  "source_run": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output",
+  "source_run": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/gt_reference/issue45_2026_gt",
   "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-45-2026.pdf",
   "pages": [
     7,

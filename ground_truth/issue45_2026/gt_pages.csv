@@ -1,7 +1,7 @@
 pdf_page,image_path,image_width,image_height,bank_name_gt,statement_date_gt,number_format_gt,orig_bank_name_ocr,orig_number_format_ocr,page_note,verified,reviewer,reviewed_at
-7,/Users/tonyfong/Projects/macau_tb_ocr_prototype/output/images/page_0007_table.png,3585,4468,澳門國際銀行股份有限公司,2026-09-30,comma_dot,澳門國際銀行股份有限公司,comma_dot,,1,Tonyfong,2026-11-17
-10,/Users/tonyfong/Projects/macau_tb_ocr_prototype/output/images/page_0010_table.png,4968,6993,HANG SENG BANK LIMITED | SUCURSAL DE MACAU,2026-09-30,comma_dot,HANG SENG BANK LIMITED | SUCURSAL DE MACAU,comma_dot,,1,Tonyfong,2026-11-17
-9,/Users/tonyfong/Projects/macau_tb_ocr_prototype/output/images/page_0009_table.png,4971,7000,星展銀行(香港)有限公司 | 澳門分行,2026-09-30,comma_dot,星展銀行(香港)有限公司 | 澳門分行,comma_dot,,1,Tonyfong,2026-11-18
-15,/Users/tonyfong/Projects/macau_tb_ocr_prototype/output/images/page_0015_table.png,3484,6092,"SOCIEDADE FINANCEIRA ICBC (MACAU) CAPITAL, S.A.",2026-09-30,comma_dot,"SOCIEDADE FINANCEIRA ICBC (MACAU) CAPITAL, S.A.",comma_dot,,1,Tonyfong,2026-11-18
-17,/Users/tonyfong/Projects/macau_tb_ocr_prototype/output/images/page_0017_table.png,4003,4984,郵政儲金局,2026-09-30,comma_dot,,comma_dot,,1,Tonyfong,2026-11-18
-29,/Users/tonyfong/Projects/macau_tb_ocr_prototype/output/images/page_0029_table.png,4159,5165,立橋銀行股份有限公司,2026-09-30,comma_dot,立橋銀行股份有限公司,comma_dot,,1,Tonyfong,2026-11-18
+7,/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/gt_reference/issue45_2026_gt/images/page_0007_table.png,3585,4468,澳門國際銀行股份有限公司,2026-09-30,comma_dot,澳門國際銀行股份有限公司,comma_dot,,1,Tonyfong,2026-11-17
+10,/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/gt_reference/issue45_2026_gt/images/page_0010_table.png,4968,6993,HANG SENG BANK LIMITED | SUCURSAL DE MACAU,2026-09-30,comma_dot,HANG SENG BANK LIMITED | SUCURSAL DE MACAU,comma_dot,,1,Tonyfong,2026-11-17
+9,/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/gt_reference/issue45_2026_gt/images/page_0009_table.png,4971,7000,星展銀行(香港)有限公司 | 澳門分行,2026-09-30,comma_dot,星展銀行(香港)有限公司 | 澳門分行,comma_dot,,1,Tonyfong,2026-11-18
+15,/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/gt_reference/issue45_2026_gt/images/page_0015_table.png,3484,6092,"SOCIEDADE FINANCEIRA ICBC (MACAU) CAPITAL, S.A.",2026-09-30,comma_dot,"SOCIEDADE FINANCEIRA ICBC (MACAU) CAPITAL, S.A.",comma_dot,,1,Tonyfong,2026-11-18
+17,/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/gt_reference/issue45_2026_gt/images/page_0017_table.png,4003,4984,郵政儲金局,2026-09-30,comma_dot,,comma_dot,,1,Tonyfong,2026-11-18
+29,/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/gt_reference/issue45_2026_gt/images/page_0029_table.png,4159,5165,立橋銀行股份有限公司,2026-09-30,comma_dot,立橋銀行股份有限公司,comma_dot,,1,Tonyfong,2026-11-18

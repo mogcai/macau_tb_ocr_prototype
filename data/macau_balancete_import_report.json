@@ -1,69 +1,59 @@
 {
   "database": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/macau_balancete.sqlite",
-  "app_version": "0.6.3",
+  "app_version": "0.6.4",
   "schema_version": 5,
-  "generated_at": "2026-11-18T12:55:30+00:00",
+  "generated_at": "2026-11-18T13:38:27+00:00",
   "run_dirs": [
-    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_issue31_2026"
+    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue33_2026"
   ],
   "runs": [
     {
-      "run_id": "run_15489a6b74ffc1573d0b2b25d6a03f590b514f92ca831e4ba453f5257df834c9",
-      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_issue31_2026",
+      "run_id": "run_eadbb15344cd15f416d01c6e45af3d7537f30a3832995884193104b77045ab1b",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue33_2026",
       "status": "imported",
-      "tb_pages": 11,
-      "line_items": 713,
-      "review_rows": 506,
+      "tb_pages": 1,
+      "line_items": 64,
+      "review_rows": 32,
       "published": false,
       "verification_restored": 0
     }
   ],
   "totals": {
-    "runs": 6,
+    "runs": 7,
     "published_runs": 5,
     "banks": 39,
-    "pages": 49,
-    "statements": 49,
-    "line_items": 3074,
-    "review_rows": 1932,
+    "pages": 50,
+    "statements": 50,
+    "line_items": 3138,
+    "review_rows": 1964,
     "statements_with_missing_identity": 0
   },
   "business_key_quality": {
-    "rows": 3074,
-    "unique_complete_rows": 2885,
+    "rows": 3138,
+    "unique_complete_rows": 2949,
     "duplicate_extra_rows": 15,
     "duplicate_groups": 15,
     "rows_in_duplicate_groups": 31,
     "missing_label_rows": 174
   },
   "natural_key_status": {
-    "complete": 2885,
+    "complete": 2949,
     "duplicate": 15,
     "missing_label": 174
   },
   "publication_date_sources": {
     "derived_from_run": 24,
-    "documents.csv": 25
+    "documents.csv": 26
   },
   "statement_date_sources": {
-    "documents.csv": 49
+    "documents.csv": 50
   },
   "identity_status": {
-    "complete": 49
+    "complete": 50
   },
   "natural_key_duplicates": {
     "groups": 15,
     "rows": 31
   },
-  "warnings": [
-    "run_15489a6b74ffc1573d0b2b25d6a03f590b514f92ca831e4ba453f5257df834c9:2026-08-05|2026-06-30|bank:中國農業銀行股份有限公司澳門分行: 1 rows have no standard label",
-    "run_15489a6b74ffc1573d0b2b25d6a03f590b514f92ca831e4ba453f5257df834c9:2026-08-05|2026-06-30|bank:澳門國際銀行股份有限公司: 5 rows have no standard label",
-    "run_15489a6b74ffc1573d0b2b25d6a03f590b514f92ca831e4ba453f5257df834c9:2026-08-05|2026-06-30|bank:立橋銀行股份有限公司: 3 rows have no standard label",
-    "run_15489a6b74ffc1573d0b2b25d6a03f590b514f92ca831e4ba453f5257df834c9:2026-08-05|2026-06-30|bank:中國銀行澳門股份有限公司: 4 rows have no standard label",
-    "run_15489a6b74ffc1573d0b2b25d6a03f590b514f92ca831e4ba453f5257df834c9:2026-08-05|2026-06-30|bank:中國銀行股份有限公司澳門分行: 5 rows have no standard label",
-    "run_15489a6b74ffc1573d0b2b25d6a03f590b514f92ca831e4ba453f5257df834c9:2026-08-05|2026-06-30|bank:澳門華人銀行股份有限公司: 3 rows have no standard label",
-    "run_15489a6b74ffc1573d0b2b25d6a03f590b514f92ca831e4ba453f5257df834c9:2026-08-05|2026-06-30|bank:第一商業銀行股份有限公司澳門分行: 3 rows have no standard label",
-    "run_15489a6b74ffc1573d0b2b25d6a03f590b514f92ca831e4ba453f5257df834c9:2026-08-05|2026-06-30|bank:星展銀行香港有限公司澳門分行: 2 rows have no standard label",
-    "run_15489a6b74ffc1573d0b2b25d6a03f590b514f92ca831e4ba453f5257df834c9:2026-08-05|2026-06-30|bank:永豐商業銀行股份有限公司澳門分行: 1 rows have no standard label"
-  ]
+  "warnings": []
 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.7.0
+
+- **One-command issue import:** added `tools/import_issue.py`. It downloads a Gazette PDF URL into `input/`, runs OCR into a new `output_issueNN_YYYY/`, imports the run into SQLite, refreshes bank canonical fields, and re-applies user standard labels.
+- **Safe defaults:** existing PDFs/output directories are never overwritten without `--overwrite-pdf` / `--reuse-output`; new issues are staging until `--publish`.
+- **Modes:** `--download-only`, `--inspect-only`, `--dry-run`, `--no-db`, `--no-ocr`, `--no-name-map`, `--no-bank-refresh`.
+- **New helper commands:** `name_registry.py refresh-banks` and `import_user_standard.py map`.
+- **Verified with issue 33:** URL download (SHA-256 `2d51dd30...`), 11-page PDF, 1 TB page, 64 rows, 32 review, 64/64 user-standard mapped; imported as staging.
+- **Output cleanup:** obsolete experiments moved to `archive/outputs/` (109MB, no deletion); canonical v13 runs, issue 31/33, and GT-referenced `output`/`output_v08` kept.
+- **Tests:** 151 passing.
+
 ## v0.6.4
 
 - **Imported 2026 issue 31:** 11 TB pages, 713 rows, 506 rows routed to review (71%). Low OCR confidence dominates (481), consistent with other Chinese issues; 27 labels remained unmatched before repairs.

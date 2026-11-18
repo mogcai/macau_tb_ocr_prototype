@@ -686,8 +686,34 @@ def main(argv: list[str] | None = None) -> int:
     report.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
     report.add_argument("--csv", type=Path,
                         default=Path("data/user_standard_mapping_report.csv"))
+    remap = sub.add_parser(
+        "map", help="re-apply existing standard labels to line_items"
+    )
+    remap.add_argument("--db", type=Path,
+                       default=Path("data/macau_balancete.sqlite"))
+    remap.add_argument("--report", type=Path,
+                       default=Path("data/user_standard_mapping_report.csv"))
     args = parser.parse_args(argv)
     try:
+        if args.command == "map":
+            conn = _connect(args.db)
+            try:
+                _schema(conn)
+                if not conn.execute(
+                    "SELECT 1 FROM standard_labels LIMIT 1"
+                ).fetchone():
+                    raise RuntimeError(
+                        "standard_labels is empty; run the build command first"
+                    )
+                with conn:
+                    mapping = map_line_items(conn)
+                report = write_report(args.db, args.report)
+            finally:
+                conn.close()
+            print(json.dumps({
+                "mapping": dict(mapping), "report": report
+            }, ensure_ascii=False, indent=2))
+            return 0
         if args.command == "build":
             if (
                 args.cleaned_csv.exists()

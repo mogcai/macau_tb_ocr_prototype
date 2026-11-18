@@ -1229,6 +1229,16 @@ def main(argv: list[str] | None = None) -> int:
     import_decisions.add_argument("--csv", type=Path, required=True)
     import_decisions.add_argument("--by", required=True)
 
+    refresh = sub.add_parser(
+        "refresh-banks", help="refresh canonical bank fields and aliases only"
+    )
+    refresh.add_argument("--db", type=Path,
+                         default=Path("data/macau_balancete.sqlite"))
+    refresh.add_argument("--bank-aliases", type=Path,
+                         default=Path("labels/bank_aliases.csv"))
+    refresh.add_argument("--bank-translations", type=Path,
+                         default=Path("labels/bank_name_translations.csv"))
+
     remap = sub.add_parser("remap", help="re-apply approved aliases to line_items")
     remap.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
 
@@ -1288,6 +1298,22 @@ def main(argv: list[str] | None = None) -> int:
                 import_review_decisions(args.db, args.csv, args.by),
                 ensure_ascii=False, indent=2,
             ))
+        elif args.command == "refresh-banks":
+            conn = _connect(args.db)
+            try:
+                _schema(conn)
+                with conn:
+                    stats = seed_banks(
+                        conn,
+                        args.bank_aliases if args.bank_aliases.exists() else None,
+                        args.bank_translations
+                        if args.bank_translations.exists() else None,
+                    )
+                print(json.dumps(
+                    {"banks": dict(stats)}, ensure_ascii=False, indent=2
+                ))
+            finally:
+                conn.close()
         elif args.command == "remap":
             conn = _connect(args.db)
             try:

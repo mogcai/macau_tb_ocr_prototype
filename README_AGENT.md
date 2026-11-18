@@ -1,10 +1,17 @@
-# AI Agent Quick Start — Macau Gazette Balancete OCR v0.6.4
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.7.0
 
 Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`; name registry workflow is in `NAME_STANDARDIZATION.md`.
 
 ## Purpose
 
 Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review.
+
+## v0.7.0 changes
+
+- Added `tools/import_issue.py`: PDF URL → input → OCR → output → SQLite → bank refresh → user-standard remap.
+- Existing PDFs/output dirs are never overwritten without explicit flags; new issues are staging until `--publish`.
+- Supports `--download-only`, `--inspect-only`, `--dry-run`, `--no-db`, `--no-ocr`, `--no-name-map`, `--no-bank-refresh`.
+- Verified with issue 33 (1 TB page, 64 rows, 32 review, 64/64 standard-mapped).
 
 ## v0.6.4 changes
 
@@ -158,7 +165,7 @@ After individual runs are inspected:
 
 ```bash
 python tools/build_database.py \
-  output_v11_issue45_2026_full output_v06_issue44_2026 \
+  outputs/runs/issue45_2026 outputs/runs/issue44_2026 \
   --db data/macau_balancete.sqlite \
   --publish --published-by reviewer
 ```

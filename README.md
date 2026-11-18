@@ -12,6 +12,14 @@
 
 ## 版本簡介
 
+### v0.7.0 — One-command issue import
+
+- 新增 `tools/import_issue.py`：輸入公報 PDF URL，自動下載到 `input/`、跑 OCR、建立新 output、import SQLite、refresh bank registry、套用 user standard labels。
+- 不覆蓋現有 PDF / output；新 issue 預設 staging，review 後才 `--publish`。
+- 支援 `--download-only`、`--inspect-only`、`--dry-run`、`--no-db`、`--no-ocr`、`--no-name-map`、`--no-bank-refresh`。
+- 已用 issue 33 URL 實測：11-page PDF、1 TB page、64 rows、32 review、user standard mapping 64/64。
+- 詳見 [`IMPORT_ISSUE.md`](IMPORT_ISSUE.md)。
+
 ### v0.6.4 — Import 2026 issue 31 and OCR repair priority
 
 - 新增 2026 年第 31 期：11 pages / 713 rows；506 rows review，主要係 low OCR confidence。
@@ -249,7 +257,7 @@ OCR 結果應保留原始文字、辨識結果及數字正規化資料。
 
 ```bash
 python tools/build_database.py \
-  output_v08_issue45_2026 output_v06_issue44_2026 \
+  outputs/runs/issue45_2026 outputs/runs/issue44_2026 \
   --db data/macau_balancete.sqlite
 ```
 
@@ -289,6 +297,6 @@ python -m unittest discover -s tests -v
 
 **Project:** Macau Gazette Balancete OCR
 
-**Current prototype:** v0.6.4
+**Current prototype:** v0.7.0
 
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

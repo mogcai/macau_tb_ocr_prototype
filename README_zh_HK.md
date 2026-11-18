@@ -1,6 +1,14 @@
-# 澳門公報 Balancete OCR Prototype v0.6.4
+# 澳門公報 Balancete OCR Prototype v0.7.0
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV，並可整合成 SQLite 資料庫作跨期分析。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+
+## v0.7.0 One-command issue import
+
+1. `tools/import_issue.py`：URL → input PDF → OCR → output folder → SQLite → bank refresh → user standard mapping。
+2. 不覆蓋 PDF/output；預設 staging。
+3. 支援 `--download-only` / `--inspect-only` / `--dry-run` / `--no-db`。
+4. Issue 33 實測：1 TB page、64 rows、32 review、mapping 64/64。
+5. 詳見 [`IMPORT_ISSUE.md`](IMPORT_ISSUE.md)。
 
 ## v0.6.4 Import 2026 issue 31
 
@@ -181,7 +189,7 @@ python macau_tb_ocr.py anotariais-45-2026.pdf \
 
 ```bash
 python macau_tb_ocr.py anotariais-45-2026.pdf \
-  --outdir output_v02_p07 --pages 7 \
+  --outdir outputs/runs/issue45_p07 --pages 7 \
   --engine vision --vision-level accurate --ocr-langs auto
 ```
 
@@ -189,7 +197,7 @@ python macau_tb_ocr.py anotariais-45-2026.pdf \
 
 ```bash
 python macau_tb_ocr.py anotariais-45-2026.pdf \
-  --outdir output_v02_p10 --pages 10 \
+  --outdir outputs/runs/issue45_p10 --pages 10 \
   --engine vision --vision-level accurate --ocr-langs auto
 ```
 
@@ -197,7 +205,7 @@ python macau_tb_ocr.py anotariais-45-2026.pdf \
 
 ```bash
 python macau_tb_ocr.py anotariais-45-2026.pdf \
-  --outdir output_v02_p07_fast --pages 7 \
+  --outdir outputs/runs/issue45_p07_fast --pages 7 \
   --engine vision --vision-level fast --ocr-langs auto
 ```
 
@@ -279,7 +287,7 @@ Excel sheets：`TB_Rows`、`Review_Queue`、`Documents`、`OCR_Raw`。
 
 ```bash
 python tools/build_database.py \
-  output_v08_issue45_2026 output_v06_issue44_2026 \
+  outputs/runs/issue45_2026 outputs/runs/issue44_2026 \
   --db data/macau_balancete.sqlite
 ```
 
