@@ -11,3 +11,4 @@ Before running or modifying this project:
 7. Do not mark any amount financially verified based only on OCR confidence, parser success, or debit/credit totals. Human verification needs source-image comparison.
 8. Run unit tests after code changes. Benchmark changes against manually labelled pages; do not report OCR accuracy or speed improvements without those measurements on the target Mac.
 9. Do not change OCR engines, models, thresholds, locale routes, number parsing policies or source code during a user processing run without explicit instruction.
+10. When importing runs into SQLite, preserve every OCR observation; never silently overwrite an older run. `auto_check_pass` is not financial verification; record human verification only in `row_verification`. Read `DATABASE.md` before changing the schema or business-key logic.

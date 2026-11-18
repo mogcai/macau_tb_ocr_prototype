@@ -38,6 +38,22 @@ After the v0.3.1 cleanup the remaining ≥0.90 near-duplicate pairs are genuinel
 different accounts (`在本地…` vs `在外地…`, `Outra Reserva` vs `Outras reservas`),
 not OCR variants.
 
+## Bank aliases
+
+`bank_aliases.csv` is optional and used only by the SQLite importer
+(`--bank-aliases labels/bank_aliases.csv`). The seed contains only mappings that
+were confirmed visually (currently the bilingual 郵政儲金局 / CAIXA ECONÓMICA
+POSTAL name on issue-45 page 17). Add a row only after confirming that two names
+refer to the same reporting entity.
+
+```csv
+alias,canonical,bank_key,note
+葡萄牙商業銀行有限公司澳門分行,BANCO COMERCIAL PORTUGUÊS, S.A. SUCURSAL DE MACAU,,手動確認
+```
+
+Do not merge a group entity with its branch, or two different legal entities,
+just to make the bank list look tidy.
+
 ## Measuring
 
 ```bash

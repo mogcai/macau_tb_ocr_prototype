@@ -1,4 +1,4 @@
-# Agent Skill: Macau Gazette Balancete OCR v0.3.1
+# Agent Skill: Macau Gazette Balancete OCR v0.4.0
 
 ## Purpose
 
@@ -12,7 +12,7 @@ Process Macau Government Gazette PDFs and extract bank / financial-institution B
 - `MACOS_SETUP.md`: Apple Silicon / macOS installation instructions.
 - `MACOS_VISION_OCR.md`: Apple Vision architecture, ROI and language constraints.
 
-## 2. Architecture (v0.3)
+## 2. Architecture (v0.4)
 
 ### Input and extraction
 
@@ -33,6 +33,7 @@ Process Macau Government Gazette PDFs and extract bank / financial-institution B
 Before OCR, Python detects the two vertical separators for Account / Debit / Credit. The Swift worker receives one image and a set of region tasks in a single process invocation per page. Some Balancetes add a leading account-code column (issue 45 page 29); the layout step takes the **two rightmost** rules as the debit/credit separators and trims the label ROI at the code/label rule, so codes are never treated as account labels.
 
 - Header region: page image top 25%, for OCR metadata fallback.
+- Full-page header fallback: if the embedded table image still has no bank name or statement date, `--header-fallback auto` renders the top 25% of the full PDF page at 4x and OCRs that separately. This covers logos above the table crop (issue-45 page 17). Recovered values are evidence, not verification: `bank_name_source = ocr_full_page_header`, `header_fallback_*` columns, `images/page_XXXX_header_fallback.png`, and raw `header_fallback` boxes.
 - Account-label column: selected page language (`zh-Hant`, Portuguese, or English).
 - Debit column: English/digit recognition.
 - Credit column: English/digit recognition.
@@ -229,7 +230,7 @@ Canonical CSV decimal representation uses digits, no thousands separator and a d
 
 ### `documents.csv`
 
-Contains PDF/printed page, bank name, statement/publication dates, metadata source/status, image dimensions/xref, OCR language routing, OCR status, detected number format/confidence/evidence, Vision elapsed time and source image path.
+Contains PDF/printed page, bank name, statement/publication dates, metadata source/status, image dimensions/xref, OCR language routing, OCR status, detected number format/confidence/evidence, Vision elapsed time and source image path. When `--header-fallback` runs, `header_fallback_status`, `header_fallback_bank_name`, `header_fallback_lines`, `header_fallback_image` and related fields record the full-page header evidence; `bank_name_source = ocr_full_page_header` when the name came from that pass.
 
 ### `tb_rows.csv` / Excel `TB_Rows`
 
@@ -249,6 +250,28 @@ Important fields:
 ### `ocr_raw.csv` / Excel `OCR_Raw`
 
 Stores unmodified OCR text, actual recognition language, header/table region, confidence and coordinates.
+
+## 7.1 SQLite integration
+
+`tools/build_database.py` merges run folders without overwriting earlier observations:
+
+```bash
+python tools/build_database.py output_v08_issue45_2026 output_v06_issue44_2026 \
+  --db data/macau_balancete.sqlite
+```
+
+- Tables: `runs`, `banks`, `bank_aliases`, `statements`, `line_items`, `row_verification`.
+- A statement is identified by `run_id + paper_key`, where
+  `paper_key = publication_date | statement_date | bank_key`.
+- Rows use `line_item_id` as PK and `statement_id + label_path + occurrence` as the natural key.
+  Repeated labels are not silently merged; they appear in `v_natural_key_duplicates`.
+- `publication_date` is derived from other pages in the same run only when all non-empty
+  values agree; conflicts stay blank and are reported.
+- Bank names are folded to `bank_key`; optional aliases merge verified multilingual names.
+- Human verification is stored only in `row_verification`. An `auto_check_pass` row is
+  still unverified. `debit_cents` / `credit_cents` hold exact minor units; the
+  `*_total_approx` columns are REAL sums for quick checks only.
+- Read `DATABASE.md` before writing SQL. Do not change schema fields without a rebuild plan.
 
 ## 8. Review policy
 
@@ -321,4 +344,5 @@ Inspect the native PDF text and image list. Gazette layout may have changed. Upd
 - Bilingual pages may produce overlapping language observations; visually sample those rows.
 - OpenCC converts script/region variants but cannot correct wrong account recognition.
 - Number separator recovery relies on structurally valid digit grouping; it cannot identify omitted, duplicated or substituted digits with certainty.
+- `label_standard` remains language-specific (`現金` and `Caixa` are separate labels). The SQLite schema stores `label_language`, but cross-language concept mapping must be curated and verified before use.
 - The program does not replace independent reconciliation or human verification.

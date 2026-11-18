@@ -1,6 +1,16 @@
-# 澳門公報 Balancete OCR Prototype v0.3.1
+# 澳門公報 Balancete OCR Prototype v0.4.0
 
-用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV，並可整合成 SQLite 資料庫作跨期分析。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+
+## v0.4.0 新增：SQLite 整合
+
+1. **多 run 整合**：`tools/build_database.py` 可將多個 OCR 輸出資料夾匯入同一個 SQLite，保留每次 observation，不會靜默覆蓋。
+2. **Key 設計**：你提出的五欄 key（publication date、statement date、bank、parent label、label）保留作 business key；資料庫用 `statement_id + label_path + occurrence` 做 natural key，因為實際資料有重複 label、空白 label 及多頁 statement。
+3. **日期推斷**：`publication_date` 缺失時，只在同一 PDF 內所有非空日期一致時補上，記錄 `*_source`；有衝突則保持空白。
+4. **銀行正規化**：以 `bank_key` 統一大小寫／重音／標點；可用 `bank_aliases.csv` 人手合併中文／葡文名稱。
+5. **人手核實分開**：`row_verification` 表只記錄人手核實，`auto_check_pass` 不等於財務核實。
+6. **頁首 fallback OCR**：`--header-fallback auto` 會喺 table image 冇銀行名／日期時，另外 render 完整 PDF 頁首再 OCR；唔會覆蓋已有名稱，evidence 存 `header_fallback_*` 及 `images/page_XXXX_header_fallback.png`。issue 45 page 17 已驗證可恢復 `郵政儲金局 | CAIXA ECONÓMICA POSTAL`。
+7. 完整 schema、view 及 query 例子見 [`DATABASE.md`](DATABASE.md)。
 
 ## v0.3.1 修正
 
@@ -62,7 +72,7 @@ xcode-select --install
 建立環境及安裝 Python 基礎套件：
 
 ```bash
-cd /path/to/macau_tb_ocr_prototype_v0.3
+cd /path/to/macau_tb_ocr_prototype_v0.4
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
@@ -123,6 +133,8 @@ python macau_tb_ocr.py anotariais-45-2026.pdf \
 比較 `fast` 同 `accurate` 時必須使用相同 PDF 頁及不同輸出資料夾，記錄實際時間及人工核對結果。唔好只比較 OCR confidence。
 
 第一次執行會將 `vision_ocr_worker.swift` 編譯到 `.vision_cache/`；之後會重用編譯檔。
+
+如果 table image 本身冇銀行名（例如 issue 45 page 17 的 logo 在 table crop 上方），`--header-fallback auto`（預設）會另外 render 完整 PDF 頁首再 OCR。可用 `--header-fallback off` 停用；恢復結果會寫入 `header_fallback_*` 欄位及 `images/page_XXXX_header_fallback.png`，唔會覆蓋原有 OCR 名稱。
 
 ## 4. 完整批次執行
 
@@ -192,6 +204,34 @@ python macau_tb_ocr.py anotariais-45-2026.pdf \
 
 Excel sheets：`TB_Rows`、`Review_Queue`、`Documents`、`OCR_Raw`。
 
+## 6.1 整合成 SQLite
+
+```bash
+python tools/build_database.py \
+  output_v08_issue45_2026 output_v06_issue44_2026 \
+  --db data/macau_balancete.sqlite
+```
+
+匯入後主要 view：
+
+- `v_statement_index`：每間銀行／每個 statement 的行數、review 數、缺失 label、重複 key。
+- `v_balance_sheet`：分析用扁平表，含 `verification_status`。
+- `v_natural_key_duplicates`：五欄 business key 的重複組。
+- `v_review_queue`：仍需 review 且未 `verified` 的行。
+
+查詢例子：
+
+```sql
+SELECT publication_date, statement_date, bank_name, row_count,
+       review_row_count, missing_label_rows
+FROM v_statement_index
+ORDER BY publication_date DESC, bank_name;
+
+SELECT * FROM v_natural_key_duplicates;
+```
+
+Schema 及點解五欄 key 不能直接做 primary key，見 [`DATABASE.md`](DATABASE.md)。
+
 ## 7. 品質控制
 
 1. `raw` 欄位永遠不可被自動改寫。
@@ -233,6 +273,7 @@ python -m unittest discover -s tests -v
 --engine vision|paddle|tesseract
 --vision-level fast|accurate
 --vision-minimum-text-height 0.004
+--header-fallback auto|off
 --ocr-langs auto|chinese_cht,pt,en
 --number-format auto|comma_dot|dot_comma
 --chinese-label-normalization off|s2t|s2hk

@@ -12,6 +12,24 @@
 
 ## 版本簡介
 
+### v0.4.0 — SQLite 整合資料庫
+
+新增 `tools/build_database.py`，將多個 OCR run 整合成 SQLite，保留每次 OCR observation，
+唔會靜默覆蓋舊 run。
+
+- 資料表：`runs`、`banks`、`bank_aliases`、`statements`、`line_items`、`row_verification`。
+- 分析 view：`v_balance_sheet`、`v_statement_index`、`v_current_line_items`、
+  `v_natural_key_duplicates`、`v_review_queue`。
+- 你提出的五欄 key（publication date / statement date / bank / parent label / label）
+  會保留作 business key；資料庫另用 `statement_id + label_path + occurrence` 做 natural key，
+  因為同一 statement 會有重複 label、空白 label 及多頁情況。
+- `publication_date` 缺失時只會在同一 PDF 內所有非空日期一致時推斷，並記錄
+  `publication_date_source`；有衝突則保持空白並 warning。
+- 銀行名稱以 `bank_key` 正規化，可用 `bank_aliases.csv` 人手合併中文／葡文名稱。
+- 人手核實放在獨立 `row_verification` 表；`auto_check_pass` 永遠唔等於財務核實。
+- `--header-fallback auto`：當 table image 讀不到銀行名／日期，會另外 OCR 完整 PDF 頁首；issue 45 page 17 可恢復 `郵政儲金局 | CAIXA ECONÓMICA POSTAL`。
+- 詳見 [`DATABASE.md`](DATABASE.md)。
+
 ### v0.1 — Python Prototype
 
 初始原型版本，主要用於驗證由 PDF 擷取 Balancete 表格的可行性。
@@ -68,20 +86,23 @@
 
 ## 版本比較
 
-| 功能 | v0.1 | v0.2 | v0.3 |
-|---|---|---|---|
-| PDF 表格影像擷取 | ✓ | ✓ | ✓ |
-| PaddleOCR | ✓ | 可選 | 可選 |
-| Apple Vision OCR | — | ✓ | ✓ |
-| 繁體中文處理 | 基本 | 改善 | 改善 |
-| 葡文及英文處理 | 基本 | 改善 | 改善 |
-| 千分位及小數點格式 | 基本 | 支援兩種格式 | 支援兩種格式 |
-| OCR 標點修正 | — | ✓ | ✓ |
-| 信心度及人工覆核 | 基本 | 改善 | 改善 |
-| 標準科目詞表 | — | — | ✓ |
-| 科目父子層 | — | — | ✓ |
-| 跨行標籤合併 | — | — | ✓ |
-| Ground Truth / CER 評分 | — | — | ✓ |
+| 功能 | v0.1 | v0.2 | v0.3 | v0.4 |
+|---|---|---|---|---|
+| PDF 表格影像擷取 | ✓ | ✓ | ✓ | ✓ |
+| PaddleOCR | ✓ | 可選 | 可選 | 可選 |
+| Apple Vision OCR | — | ✓ | ✓ | ✓ |
+| 繁體中文處理 | 基本 | 改善 | 改善 | 改善 |
+| 葡文及英文處理 | 基本 | 改善 | 改善 | 改善 |
+| 千分位及小數點格式 | 基本 | 支援兩種格式 | 支援兩種格式 | 支援兩種格式 |
+| OCR 標點修正 | — | ✓ | ✓ | ✓ |
+| 信心度及人工覆核 | 基本 | 改善 | 改善 | 改善 |
+| 標準科目詞表 | — | — | ✓ | ✓ |
+| 科目父子層 | — | — | ✓ | ✓ |
+| 跨行標籤合併 | — | — | ✓ | ✓ |
+| Ground Truth / CER 評分 | — | — | ✓ | ✓ |
+| SQLite 跨期整合 | — | — | — | ✓ |
+| 銀行名稱正規化／alias | — | — | — | ✓ |
+| 人手核實獨立紀錄 | — | — | — | ✓ |
 
 ## 系統需求
 
@@ -92,7 +113,7 @@
 
 v0.2 在 macOS 上預設使用 Apple Vision；PaddleOCR 及 Tesseract 可按需要選用。
 
-## 安裝及執行（v0.3）
+## 安裝及執行（v0.4）
 
 ```bash
 # 建立虛擬環境
@@ -145,6 +166,26 @@ OCR 結果應保留原始文字、辨識結果及數字正規化資料。
 - 自動修正的數字必須保留原始 OCR 結果。
 - CSV 標準化數字使用英文小數點格式，例如 `1234567.89`。
 
+## 整合成 SQLite
+
+完成多期 OCR 後，可將 run 資料夾整合成一個資料庫：
+
+```bash
+python tools/build_database.py \
+  output_v08_issue45_2026 output_v06_issue44_2026 \
+  --db data/macau_balancete.sqlite
+```
+
+之後用 view 查詢：
+
+```sql
+SELECT * FROM v_statement_index ORDER BY publication_date DESC;
+SELECT * FROM v_natural_key_duplicates;
+SELECT * FROM v_balance_sheet WHERE verification_status = 'verified';
+```
+
+Schema、key 設計理由、日期推斷及銀行 alias 規則見 [`DATABASE.md`](DATABASE.md)。
+
 ## 測試資料
 
 專案包含測試用例，涵蓋中文、葡文及不同數字格式。
@@ -164,9 +205,13 @@ python -m unittest discover -s tests -v
 3. 加強數字錯誤偵測及人工覆核流程。
 4. 支援更多年度及期數的澳門公報。
 5. 建立穩定的批量處理及 Excel 輸出流程。
+6. 建立經人手核對的中葡科目 concept mapping，令 `現金` 與 `Caixa` 可以跨語言比較。
+7. 為 SQLite 加入銀行／科目層級的跨期比較報表。
 
 ---
 
-**Project:** Macau Gazette Balancete OCR  
-**Current prototype:** v0.3.1  
+**Project:** Macau Gazette Balancete OCR
+
+**Current prototype:** v0.4.0
+
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

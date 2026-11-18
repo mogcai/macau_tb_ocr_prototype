@@ -8,3 +8,7 @@ input/
 .DS_Store
 lasped/
 ground_truth/**/crops/
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

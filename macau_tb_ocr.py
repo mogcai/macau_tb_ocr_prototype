@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Macau Gazette Balancete OCR prototype v0.3.1.
+"""Macau Gazette Balancete OCR prototype v0.4.0.
 
 Extract embedded statement images, run native Apple Vision on macOS or an optional
 PaddleOCR/Tesseract backend, reconstruct Account/Debit/Credit rows, normalize
@@ -29,7 +29,7 @@ from typing import Any, Iterable
 
 import fitz  # PyMuPDF
 
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.4.0"
 TB_TERMS = (
     "試算表", "BALANCETE", "TRIAL BALANCE", "BALANCE OF THE LEDGER",
     "BALANCETE DO RAZAO", "BALANCETE DO RAZÃO",
@@ -41,6 +41,16 @@ PT_TERMS = (
 EN_TERMS = (
     "TRIAL BALANCE", "DEBIT", "CREDIT", "DEBITORS", "CREDITORS",
     "ASSETS", "LIABILITIES", "TOTALS",
+)
+BALANCETE_HEADING_RE = re.compile(
+    r"試算表|BALANCETE|TRIAL\s+BALANCE|BALANCE\s+OF\s+THE\s+LEDGER", re.I
+)
+# Gazette running header / fee notice lines are not part of the bank name.
+HEADER_NOISE_RE = re.compile(
+    r"BOLETIM\s+OFICIAL|澳門特別行政區公報|REGI[ÃA]O\s+ADMINISTRATIVA|"
+    r"N\.?\s*[ºo°]\s*\d+|S[ÉE]RIE|CUSTO\s+DESTA\s+PUBLICA|是項刊登費用|"
+    r"^\d{1,4}$|^\d{2}[-/]\d{2}[-/]\d{4}$",
+    re.I,
 )
 
 
@@ -184,9 +194,8 @@ def extract_metadata(page_text: str, pdf_page_number: int) -> dict[str, str | in
     lines = [norm_text(x) for x in t.splitlines() if norm_text(x)]
     # Find first statement heading and treat the preceding one or two lines as the bank name.
     heading_idx = len(lines)
-    heading_re = re.compile(r"試算表|BALANCETE|TRIAL\s+BALANCE|BALANCE\s+OF\s+THE\s+LEDGER", re.I)
     for i, line in enumerate(lines):
-        if heading_re.search(line):
+        if BALANCETE_HEADING_RE.search(line):
             heading_idx = i
             break
     heading_found = heading_idx < len(lines)
@@ -227,6 +236,69 @@ def extract_metadata(page_text: str, pdf_page_number: int) -> dict[str, str | in
         "publication_date": pub_date,
         "bank_name_source": bank_source,
     }
+
+
+def extract_bank_name_from_header_lines(
+    lines: list[str], max_lines: int = 2
+) -> tuple[str, list[str]]:
+    """Extract a bank name from full-page header OCR lines.
+
+    The full-page header includes the gazette running title (issue number,
+    date, series, page number) and sometimes a parent-company line below the
+    logo. Only the lines before the Balancete title are candidates; running
+    header and fee notice lines are removed. The returned ``used_lines`` are
+    kept as audit evidence.
+    """
+    heading_idx = len(lines)
+    for index, line in enumerate(lines):
+        if BALANCETE_HEADING_RE.search(norm_text(line)):
+            heading_idx = index
+            break
+    candidates = lines[:heading_idx] if heading_idx < len(lines) else lines[:6]
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for line in candidates:
+        text = norm_text(line)
+        if not text or HEADER_NOISE_RE.search(text):
+            continue
+        if not re.search(r"[A-Za-z\u3400-\u9fff]", text):
+            continue
+        # A date such as "30 de Setembro de 2026" is not a bank name.
+        if re.fullmatch(r"[\d\s.,/º°\-–—]+", text):
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+        if len(cleaned) >= max_lines:
+            break
+    return " | ".join(cleaned), cleaned
+
+
+def render_page_header_image(
+    page: fitz.Page,
+    out_path: Path,
+    fraction: float = 0.25,
+    zoom: float = 4.0,
+) -> tuple[int, int]:
+    """Render the top of the full PDF page for bank-name fallback OCR.
+
+    The embedded table image may start below the bank logo (issue 45 page 17),
+    so a table-image-only OCR can never recover the entity name. This renders
+    the page header separately and keeps it as audit evidence.
+    """
+    rect = page.rect
+    clip = fitz.Rect(
+        rect.x0, rect.y0,
+        rect.x1, rect.y0 + rect.height * max(0.05, min(0.5, fraction)),
+    )
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, alpha=False)
+    if pix.colorspace is None or pix.colorspace.n != 3 or pix.alpha:
+        pix = fitz.Pixmap(fitz.csRGB, pix)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    pix.save(str(out_path))
+    return pix.width, pix.height
 
 
 def extract_best_embedded_image(doc: fitz.Document, page: fitz.Page, page_index: int, out_path: Path) -> TableImage:
@@ -616,7 +688,6 @@ def run_vision_ocr(image_path: Path, languages: list[str],
     or ``all``; numeric columns default to no correction so Vision cannot rewrite
     an amount before it is preserved as raw evidence.
     """
-    binary = _ensure_vision_worker()
     image_path = image_path.resolve()
     sep1, sep2 = boundaries
     # Table body excludes the column-heading band. The bottom edge is kept close
@@ -653,6 +724,27 @@ def run_vision_ocr(image_path: Path, languages: list[str],
             or (language_correction == "labels" and not is_numeric)
         )
 
+    return _invoke_vision_worker(
+        image_path, tasks,
+        minimum_text_height=minimum_text_height,
+        preprocess=preprocess,
+        level=level,
+        language_correction=language_correction,
+    )
+
+
+def _invoke_vision_worker(
+    image_path: Path,
+    tasks: list[dict[str, Any]],
+    *,
+    minimum_text_height: float,
+    preprocess: bool,
+    level: str,
+    language_correction: str,
+) -> tuple[list[OCRBox], dict[str, Any]]:
+    """Run one Vision worker process for an explicit task list."""
+    binary = _ensure_vision_worker()
+    image_path = image_path.resolve()
     payload = {"imagePath": str(image_path), "tasks": tasks,
                "minimumTextHeight": minimum_text_height,
                "preprocessImage": preprocess}
@@ -696,6 +788,34 @@ def run_vision_ocr(image_path: Path, languages: list[str],
         "vision_minimum_text_height": minimum_text_height,
     }
     return boxes, diagnostics
+
+
+def run_vision_header_ocr(
+    image_path: Path,
+    languages: list[str],
+    level: str = "accurate",
+    minimum_text_height: float = 0.004,
+    preprocess: bool = False,
+    language_correction: str = "labels",
+) -> tuple[list[OCRBox], dict[str, Any]]:
+    """OCR a rendered full-page header image with one full-region task per language."""
+    profiles = _vision_language_profiles(languages)
+    tasks: list[dict[str, Any]] = []
+    for profile_name, lang_code in profiles:
+        tasks.append({
+            "name": f"header_full_{profile_name}",
+            "language": lang_code,
+            "level": level,
+            "x0": 0.0, "y0": 0.0, "x1": 1.0, "y1": 1.0,
+            "usesLanguageCorrection": language_correction in {"labels", "all"},
+        })
+    return _invoke_vision_worker(
+        image_path, tasks,
+        minimum_text_height=minimum_text_height,
+        preprocess=preprocess,
+        level=level,
+        language_correction=language_correction,
+    )
 
 
 def _box_iou(a: OCRBox, b: OCRBox) -> float:
@@ -1869,6 +1989,89 @@ def ocr_boxes_to_lines(boxes: list[OCRBox], max_y: float) -> list[str]:
     return lines
 
 
+def recover_header_metadata(
+    page: fitz.Page,
+    images_dir: Path,
+    page_number: int,
+    languages: list[str],
+    *,
+    engine: str,
+    level: str,
+    minimum_text_height: float,
+    preprocess: bool,
+    language_correction: str,
+    engines: dict[str, Any],
+    device: str,
+    ocr_version: str,
+) -> tuple[dict[str, Any], list[OCRBox]]:
+    """Best-effort recovery of bank name/date from the full PDF page header.
+
+    This is deliberately separate from the embedded table image: some Gazettes
+    put the bank logo above the table crop (issue 45 page 17). The function
+    never overwrites a name that was already found; it only supplies evidence
+    when the table-image header is empty.
+    """
+    image_path = images_dir / f"page_{page_number:04d}_header_fallback.png"
+    diagnostics: dict[str, Any] = {
+        "header_fallback_status": "no_name",
+        "header_fallback_engine": engine,
+        "header_fallback_image": str(image_path),
+        "header_fallback_lines": "",
+        "header_fallback_bank_name_lines": "",
+        "header_fallback_bank_name": "",
+        "header_fallback_statement_date": "",
+        "header_fallback_observation_count": 0,
+    }
+    started = time.perf_counter()
+    try:
+        width, height = render_page_header_image(page, image_path)
+        langs = languages or ["chinese_cht"]
+        if engine == "vision":
+            boxes, vision_diagnostics = run_vision_header_ocr(
+                image_path, langs, level=level,
+                minimum_text_height=minimum_text_height,
+                preprocess=preprocess,
+                language_correction=language_correction,
+            )
+            boxes = dedupe_boxes(boxes)
+            for key, value in vision_diagnostics.items():
+                diagnostics[f"header_fallback_{key}"] = value
+        else:
+            boxes = []
+            for language in langs:
+                boxes.extend(run_ocr(
+                    image_path, language, engine, device, ocr_version, engines
+                ))
+            for box in boxes:
+                box.region = "header"
+            boxes = dedupe_boxes(boxes)
+        diagnostics["header_fallback_elapsed_seconds"] = round(
+            time.perf_counter() - started, 3
+        )
+        diagnostics["header_fallback_observation_count"] = len(boxes)
+        diagnostics["header_fallback_image_width"] = width
+        diagnostics["header_fallback_image_height"] = height
+        lines = ocr_boxes_to_lines(boxes, float(height))
+        diagnostics["header_fallback_lines"] = " | ".join(lines[:20])
+        bank_name, used_lines = extract_bank_name_from_header_lines(lines)
+        statement_date = parse_statement_date("\n".join(lines))
+        diagnostics["header_fallback_bank_name"] = bank_name
+        diagnostics["header_fallback_bank_name_lines"] = " | ".join(used_lines)
+        diagnostics["header_fallback_statement_date"] = statement_date
+        if bank_name or statement_date:
+            diagnostics["header_fallback_status"] = "recovered"
+        else:
+            diagnostics["header_fallback_status"] = "no_name"
+        return diagnostics, boxes
+    except Exception as exc:  # best-effort fallback must not abort the page
+        diagnostics["header_fallback_status"] = "failed"
+        diagnostics["header_fallback_error"] = str(exc)[-1000:]
+        diagnostics["header_fallback_elapsed_seconds"] = round(
+            time.perf_counter() - started, 3
+        )
+        return diagnostics, []
+
+
 def make_export_row(meta: dict[str, Any], row: dict[str, Any], image_path: Path) -> dict[str, Any]:
     result = {**meta, **row}
     result["source_image"] = str(image_path)
@@ -1989,6 +2192,10 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
             "ocr_status": "extracted_only" if args.inspect_only else "pending",
             "metadata_status": "ocr_or_manual_review" if (not meta.get("bank_name") or not meta.get("statement_date")) else "metadata_extracted",
             "image_path": str(image_path),
+            "header_fallback_requested": args.header_fallback,
+            "header_fallback_status": (
+                "inspect_only" if args.inspect_only else "not_needed"
+            ),
         }
         document_rows.append(docs_record)
 
@@ -2019,9 +2226,10 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
         header_lines = ocr_boxes_to_lines(header_boxes, table_image.height * 0.24)
         ocr_header_text = "\n".join(header_lines)
         if meta.get("bank_name_source") == "image_header_check":
-            heading_pos = next((i for i, x in enumerate(header_lines) if re.search(
-                r"試算表|BALANCETE|TRIAL\s+BALANCE|BALANCE\s+OF\s+THE\s+LEDGER", x, re.I
-            )), None)
+            heading_pos = next((
+                i for i, x in enumerate(header_lines)
+                if BALANCETE_HEADING_RE.search(x)
+            ), None)
             # Only take pre-title lines when the image itself actually contains a
             # statement title. Do not mistake the table's column header for a bank.
             name_lines = header_lines[:heading_pos] if heading_pos is not None else []
@@ -2032,6 +2240,50 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
                 meta["bank_name_source"] = "missing_in_pdf_and_image_header"
         if not meta.get("statement_date"):
             meta["statement_date"] = parse_statement_date(ocr_header_text)
+        if args.header_fallback == "auto" and (
+            not meta.get("bank_name") or not meta.get("statement_date")
+        ):
+            fallback_diagnostics, fallback_boxes = recover_header_metadata(
+                page, images_dir, page_index + 1, langs,
+                engine=args.engine,
+                level=args.vision_level,
+                minimum_text_height=args.vision_minimum_text_height,
+                preprocess=args.vision_preprocess == "on",
+                language_correction=args.vision_language_correction,
+                engines=engines,
+                device=args.device,
+                ocr_version=args.ocr_version,
+            )
+            if (
+                fallback_diagnostics.get("header_fallback_bank_name")
+                and not meta.get("bank_name")
+            ):
+                meta["bank_name"] = fallback_diagnostics["header_fallback_bank_name"]
+                # This name came from the full PDF page header, not the embedded
+                # table image; keep the provenance explicit.
+                meta["bank_name_source"] = "ocr_full_page_header"
+            if (
+                fallback_diagnostics.get("header_fallback_statement_date")
+                and not meta.get("statement_date")
+            ):
+                meta["statement_date"] = fallback_diagnostics[
+                    "header_fallback_statement_date"
+                ]
+            fallback_image = fallback_diagnostics.get("header_fallback_image", "")
+            for box in fallback_boxes:
+                raw_rows.append({
+                    **meta,
+                    "language": box.language,
+                    "region": "header_fallback",
+                    "text": box.text,
+                    "confidence": round(box.score, 4),
+                    "x0": round(box.x0, 2), "y0": round(box.y0, 2),
+                    "x1": round(box.x1, 2), "y1": round(box.y1, 2),
+                    "image_path": fallback_image,
+                })
+            document_rows[-1].update(fallback_diagnostics)
+        elif args.header_fallback == "off":
+            document_rows[-1]["header_fallback_status"] = "off"
         meta["metadata_status"] = "metadata_extracted" if (meta.get("bank_name") and meta.get("statement_date")) else "needs_manual_review"
         document_rows[-1].update({k: meta.get(k, "") for k in (
             "bank_name", "statement_date", "bank_name_source", "metadata_status"
@@ -2172,6 +2424,11 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
         "vision_level": args.vision_level if args.engine == "vision" else "",
         "vision_preprocess": args.vision_preprocess if args.engine == "vision" else "",
         "vision_language_correction": args.vision_language_correction if args.engine == "vision" else "",
+        "header_fallback": args.header_fallback,
+        "header_fallback_pages": sum(
+            1 for row in document_rows
+            if row.get("header_fallback_status") == "recovered"
+        ),
         "row_structure": args.row_structure,
         "amount_verifier": args.amount_verifier,
         "amount_second_pass": args.amount_second_pass,
@@ -2202,7 +2459,7 @@ def parse_page_range(value: str, total_pages: int) -> tuple[int, int]:
 
 def build_parser() -> argparse.ArgumentParser:
     default_engine = "vision" if sys.platform == "darwin" else "paddle"
-    p = argparse.ArgumentParser(description="澳門公報 Balancete OCR / Excel / CSV prototype v0.3.1")
+    p = argparse.ArgumentParser(description="澳門公報 Balancete OCR / Excel / CSV prototype v0.4.0")
     p.add_argument("pdf", help="輸入 PDF 路徑")
     p.add_argument("--outdir", default="output", help="輸出資料夾（預設：output）")
     p.add_argument("--pages", default="all", help="處理頁數，例如 7-32；預設 all")
@@ -2220,6 +2477,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--vision-language-correction", default="labels",
                    choices=["off", "labels", "all"],
                    help="Vision 語言修正：off、只套用於文字標籤（預設 labels）、或全部區域")
+    p.add_argument("--header-fallback", default="auto", choices=["auto", "off"],
+                   help="銀行名／日期缺失時，另外 OCR 完整 PDF 頁首（預設 auto；只補缺失值）")
     p.add_argument("--row-structure", default="clustered", choices=["auto", "projection", "clustered"],
                    help="行分組：clustered（預設）或 experimental projection；auto 只在安全檢查通過時用投影")
     p.add_argument("--amount-verifier", default="off", choices=["off", "tesseract"],

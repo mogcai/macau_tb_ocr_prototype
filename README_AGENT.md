@@ -1,10 +1,20 @@
-# AI Agent Quick Start — Macau Gazette Balancete OCR v0.3.1
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.4.0
 
 Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`.
 
 ## Purpose
 
 Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review.
+
+## v0.4 changes
+
+- `tools/build_database.py` imports one or more run folders into SQLite. Every run is kept; `v_current_*` views select the newest import per `paper_key`.
+- The proposed five-column key (publication date, statement date, bank, parent label, label) is a business key, not a primary key. Labels repeat, blank labels exist, and one statement can span pages. The database uses `statement_id + label_path + occurrence` as the natural key and exposes duplicates in `v_natural_key_duplicates`.
+- Missing `publication_date` is derived only when all non-empty dates in the same run agree (`publication_date_source = derived_from_run`). Conflicting dates stay blank and produce a warning.
+- Bank names are folded into `bank_key`; an optional `alias,canonical,bank_key,note` CSV merges verified Chinese/Portuguese variants.
+- `--header-fallback auto` (default) renders the full PDF page header at 4x and OCRs it only when the embedded table image has no bank name or statement date. It never overwrites an existing value; evidence is in `header_fallback_*` columns and `images/page_XXXX_header_fallback.png`. Issue-45 page 17 recovers `郵政儲金局 | CAIXA ECONÓMICA POSTAL`.
+- Human verification lives in `row_verification`; `auto_check_pass` is never financial verification.
+- Read `DATABASE.md` before writing SQL or adding schema fields.
 
 ## v0.3 changes
 
@@ -75,6 +85,21 @@ python macau_tb_ocr.py /path/to/input.pdf \
 
 Replace `7-32` with the confirmed TB page range.
 
+### 4. Integrate runs into SQLite
+
+After individual runs are inspected:
+
+```bash
+python tools/build_database.py \
+  output_v08_issue45_2026 output_v06_issue44_2026 \
+  --db data/macau_balancete.sqlite
+```
+
+Use `--replace` only when you intend to replace an already-imported run. Read the
+generated `*_import_report.json`, then check `v_statement_index` and
+`v_natural_key_duplicates` before analysis. Do not treat `auto_check_pass` as
+verified financial data.
+
 ## Numeric-format behaviour
 
 The parser infers the page-level format from OCR numeric evidence:
@@ -118,6 +143,7 @@ These values are recovered candidates, not silently approved financial data. The
 --vision-minimum-text-height 0.004
 --vision-preprocess on|off
 --vision-language-correction off|labels|all
+--header-fallback auto|off
 --amount-verifier off|tesseract
 --amount-second-pass ink|off
 --label-lexicon labels/label_lexicon.csv
@@ -155,5 +181,6 @@ A run is complete only when:
 4. `number_format` is supported by visible numeric evidence or an explicit operator override.
 5. All separator-recovered, ambiguous-format, low-confidence, blank-label and fallback-boundary rows are reviewed or marked pending.
 6. The run report distinguishes extracted, normalized, recovered, and human-verified data.
+7. If a SQLite import was run, `*_import_report.json` was reviewed; duplicate/missing labels, missing bank/date identity and `--replace` decisions are explicit.
 
 Never claim accuracy or improved speed without a manually checked ground-truth sample on the target Mac.

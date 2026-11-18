@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.4.0
+
+- Added `--header-fallback auto|off` (default `auto`): when the embedded table image yields no bank name or statement date, render the full PDF page header at 4x and OCR it separately. It never overwrites an existing name; recovered values set `bank_name_source = ocr_full_page_header`, are logged in `header_fallback_*` columns, and keep `images/page_XXXX_header_fallback.png` plus raw `header_fallback` OCR boxes. Issue-45 page 17 now recovers `郵政儲金局 | CAIXA ECONÓMICA POSTAL` (previously blank).
+- Schema: `runs`, `banks`, `bank_aliases`, `statements`, `line_items`, `row_verification`; analysis views `v_balance_sheet`, `v_statement_index`, `v_current_line_items`, `v_all_line_items`, `v_natural_key_duplicates`, `v_review_queue`.
+- The proposed business key `publication_date, statement_date, bank_name, parent_label_standard, label_standard` is retained for analysis but is **not** the primary key. Real runs contain repeated labels, blank labels and multi-page statements. Rows use a surrogate `line_item_id` and the natural key `statement_id + label_path + occurrence`.
+- Missing `publication_date`/`statement_date` is derived only when all non-empty values in the same run agree; `*_source` records the origin (`documents.csv`, `tb_rows.csv`, `derived_from_run`, `mixed`, `missing`). Conflicting dates remain blank and are reported.
+- Bank names are folded into a punctuation/accent-insensitive `bank_key`; `--bank-aliases` loads an `alias,canonical[,bank_key,note]` CSV. Group/branch entities are not merged automatically.
+- Human verification is isolated in `row_verification` (`verified`/`rejected`/`pending`). `auto_check_pass`, OCR confidence and debit/credit equality still do not constitute financial verification.
+- Added `tests/test_database.py` (12 tests) and `tests/test_header_fallback.py` (8 tests) covering header line extraction/noise, cross-language dedupe, non-fatal fallback failure, date derivation/conflict, duplicate labels, blank labels/unknown banks, aliases, comma-containing bank names, idempotent re-import/`--replace`, views and label paths. Tests: 112 passing.
+- Added `DATABASE.md` and cross-references in README, README_zh_HK, README_AGENT and SKILL. Version bumped to v0.4.0.
+
+**Validation:** full issue-45 rerun with the fallback (`output_v11_issue45_2026_full`) detected 26 TB pages and extracted 1587 rows, identical to `output_v08` on label/amount/review fields. Page 17 recovered `郵政儲金局 | CAIXA ECONÓMICA POSTAL` (`bank_name_source = ocr_full_page_header`); the rebuilt SQLite now has 31/31 statements with `identity_status = complete`, 31 banks, 1909 line items and the same 7 duplicate business-key groups / 132 missing-label rows.
+
+**Known limitation:** `label_standard` is still language-specific (`現金` vs `Caixa`). A curated Chinese/Portuguese concept table is required before cross-language aggregation.
+
 ## v0.3.1
 
 - **Tightened fuzzy label acceptance:** fuzzy 0.70–0.90 now always adds `label_standard_fuzzy_review`; below 0.70 adds `label_standard_low_similarity`. Only ≥0.90 is treated as a low-risk candidate. Exact matches remain automatic.

@@ -135,6 +135,10 @@ ROI coordinates are normalised top-left fractions in the Python input JSON. The 
 
 The table body is currently approximated by y=0.035–0.997 and the three columns are derived from the two rightmost detected vertical rules; a leading account-code rule (issue 45 page 29) is used only to trim the label ROI. These are issue-45-oriented defaults and must be revalidated on new Gazette layouts. If lines are not detected, review `column_boundary_source` before accepting data. If a code-column page falls back to `detected_projection`, the code/label rule is not trusted and the label ROI starts at 0.005, so account codes may be merged into labels; check `label_column_x0` and sample the left edge.
 
+## Full-page header fallback
+
+Some embedded table images start below the bank logo (issue 45 page 17). The normal table-image header ROI cannot see the entity name, so `--header-fallback auto` renders the top 25% of the full PDF page at 4x and runs a separate Vision pass over that image. The fallback only runs when `bank_name` or `statement_date` is still empty; it never overwrites an existing value. Recovered values set `bank_name_source = ocr_full_page_header`; the image is kept as `images/page_XXXX_header_fallback.png`, raw boxes are written to `ocr_raw.csv` with `region=header_fallback`, and diagnostics use the `header_fallback_*` prefix. Use `--header-fallback off` to disable the extra pass.
+
 ## Chinese output policy
 
 - `label_raw` is the exact OCR text returned by Vision.
