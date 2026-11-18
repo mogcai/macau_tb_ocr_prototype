@@ -1,8 +1,8 @@
-# macOS Setup — Macau Gazette Balancete OCR v0.3.0
+# macOS Setup — Macau Gazette Balancete OCR v0.3.1
 
 ## Recommended route for M1 / M2 / M3 / M4
 
-v0.2 uses **Apple Vision as the default OCR engine on macOS**. It is a native macOS framework called by a small Swift worker. You do not need to install PaddlePaddle or PaddleOCR to use `--engine vision`.
+v0.3 uses **Apple Vision as the default OCR engine on macOS**. It is a native macOS framework called by a small Swift worker. You do not need to install PaddlePaddle or PaddleOCR to use `--engine vision`.
 
 ### 1. Check architecture and install Swift compiler
 
@@ -27,7 +27,7 @@ The Vision framework is part of macOS. No Python binding / Paddle runtime is nee
 Use Python 3.10 or 3.11 for a conservative setup:
 
 ```bash
-cd /path/to/macau_tb_ocr_prototype_v0.2
+cd /path/to/macau_tb_ocr_prototype_v0.3
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
@@ -90,7 +90,7 @@ python -m pip install paddlepaddle==3.3.0 \
 python -m pip install -r requirements-paddle.txt
 ```
 
-Then run with `--engine paddle --device cpu`. Paddle is not the v0.2 macOS default.
+Then run with `--engine paddle --device cpu`. Paddle is not the v0.3 macOS default.
 
 ## Intel Mac
 

@@ -1,6 +1,6 @@
-# macOS Vision OCR — v0.2 integration
+# macOS Vision OCR — v0.3 integration
 
-In v0.2 Apple Vision is integrated into `macau_tb_ocr.py` as `--engine vision`; this is no longer a standalone smoke test only.
+Since v0.2 Apple Vision is integrated into `macau_tb_ocr.py` as `--engine vision`; this is no longer a standalone smoke test only.
 
 ## Design
 
@@ -18,7 +18,7 @@ In v0.2 Apple Vision is integrated into `macau_tb_ocr.py` as `--engine vision`; 
 - `--amount-verifier tesseract` and `--row-structure auto|projection` are experimental and off/clustered by default. They add evidence columns and structure hints but produced no measurable accuracy or row-count improvement on issue 45; see the section below before enabling them.
 - All OCR text, confidence and pixel coordinates are exported to `ocr_raw.csv`.
 
-Apple's Vision API supports language-prioritised recognition and fast/accurate recognition levels. It also exposes `minimumTextHeight`, a relative text-size threshold; v0.2 sets it to 0.004 by default to retain small text in tall TB images. Vision accepts `usesLanguageCorrection` but has no Chinese lexicon; on the issue-45 sample it changed nothing for `zh-Hant` and only repaired Portuguese accents/typos. It is therefore applied to text regions only, never to the numeric columns.
+Apple's Vision API supports language-prioritised recognition and fast/accurate recognition levels. It also exposes `minimumTextHeight`, a relative text-size threshold; the worker sets it to 0.004 by default to retain small text in tall TB images. Vision accepts `usesLanguageCorrection` but has no Chinese lexicon; on the issue-45 sample it changed nothing for `zh-Hant` and only repaired Portuguese accents/typos. It is therefore applied to text regions only, never to the numeric columns.
 
 ## Installation
 
@@ -115,8 +115,7 @@ amount on the other five GT pages. Cost: ~190 cell re-reads, about +30 s for the
 `labels/label_lexicon.csv` maps OCR account names to a standard vocabulary. The
 worker never changes `label_raw`; mapped values go to `label_standard` with a
 status (`exact`/`fuzzy`/`unmatched`/`continuation`) and score. Matching folds
-Traditional Chinese variants and Portuguese case/accent/spacing. Fuzzy results
-below 0.70 and near-miss unmatched amounts enter review.
+Traditional Chinese variants and Portuguese case/accent/spacing. Fuzzy results below 0.90 (`label_standard_low_similarity` / `label_standard_fuzzy_review`) and near-miss unmatched amounts enter review; only ≥0.90 is a low-risk candidate.
 
 Dash sub-items (`-澳門元`, `- Patacas`) are linked to the nearest preceding parent
 via `label_role` / `parent_label_standard` / `label_path`; dash-less sub-items
@@ -124,9 +123,10 @@ are reclassified only on an exact child hit. A fragment below a label-only row
 is merged into `label_combined_raw` / `label_standard` only when the combined
 text extends the previous standard.
 
-Measured on the 379-row verified GT: raw label exact 79.95% → **97.89%**
-standardised exact, with 3 wrong mappings (2 are row-shift/data issues) and 5
-unmatched. Rebuild with `tools/build_label_lexicon.py`; measure with
+Measured on the 379-row verified GT: raw label exact 79.42% → **98.15%**
+standardised exact, with 3 wrong mappings (2 are row-shift/data issues) and 4
+unmatched. This is in-sample (lexicon seeded from the same GT); validate on a
+new issue before claiming cross-issue accuracy. Rebuild with `tools/build_label_lexicon.py`; measure with
 `tools/gt_label_report.py`.
 
 ## Region and coordinate rules

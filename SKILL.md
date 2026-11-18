@@ -1,4 +1,4 @@
-# Agent Skill: Macau Gazette Balancete OCR v0.3.0
+# Agent Skill: Macau Gazette Balancete OCR v0.3.1
 
 ## Purpose
 
@@ -12,7 +12,7 @@ Process Macau Government Gazette PDFs and extract bank / financial-institution B
 - `MACOS_SETUP.md`: Apple Silicon / macOS installation instructions.
 - `MACOS_VISION_OCR.md`: Apple Vision architecture, ROI and language constraints.
 
-## 2. v0.2 architecture
+## 2. Architecture (v0.3)
 
 ### Input and extraction
 
@@ -184,7 +184,7 @@ A run is complete only when every TB page is present, source images exist, row/c
 
 - `labels/label_lexicon.csv` is seeded from verified GT and may be curated by hand. Matching is exact or fuzzy after language-specific folding: Traditional Chinese variant characters, and Portuguese case/accent/spacing.
 - `label_raw` is never overwritten. `label_standard` and `label_standard_id` hold the mapped standard name; `label_standard_status` is `exact` / `fuzzy` / `unmatched` / `continuation`, plus `label_standard_score`.
-- Low-similarity fuzzy matches and near-miss unmatched labels with amounts are routed to review (`label_standard_low_similarity`, `label_standard_uncertain`). Never treat a fuzzy mapping as verified data.
+- Fuzzy matches below 0.70 (`label_standard_low_similarity`) and 0.70–0.90 (`label_standard_fuzzy_review`) are routed to review; only ≥0.90 is a low-risk candidate. Near-miss unmatched labels with amounts are `label_standard_uncertain`. Never treat a fuzzy mapping as verified data.
 - Dash sub-items are children of the nearest preceding parent: `label_role`, `parent_label_raw`, `parent_label_standard`, `label_path`. Dash-less sub-items (`PATACAS`) are reclassified only on an exact child-lexicon hit; orphans are flagged.
 - A label wrapped onto the line above a row with amounts is merged into `label_combined_raw` / `label_standard` only when the combined text extends the previous standard; the original rows and `label_raw` stay intact. Flagged `label_continuation_merged`.
 - Rebuild the lexicon with `tools/build_label_lexicon.py` after adding verified labels; measure with `tools/gt_label_report.py`.

@@ -1,6 +1,13 @@
-# 澳門公報 Balancete OCR Prototype v0.3.0
+# 澳門公報 Balancete OCR Prototype v0.3.1
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+
+## v0.3.1 修正
+
+1. **收緊 fuzzy 覆核**：0.70–0.90 的標準化配對一律標 `label_standard_fuzzy_review`；低於 0.70 標 `label_standard_low_similarity`，全部都入覆核。
+2. **詞庫整理**：`總收人` 併入 `總收入`；葡文 `prestadas`／`prestados` 合併；加入查/査、抵/扺、資/资 等異體字。
+3. **Orphan 統計修正**：`documents.csv` 會正確顯示 orphan child 數量。
+4. **GT 標籤報告**：`gt_label_report.py` 改用圖片高度配對，並列出 unmatched 及 exact/fuzzy/unmatched 統計。
 
 ## v0.3.0 重點升級
 
@@ -55,7 +62,7 @@ xcode-select --install
 建立環境及安裝 Python 基礎套件：
 
 ```bash
-cd /path/to/macau_tb_ocr_prototype_v0.2
+cd /path/to/macau_tb_ocr_prototype_v0.3
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel

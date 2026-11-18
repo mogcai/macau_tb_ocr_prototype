@@ -1,10 +1,17 @@
-# AI Agent Quick Start — Macau Gazette Balancete OCR v0.3.0
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.3.1
 
 Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`.
 
 ## Purpose
 
 Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review.
+
+## v0.3 changes
+
+- Standard-label lexicon (`labels/label_lexicon.csv`) maps OCR names to `label_standard`; `label_raw` is never overwritten. Fuzzy 0.70–0.90 mappings are reviewed.
+- Parent/child hierarchy for `-澳門元`, `-外幣`, `- Patacas` and dash-less sub-items (`label_role`, `parent_label_standard`, `label_path`).
+- Wrapped labels are merged into `label_combined_raw` / `label_standard` only when the combined text extends the previous standard.
+- Ground-truth tooling and true CER (total edits ÷ total GT characters); see `ground_truth/README.md`.
 
 ## v0.2 changes
 

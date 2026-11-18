@@ -43,6 +43,14 @@
 
 **版本定位：** 改善實際公報處理能力，為後續批量擷取及自動化建立基礎。
 
+### v0.3.1 — 標籤標準化收緊
+
+- Fuzzy mapping 0.70–0.90 一律標 `label_standard_fuzzy_review` 入覆核；<0.70 維持 `label_standard_low_similarity`。≥0.90 才視為低風險候選。
+- 詞庫清理：`總收人` 併入 `總收入`（alias）；`prestadas`／`prestados` 葡文印刷變體合併；加入 査/查、扺/抵、资/資 等異體字正規化。
+- 修正 `documents.csv` 的 `label_orphan_children` 統計（之前固定為 0）。
+- `gt_label_report.py` 改用頁面高度配對、列出 unmatched 及 exact/fuzzy/unmatched 數量。
+- 版本同步至 v0.3.1。
+
 ### v0.3.0 — 標準標籤詞表
 
 - **標準標籤對照**：由已核對 GT 建立 `labels/label_lexicon.csv`，OCR 標籤會對應到最相似嘅標準名稱，寫入獨立欄位 `label_standard`；`label_raw` 永不覆蓋。
@@ -60,16 +68,20 @@
 
 ## 版本比較
 
-| 功能 | v0.1 | v0.2 |
-|---|---|---|
-| PDF 表格影像擷取 | ✓ | ✓ |
-| PaddleOCR | ✓ | 可選 |
-| Apple Vision OCR | — | ✓ |
-| 繁體中文處理 | 基本 | 改善 |
-| 葡文及英文處理 | 基本 | 改善 |
-| 千分位及小數點格式 | 基本 | 支援兩種格式 |
-| OCR 標點修正 | — | ✓ |
-| 信心度及人工覆核 | 基本 | 改善 |
+| 功能 | v0.1 | v0.2 | v0.3 |
+|---|---|---|---|
+| PDF 表格影像擷取 | ✓ | ✓ | ✓ |
+| PaddleOCR | ✓ | 可選 | 可選 |
+| Apple Vision OCR | — | ✓ | ✓ |
+| 繁體中文處理 | 基本 | 改善 | 改善 |
+| 葡文及英文處理 | 基本 | 改善 | 改善 |
+| 千分位及小數點格式 | 基本 | 支援兩種格式 | 支援兩種格式 |
+| OCR 標點修正 | — | ✓ | ✓ |
+| 信心度及人工覆核 | 基本 | 改善 | 改善 |
+| 標準科目詞表 | — | — | ✓ |
+| 科目父子層 | — | — | ✓ |
+| 跨行標籤合併 | — | — | ✓ |
+| Ground Truth / CER 評分 | — | — | ✓ |
 
 ## 系統需求
 
@@ -80,7 +92,7 @@
 
 v0.2 在 macOS 上預設使用 Apple Vision；PaddleOCR 及 Tesseract 可按需要選用。
 
-## 安裝及執行（v0.2）
+## 安裝及執行（v0.3）
 
 ```bash
 # 建立虛擬環境
@@ -156,5 +168,5 @@ python -m unittest discover -s tests -v
 ---
 
 **Project:** Macau Gazette Balancete OCR  
-**Current prototype:** v0.3.0  
+**Current prototype:** v0.3.1  
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

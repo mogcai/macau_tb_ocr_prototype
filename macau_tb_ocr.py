@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Macau Gazette Balancete OCR prototype v0.2.
+"""Macau Gazette Balancete OCR prototype v0.3.1.
 
 Extract embedded statement images, run native Apple Vision on macOS or an optional
 PaddleOCR/Tesseract backend, reconstruct Account/Debit/Credit rows, normalize
@@ -29,7 +29,7 @@ from typing import Any, Iterable
 
 import fitz  # PyMuPDF
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 TB_TERMS = (
     "試算表", "BALANCETE", "TRIAL BALANCE", "BALANCE OF THE LEDGER",
     "BALANCETE DO RAZAO", "BALANCETE DO RAZÃO",
@@ -1592,6 +1592,11 @@ LABEL_ZH_VARIANTS = str.maketrans({
     "産": "產",
     "価": "價",
     "歴": "歷",
+    "査": "查",
+    "扺": "抵",
+    "资": "資",
+    "総": "總",
+    "収": "收",
 })
 # Fuzzy thresholds are deliberately conservative: a wrong account name is more
 # expensive than an unmatched one, which stays visible in the output.
@@ -1824,8 +1829,13 @@ def apply_label_review(rows: list[dict[str, Any]]) -> None:
                 and score >= 0.55
                 and (row.get("debit_amount") or row.get("credit_amount"))):
             reasons.append("label_standard_uncertain")
-        if status == "fuzzy" and score < 0.70:
-            reasons.append("label_standard_low_similarity")
+        if status == "fuzzy":
+            if score < 0.70:
+                reasons.append("label_standard_low_similarity")
+            elif score < 0.90:
+                # A 0.70-0.90 Chinese match can be a one-character OCR error on
+                # a short account name; keep it visible for human review.
+                reasons.append("label_standard_fuzzy_review")
         if not reasons:
             continue
         existing = [x for x in (row.get("review_reason") or "").split(";") if x]
@@ -2109,6 +2119,9 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
             if lexicon:
                 label_diagnostics = standardize_labels(rows, lexicon)
                 build_label_hierarchy(rows)
+                label_diagnostics["label_orphan_children"] = sum(
+                    1 for row in rows if row.get("label_role") == "orphan_child"
+                )
                 label_diagnostics["label_continuation_rows"] = detect_label_continuations(
                     rows, lexicon
                 )
@@ -2189,7 +2202,7 @@ def parse_page_range(value: str, total_pages: int) -> tuple[int, int]:
 
 def build_parser() -> argparse.ArgumentParser:
     default_engine = "vision" if sys.platform == "darwin" else "paddle"
-    p = argparse.ArgumentParser(description="澳門公報 Balancete OCR / Excel / CSV prototype v0.2")
+    p = argparse.ArgumentParser(description="澳門公報 Balancete OCR / Excel / CSV prototype v0.3.1")
     p.add_argument("pdf", help="輸入 PDF 路徑")
     p.add_argument("--outdir", default="output", help="輸出資料夾（預設：output）")
     p.add_argument("--pages", default="all", help="處理頁數，例如 7-32；預設 all")

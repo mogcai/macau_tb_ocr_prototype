@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -40,11 +40,23 @@ def main() -> int:
     lexicon = load_label_lexicon(args.lexicon)
     if not lexicon:
         raise SystemExit(f"找不到詞表：{args.lexicon}")
+    gt_dir = Path(args.gt_dir)
+    run_dir = Path(args.run)
     gt_rows = [
-        row for row in read_csv(Path(args.gt_dir) / "gt_rows.csv")
+        row for row in read_csv(gt_dir / "gt_rows.csv")
         if str(row.get("verified", "")).strip() in {"1", "true", "yes", "y"}
     ]
-    run_rows = read_csv(Path(args.run) / "tb_rows.csv")
+    run_rows = read_csv(run_dir / "tb_rows.csv")
+    run_docs = {
+        int(row["pdf_page"]): row
+        for row in read_csv(run_dir / "documents.csv")
+        if row.get("pdf_page")
+    } if (run_dir / "documents.csv").exists() else {}
+    gt_pages = {
+        int(row["pdf_page"]): row
+        for row in read_csv(gt_dir / "gt_pages.csv")
+        if row.get("pdf_page")
+    } if (gt_dir / "gt_pages.csv").exists() else {}
 
     gt_by: dict[str, list[dict[str, str]]] = defaultdict(list)
     run_by: dict[str, list[dict[str, str]]] = defaultdict(list)
@@ -55,6 +67,8 @@ def main() -> int:
 
     raw_total = raw_exact = std_total = std_exact = 0
     wrong: list[tuple[str, str, str, str, str]] = []
+    unmatched: list[tuple[str, str, str, str]] = []
+    gt_status: Counter[str] = Counter()
     for page in sorted(gt_by, key=int):
         if page not in run_by:
             continue
@@ -74,8 +88,17 @@ def main() -> int:
         standardize_labels(standardised, lexicon)
         build_label_hierarchy(standardised)
         detect_label_continuations(standardised, lexicon)
-        match = match_rows(gt_page, run_by[page], 0, 0)
+        try:
+            gt_height = float(gt_pages.get(int(page), {}).get("image_height") or 0)
+        except ValueError:
+            gt_height = 0.0
+        try:
+            run_height = float(run_docs.get(int(page), {}).get("image_height") or 0)
+        except ValueError:
+            run_height = 0.0
+        match = match_rows(gt_page, run_by[page], gt_height, run_height)
         for index, gt in enumerate(gt_page):
+            gt_status[standardised[index].get("label_standard_status", "")] += 1
             run_index = match.get(index)
             if run_index is None:
                 continue
@@ -96,14 +119,27 @@ def main() -> int:
             elif actual_std:
                 wrong.append((page, gt.get("gt_row_id", ""), expected_std,
                               actual_std, run.get("label_raw", "")))
+            else:
+                unmatched.append((page, gt.get("gt_row_id", ""),
+                                  expected_std, run.get("label_raw", "")))
 
+    run_status = Counter(row.get("label_standard_status", "") for row in run_rows)
     print(f"Raw label exact       : {raw_exact}/{raw_total} "
           f"({raw_exact / raw_total:.2%})" if raw_total else "Raw: no rows")
     print(f"Standardised exact    : {std_exact}/{std_total} "
           f"({std_exact / std_total:.2%})" if std_total else "Standardised: no rows")
+    print("Run label status      : " + ", ".join(
+        f"{key or '(blank)'}={value}" for key, value in sorted(run_status.items())
+    ))
+    print("GT label status       : " + ", ".join(
+        f"{key or '(blank)'}={value}" for key, value in sorted(gt_status.items())
+    ))
     print(f"Wrong standardised map: {len(wrong)}")
     for page, row_id, expected, actual, raw in wrong[:20]:
         print(f"  p{page} {row_id} raw={raw!r} expected={expected!r} got={actual!r}")
+    print(f"Unmatched by run      : {len(unmatched)}")
+    for page, row_id, expected, raw in unmatched[:20]:
+        print(f"  p{page} {row_id} raw={raw!r} expected={expected!r}")
     return 0
 
 

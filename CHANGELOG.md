@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.3.1
+
+- **Tightened fuzzy label acceptance:** fuzzy 0.70–0.90 now always adds `label_standard_fuzzy_review`; below 0.70 adds `label_standard_low_similarity`. Only ≥0.90 is treated as a low-risk candidate. Exact matches remain automatic.
+- **Lexicon curation:** merged printed variants (`總收人` into `總收入`; `prestadas`/`prestados` Portuguese forms) and added 查/査、抵/扺、資/资 異體字 folding. Fixed the corresponding GT labels (`其他固定資產`, `抵押賬`, `其他備查賬`). Lexicon now 120 entries; the remaining near-duplicate audit only shows genuinely different accounts (`本地`/`外地`, `Outra Reserva`/`Outras reservas`).
+- **Orphan statistics fix:** `documents.csv` now reports `label_orphan_children` correctly (previously always 0).
+- **`gt_label_report.py`:** matches rows with page image heights (same scale logic as `gt_score`), prints exact/fuzzy/unmatched/continuation counts for run and GT, and lists unmatched raw labels.
+- Measured after retune: raw label exact 79.42% → **standardised exact 98.15%** (372/379), 3 wrong mappings (2 row-shift/data issues), 4 unmatched. CER 0.0232 (109/4704 characters). Amounts remain 100% exact with 0 auto-pass wrong.
+- Tests: 92 passing. Version bumped to v0.3.1.
+
+**Caveat:** the lexicon is still seeded from the same verified GT used for this score. The 98.15% is an in-sample measurement, not proof of cross-issue generalisation; validate on Issue 46 (or another gazette) before claiming production accuracy.
+
 ## v0.3.0
 
 - Added a standard-label lexicon (`labels/label_lexicon.csv`, seeded from verified GT) and `--label-lexicon`. OCR is never overwritten: results go to `label_standard`, `label_standard_id`, `label_standard_status`, `label_standard_score`.

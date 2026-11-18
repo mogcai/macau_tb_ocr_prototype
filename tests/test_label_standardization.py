@@ -52,6 +52,14 @@ class StandardizationTests(unittest.TestCase):
         self.assertLess(rows[1]["label_standard_score"], 0.70)
         self.assertIn("label_standard_low_similarity", rows[1]["review_reason"])
 
+    def test_mid_fuzzy_mapping_is_reviewed(self):
+        rows = self.standardize([
+            row("其他流動貫產", debit="1.00"),
+        ])
+        self.assertEqual(rows[0]["label_standard"], "其他流動資產")
+        self.assertEqual(rows[0]["label_standard_status"], "fuzzy")
+        self.assertIn("label_standard_fuzzy_review", rows[0]["review_reason"])
+
     def test_dash_child_gets_parent_path(self):
         rows = self.standardize([
             row("現金"),
