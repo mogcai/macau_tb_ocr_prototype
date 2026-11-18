@@ -1,32 +1,37 @@
 {
   "database": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/macau_balancete.sqlite",
-  "app_version": "0.4.0",
-  "schema_version": 1,
-  "generated_at": "2026-11-18T05:32:32+00:00",
+  "app_version": "0.4.1",
+  "schema_version": 2,
+  "generated_at": "2026-11-18T06:10:10+00:00",
   "run_dirs": [
     "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v11_issue45_2026_full",
     "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v06_issue44_2026"
   ],
   "runs": [
     {
-      "run_id": "run_f93093a627346b89",
+      "run_id": "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7",
       "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v11_issue45_2026_full",
       "status": "imported",
       "tb_pages": 26,
       "line_items": 1587,
-      "review_rows": 840
+      "review_rows": 840,
+      "published": true,
+      "verification_restored": 0
     },
     {
-      "run_id": "run_cf1f9428632b7c8f",
+      "run_id": "run_0bc38a0355ff70a78a3a1e30c37b8459d5aa9bdc62d613df12cf94d79f9bc802",
       "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v06_issue44_2026",
       "status": "imported",
       "tb_pages": 5,
       "line_items": 322,
-      "review_rows": 212
+      "review_rows": 212,
+      "published": true,
+      "verification_restored": 0
     }
   ],
   "totals": {
     "runs": 2,
+    "published_runs": 2,
     "banks": 31,
     "pages": 31,
     "statements": 31,
@@ -62,23 +67,23 @@
     "rows": 15
   },
   "warnings": [
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:澳門國際銀行股份有限公司: 3 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:海通國際證券有限公司澳門分行: 13 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:bancoindustrialecomercialdachinamacausa: 2 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:中國光大銀行股份有限公司澳門分行: 1 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:創興銀行有限公司澳門分行: 6 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:葡萄牙商業銀行有限公司澳門分行bancocomercialportuguessasucursaldemacau: 62 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:澳門通股份有限公司: 2 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:中國銀行澳門股份有限公司: 2 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:中國銀行股份有限公司澳門分行: 6 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:澳門商業銀行股份有限公司: 1 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:standardcharteredbankmacaubranch: 2 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:thehongkongandshanghaibankingcorporationlimitedsucursaldemacau: 1 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:立橋銀行股份有限公司: 1 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:大豐銀行股份有限公司: 1 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:光大證劵投資服務香港有限公司澳門分行: 13 rows have no standard label",
-    "run_f93093a627346b89:2026-11-11|2026-09-30|bank:banconacionalultramarinosa: 10 rows have no standard label",
-    "run_cf1f9428632b7c8f:2026-11-04|2026-09-30|bank:交通銀行股份有限公司澳門分行: 4 rows have no standard label",
-    "run_cf1f9428632b7c8f:2026-11-04|2026-09-30|bank:第一商業銀行股份有限公司澳門分行: 2 rows have no standard label"
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:澳門國際銀行股份有限公司: 3 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:海通國際證券有限公司澳門分行: 13 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:bancoindustrialecomercialdachinamacausa: 2 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:中國光大銀行股份有限公司澳門分行: 1 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:創興銀行有限公司澳門分行: 6 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:葡萄牙商業銀行有限公司澳門分行bancocomercialportuguessasucursaldemacau: 62 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:澳門通股份有限公司: 2 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:中國銀行澳門股份有限公司: 2 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:中國銀行股份有限公司澳門分行: 6 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:澳門商業銀行股份有限公司: 1 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:standardcharteredbankmacaubranch: 2 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:thehongkongandshanghaibankingcorporationlimitedsucursaldemacau: 1 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:立橋銀行股份有限公司: 1 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:大豐銀行股份有限公司: 1 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:光大證劵投資服務香港有限公司澳門分行: 13 rows have no standard label",
+    "run_76fbf1edfb2938779f041b9a46ae5a0a125aa96c1e4554a010f68fe86e3b2bc7:2026-11-11|2026-09-30|bank:banconacionalultramarinosa: 10 rows have no standard label",
+    "run_0bc38a0355ff70a78a3a1e30c37b8459d5aa9bdc62d613df12cf94d79f9bc802:2026-11-04|2026-09-30|bank:交通銀行股份有限公司澳門分行: 4 rows have no standard label",
+    "run_0bc38a0355ff70a78a3a1e30c37b8459d5aa9bdc62d613df12cf94d79f9bc802:2026-11-04|2026-09-30|bank:第一商業銀行股份有限公司澳門分行: 2 rows have no standard label"
   ]
 }

@@ -8,9 +8,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import tools.build_database as dbmod  # noqa: E402
 from tools.build_database import (  # noqa: E402
+    SCHEMA_VERSION,
+    _run_id_for,
     bank_key_for,
     build_database,
     load_bank_aliases,
@@ -236,6 +240,7 @@ class DatabaseTests(unittest.TestCase):
         db2 = self.root / "aliased.sqlite"
         report = build_database(db2, [run], aliases_path=alias_path)
         self.assertEqual(report["totals"]["statements"], 1)
+        self.assertEqual(report["runs"][0]["tb_pages"], 2)
         conn = sqlite3.connect(db2)
         try:
             row = conn.execute(
@@ -359,6 +364,244 @@ class DatabaseTests(unittest.TestCase):
         all_rows = self.query("SELECT COUNT(*) FROM v_all_line_items")[0][0]
         self.assertEqual(current, 2)
         self.assertEqual(all_rows, 2)
+
+    def _verify_first_row(self) -> int:
+        conn = sqlite3.connect(self.db)
+        try:
+            line_item_id = conn.execute(
+                "SELECT MIN(line_item_id) FROM line_items"
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO row_verification "
+                "(line_item_id, status, verified_at, verified_by, note) "
+                "VALUES (?, 'verified', '2026-11-18', 'reviewer', 'checked')",
+                (line_item_id,),
+            )
+            conn.commit()
+            return int(line_item_id)
+        finally:
+            conn.close()
+
+    def test_statement_index_exposes_verified_and_unverified_totals(self):
+        run = make_run(self.root, [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        build_database(self.db, [run])
+        self._verify_first_row()
+        row = self.query(
+            "SELECT debit_total_cents, debit_verified_cents, "
+            "credit_total_cents, credit_verified_cents, verified_rows "
+            "FROM v_statement_index"
+        )[0]
+        self.assertEqual(row["debit_total_cents"], 200)
+        self.assertEqual(row["debit_verified_cents"], 100)
+        self.assertEqual(row["credit_total_cents"], 0)
+        self.assertEqual(row["credit_verified_cents"], 0)
+        self.assertEqual(row["verified_rows"], 1)
+
+    def test_replace_preserves_verification_when_row_matches(self):
+        run = make_run(self.root, [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        build_database(self.db, [run])
+        self._verify_first_row()
+        report = build_database(self.db, [run], replace=True)
+        rows = self.query(
+            "SELECT status, verified_by, note FROM row_verification"
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["status"], "verified")
+        self.assertEqual(rows[0]["verified_by"], "reviewer")
+        self.assertEqual(report["runs"][0]["verification_restored"], 1)
+
+    def test_replace_can_explicitly_discard_verification(self):
+        run = make_run(self.root, [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        build_database(self.db, [run])
+        self._verify_first_row()
+        report = build_database(
+            self.db, [run], replace=True, discard_verification=True
+        )
+        self.assertEqual(
+            self.query("SELECT COUNT(*) FROM row_verification")[0][0], 0
+        )
+        self.assertTrue(any("discarding 1 verification" in warning
+                            for warning in report["warnings"]))
+
+    def test_replace_aborts_if_verified_row_fingerprint_changes(self):
+        run = make_run(self.root, [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        with mock.patch.object(dbmod, "_run_id_for", return_value="run_fixed"):
+            build_database(self.db, [run])
+            self._verify_first_row()
+
+            with (run / "tb_rows.csv").open(encoding="utf-8-sig") as handle:
+                rows = list(csv.DictReader(handle))
+            rows[0]["label_raw"] = "CHANGED LABEL"
+            write_csv(run / "tb_rows.csv", ROW_FIELDS, rows)
+
+            with self.assertRaises(RuntimeError):
+                build_database(self.db, [run], replace=True)
+
+        # The failed replacement must roll back, leaving the old row and its
+        # verification intact.
+        self.assertEqual(
+            self.query("SELECT COUNT(*) FROM row_verification")[0][0], 1
+        )
+        label = self.query(
+            "SELECT label_raw FROM line_items ORDER BY row_order LIMIT 1"
+        )[0]["label_raw"]
+        self.assertEqual(label, "現金")
+
+    def test_published_run_beats_newer_unpublished_test_run(self):
+        run_a = make_run(self.root / "a", [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": [{
+                "label_raw": "現金", "label_standard": "現金",
+                "label_standard_status": "exact", "debit_amount": "1.00",
+            }],
+        }])
+        run_b = make_run(self.root / "b", [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": [{
+                "label_raw": "現金", "label_standard": "現金",
+                "label_standard_status": "exact", "debit_amount": "2.00",
+            }],
+        }])
+        first = build_database(
+            self.db, [run_a], publish=True, published_by="reviewer"
+        )
+        self.assertTrue(first["runs"][0]["published"])
+        second = build_database(self.db, [run_b])
+        self.assertFalse(second["runs"][0]["published"])
+        current = self.query(
+            "SELECT debit_amount FROM v_current_line_items"
+        )[0]["debit_amount"]
+        published = self.query(
+            "SELECT debit_amount FROM v_published_line_items"
+        )[0]["debit_amount"]
+        self.assertEqual(current, "1.00")
+        self.assertEqual(published, "1.00")
+
+        third = build_database(
+            self.db, [run_b], publish=True, published_by="reviewer"
+        )
+        self.assertEqual(third["runs"][0]["status"], "skipped_existing_published")
+        current = self.query(
+            "SELECT debit_amount FROM v_current_line_items"
+        )[0]["debit_amount"]
+        self.assertEqual(current, "2.00")
+        flags = {
+            row["run_id"]: row["is_published"]
+            for row in self.query("SELECT run_id, is_published FROM runs")
+        }
+        self.assertEqual(flags[first["runs"][0]["run_id"]], 0)
+        self.assertEqual(flags[third["runs"][0]["run_id"]], 1)
+
+    def test_run_id_includes_pdf_bytes_and_report_config(self):
+        run = make_run(self.root, [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        report = json.loads((run / "run_report.json").read_text(encoding="utf-8"))
+        first = _run_id_for(run, report)
+        self.assertEqual(len(first), 4 + 64)
+
+        report["vision_level"] = "fast"
+        second = _run_id_for(run, report)
+        self.assertNotEqual(first, second)
+
+        pdf_path = self.root / "source.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 one")
+        report["source_pdf"] = str(pdf_path)
+        third = _run_id_for(run, report)
+        pdf_path.write_bytes(b"%PDF-1.4 two")
+        fourth = _run_id_for(run, report)
+        self.assertNotEqual(third, fourth)
+
+    def test_schema_v1_database_is_migrated_and_existing_runs_published(self):
+        conn = sqlite3.connect(self.db)
+        try:
+            conn.executescript("""
+                CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                INSERT INTO schema_meta VALUES ('schema_version', '1');
+                CREATE TABLE runs (
+                    run_id TEXT PRIMARY KEY,
+                    run_dir TEXT NOT NULL,
+                    source_pdf TEXT,
+                    app_version TEXT,
+                    imported_at TEXT NOT NULL,
+                    tb_page_count INTEGER NOT NULL DEFAULT 0,
+                    line_item_count INTEGER NOT NULL DEFAULT 0,
+                    review_row_count INTEGER NOT NULL DEFAULT 0,
+                    config_json TEXT,
+                    run_report_json TEXT
+                );
+                INSERT INTO runs VALUES (
+                    'run_old', 'old_dir', 'old.pdf', '0.3.1', '2026-01-01',
+                    1, 1, 0, '{}', '{}'
+                );
+                INSERT INTO runs VALUES (
+                    'run_old2', 'old_dir2', 'old.pdf', '0.3.1', '2026-02-01',
+                    1, 1, 0, '{}', '{}'
+                );
+            """)
+            conn.commit()
+        finally:
+            conn.close()
+
+        run = make_run(self.root, [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        build_database(self.db, [run])
+        columns = {
+            row[1] for row in self.query("PRAGMA table_info(runs)")
+        }
+        self.assertTrue({"source_pdf_sha256", "is_published",
+                         "published_at", "published_by"} <= columns)
+        version = self.query(
+            "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+        )[0]["value"]
+        self.assertEqual(int(version), SCHEMA_VERSION)
+        flags = {
+            row["run_id"]: row["is_published"]
+            for row in self.query("SELECT run_id, is_published FROM runs")
+        }
+        self.assertEqual(flags["run_old"], 0)
+        self.assertEqual(flags["run_old2"], 1)
+
+    def test_newer_schema_version_is_refused(self):
+        conn = sqlite3.connect(self.db)
+        try:
+            conn.executescript("""
+                CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                INSERT INTO schema_meta VALUES ('schema_version', '999');
+            """)
+            conn.commit()
+        finally:
+            conn.close()
+        run = make_run(self.root, [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        with self.assertRaises(RuntimeError):
+            build_database(self.db, [run])
+
+    def test_alias_drift_is_reported_for_already_imported_run(self):
+        run = make_run(self.root, [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        build_database(self.db, [run])
+        alias_path = self.root / "aliases.csv"
+        write_csv(alias_path, ["alias", "canonical", "bank_key", "note"], [{
+            "alias": "BANK A", "canonical": "BANCO A", "bank_key": "",
+            "note": "renamed",
+        }])
+        report = build_database(self.db, [run], aliases_path=alias_path)
+        self.assertTrue(any("bank alias mapping changed" in warning
+                            for warning in report["warnings"]))
+        with self.assertRaises(RuntimeError):
+            build_database(
+                self.db, [run], aliases_path=alias_path, publish=True
+            )
 
     def test_empty_label_path_gets_parent_path(self):
         run = make_run(self.root, [{

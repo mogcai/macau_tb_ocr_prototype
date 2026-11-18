@@ -1,10 +1,19 @@
-# AI Agent Quick Start — Macau Gazette Balancete OCR v0.4.0
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.4.1
 
 Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`.
 
 ## Purpose
 
 Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review.
+
+## v0.4.1 changes
+
+- `--replace` snapshots `row_verification` and restores it only when `statement_id + row_order` and the OCR fingerprint match. A mismatch rolls back; `--discard-verification` is the explicit destructive escape hatch.
+- `runs.is_published` plus `--publish` separate staging imports from the current dataset. `v_current_*` prefers published runs; `v_published_*` is the strict published view.
+- `v_statement_index` reports `debit_verified_cents` / `credit_verified_cents` separately from all-row totals.
+- Run IDs use full SHA-256 over the source PDF bytes, CSV outputs and `run_report.json`. Schema migrations now run automatically (schema v2).
+- `tb_pages` is the page count, not the statement count. Alias drift on an already imported run emits a warning.
+- `VERSION` is the project version source of truth; `SCHEMA_VERSION` is independent.
 
 ## v0.4 changes
 
@@ -91,14 +100,17 @@ After individual runs are inspected:
 
 ```bash
 python tools/build_database.py \
-  output_v08_issue45_2026 output_v06_issue44_2026 \
-  --db data/macau_balancete.sqlite
+  output_v11_issue45_2026_full output_v06_issue44_2026 \
+  --db data/macau_balancete.sqlite \
+  --publish --published-by reviewer
 ```
 
-Use `--replace` only when you intend to replace an already-imported run. Read the
-generated `*_import_report.json`, then check `v_statement_index` and
-`v_natural_key_duplicates` before analysis. Do not treat `auto_check_pass` as
-verified financial data.
+Imports are staging observations until `--publish` marks a run as the current
+dataset for its source PDF. Use `--replace` only when you intend to replace an
+already-imported run; it preserves `row_verification` only when the row identity
+and OCR fingerprint match. Read the generated `*_import_report.json`, then check
+`v_statement_index`, `v_run_index` and `v_natural_key_duplicates` before
+analysis. Do not treat `auto_check_pass` as verified financial data.
 
 ## Numeric-format behaviour
 
@@ -159,6 +171,18 @@ These values are recovered candidates, not silently approved financial data. The
 
 On macOS, engine defaults to Vision. On non-macOS, it defaults to Paddle. Paddle is optional and requires a separately installed PaddlePaddle backend plus `requirements-paddle.txt`.
 
+Database importer options:
+
+```text
+--db data/macau_balancete.sqlite
+--replace
+--discard-verification
+--publish
+--published-by NAME
+--bank-aliases labels/bank_aliases.csv
+--report PATH
+```
+
 ## Ground truth benchmark
 
 Do not claim OCR accuracy or a speed improvement without a human-verified benchmark. Build the worksheet from a finished run, verify every row against the image/crops, then score:
@@ -182,5 +206,6 @@ A run is complete only when:
 5. All separator-recovered, ambiguous-format, low-confidence, blank-label and fallback-boundary rows are reviewed or marked pending.
 6. The run report distinguishes extracted, normalized, recovered, and human-verified data.
 7. If a SQLite import was run, `*_import_report.json` was reviewed; duplicate/missing labels, missing bank/date identity and `--replace` decisions are explicit.
+8. Formal analysis uses `v_published_*`; staging imports are not treated as the current dataset until `--publish`.
 
 Never claim accuracy or improved speed without a manually checked ground-truth sample on the target Mac.

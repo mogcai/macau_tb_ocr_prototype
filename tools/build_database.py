@@ -36,8 +36,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable
 
-APP_VERSION = "0.4.0"
-SCHEMA_VERSION = 1
+APP_VERSION = "0.4.1"
+SCHEMA_VERSION = 2
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 
 SCHEMA_SQL = """
@@ -52,11 +52,15 @@ CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     run_dir TEXT NOT NULL,
     source_pdf TEXT,
+    source_pdf_sha256 TEXT,
     app_version TEXT,
     imported_at TEXT NOT NULL,
     tb_page_count INTEGER NOT NULL DEFAULT 0,
     line_item_count INTEGER NOT NULL DEFAULT 0,
     review_row_count INTEGER NOT NULL DEFAULT 0,
+    is_published INTEGER NOT NULL DEFAULT 0,
+    published_at TEXT,
+    published_by TEXT,
     config_json TEXT,
     run_report_json TEXT
 );
@@ -200,12 +204,27 @@ FROM (
     SELECT s.*,
            ROW_NUMBER() OVER (
                PARTITION BY s.paper_key
-               ORDER BY r.imported_at DESC, r.rowid DESC
+               ORDER BY r.is_published DESC, r.imported_at DESC, r.rowid DESC
            ) AS current_rank
     FROM statements s
     JOIN runs r ON r.run_id = s.run_id
 )
 WHERE current_rank = 1;
+
+DROP VIEW IF EXISTS v_published_statements;
+CREATE VIEW v_published_statements AS
+SELECT *
+FROM (
+    SELECT s.*,
+           ROW_NUMBER() OVER (
+               PARTITION BY s.paper_key
+               ORDER BY r.imported_at DESC, r.rowid DESC
+           ) AS published_rank
+    FROM statements s
+    JOIN runs r ON r.run_id = s.run_id
+    WHERE r.is_published = 1
+)
+WHERE published_rank = 1;
 
 DROP VIEW IF EXISTS v_current_line_items;
 CREATE VIEW v_current_line_items AS
@@ -222,6 +241,23 @@ SELECT li.*,
        s.metadata_status
 FROM line_items li
 JOIN v_current_statements s ON s.statement_id = li.statement_id
+LEFT JOIN banks b ON b.bank_id = s.bank_id;
+
+DROP VIEW IF EXISTS v_published_line_items;
+CREATE VIEW v_published_line_items AS
+SELECT li.*,
+       s.paper_key,
+       s.publication_date,
+       s.publication_date_source,
+       s.statement_date,
+       s.statement_date_source,
+       s.bank_id,
+       s.bank_key,
+       b.display_name AS bank_name,
+       s.identity_status,
+       s.metadata_status
+FROM line_items li
+JOIN v_published_statements s ON s.statement_id = li.statement_id
 LEFT JOIN banks b ON b.bank_id = s.bank_id;
 
 DROP VIEW IF EXISTS v_all_line_items;
@@ -275,11 +311,54 @@ SELECT publication_date,
 FROM v_current_line_items li
 LEFT JOIN row_verification rv ON rv.line_item_id = li.line_item_id;
 
+DROP VIEW IF EXISTS v_published_balance_sheet;
+CREATE VIEW v_published_balance_sheet AS
+SELECT publication_date,
+       statement_date,
+       bank_name,
+       bank_key,
+       parent_label_standard,
+       label_standard,
+       label_path,
+       occurrence,
+       label_standard_id,
+       label_standard_status,
+       debit_amount,
+       credit_amount,
+       debit_cents,
+       credit_cents,
+       debit_raw,
+       credit_raw,
+       number_format,
+       debit_parse_status,
+       credit_parse_status,
+       review_status,
+       review_reason,
+       natural_key_status,
+       natural_key,
+       COALESCE(rv.status, 'unverified') AS verification_status,
+       li.statement_id,
+       li.line_item_id,
+       li.pdf_page,
+       li.row_order,
+       li.source_image
+FROM v_published_line_items li
+LEFT JOIN row_verification rv ON rv.line_item_id = li.line_item_id;
+
 DROP VIEW IF EXISTS v_review_queue;
 CREATE VIEW v_review_queue AS
 SELECT li.*,
        COALESCE(rv.status, 'unverified') AS verification_status
 FROM v_current_line_items li
+LEFT JOIN row_verification rv ON rv.line_item_id = li.line_item_id
+WHERE li.review_status = 'needs_review'
+  AND COALESCE(rv.status, '') <> 'verified';
+
+DROP VIEW IF EXISTS v_published_review_queue;
+CREATE VIEW v_published_review_queue AS
+SELECT li.*,
+       COALESCE(rv.status, 'unverified') AS verification_status
+FROM v_published_line_items li
 LEFT JOIN row_verification rv ON rv.line_item_id = li.line_item_id
 WHERE li.review_status = 'needs_review'
   AND COALESCE(rv.status, '') <> 'verified';
@@ -303,10 +382,28 @@ SELECT p.page_id,
        p.image_width,
        p.image_height,
        p.number_format_detected,
-       p.number_format_confidence
+       p.number_format_confidence,
+       r.is_published
 FROM pages p
 LEFT JOIN statements s ON s.statement_id = p.statement_id
-LEFT JOIN banks b ON b.bank_id = s.bank_id;
+LEFT JOIN banks b ON b.bank_id = s.bank_id
+LEFT JOIN runs r ON r.run_id = p.run_id;
+
+DROP VIEW IF EXISTS v_run_index;
+CREATE VIEW v_run_index AS
+SELECT run_id,
+       run_dir,
+       source_pdf,
+       source_pdf_sha256,
+       app_version,
+       imported_at,
+       is_published,
+       published_at,
+       published_by,
+       tb_page_count,
+       line_item_count,
+       review_row_count
+FROM runs;
 
 DROP VIEW IF EXISTS v_statement_index;
 CREATE VIEW v_statement_index AS
@@ -321,6 +418,7 @@ SELECT s.statement_id,
        s.bank_name_raw,
        s.identity_status,
        s.metadata_status,
+       COALESCE(r.is_published, 0) AS is_published,
        s.pdf_pages,
        s.printed_pages,
        s.page_count,
@@ -332,14 +430,19 @@ SELECT s.statement_id,
            AS duplicate_key_rows,
        SUM(CASE WHEN rv.status = 'verified' THEN 1 ELSE 0 END)
            AS verified_rows,
-       SUM(li.debit_cents) AS debit_total_cents,
-       SUM(li.credit_cents) AS credit_total_cents,
+       COALESCE(SUM(CASE WHEN rv.status = 'verified' THEN li.debit_cents END), 0)
+           AS debit_verified_cents,
+       COALESCE(SUM(CASE WHEN rv.status = 'verified' THEN li.credit_cents END), 0)
+           AS credit_verified_cents,
+       COALESCE(SUM(li.debit_cents), 0) AS debit_total_cents,
+       COALESCE(SUM(li.credit_cents), 0) AS credit_total_cents,
        SUM(CAST(li.debit_amount AS REAL)) AS debit_total_approx,
        SUM(CAST(li.credit_amount AS REAL)) AS credit_total_approx
 FROM v_current_statements s
 LEFT JOIN line_items li ON li.statement_id = s.statement_id
 LEFT JOIN row_verification rv ON rv.line_item_id = li.line_item_id
 LEFT JOIN banks b ON b.bank_id = s.bank_id
+LEFT JOIN runs r ON r.run_id = s.run_id
 GROUP BY s.statement_id;
 
 DROP VIEW IF EXISTS v_natural_key_duplicates;
@@ -524,14 +627,43 @@ def _to_cents(value: Any) -> int | None:
     return int(cents)
 
 
-def _run_id_for(run_dir: Path, report: dict[str, Any]) -> str:
-    digest = hashlib.sha1()
-    digest.update(str(report.get("app_version", "")).encode("utf-8"))
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _source_pdf_sha256(report: dict[str, Any]) -> str:
+    source = normalize_text(report.get("source_pdf"))
+    if not source:
+        return ""
+    path = Path(source).expanduser()
+    return _sha256_file(path) if path.is_file() else ""
+
+
+def _run_id_for(
+    run_dir: Path,
+    report: dict[str, Any],
+    source_pdf_sha256: str | None = None,
+) -> str:
+    """Content-addressed run id: PDF bytes, CSV output and OCR settings."""
+    if source_pdf_sha256 is None:
+        source_pdf_sha256 = _source_pdf_sha256(report)
+    digest = hashlib.sha256()
+    digest.update(b"macau-balancete-run-v1\0")
+    digest.update(json.dumps(
+        report, ensure_ascii=False, sort_keys=True
+    ).encode("utf-8"))
+    digest.update(b"\0pdf\0")
+    digest.update(source_pdf_sha256.encode("utf-8") or b"missing")
     for name in ("documents.csv", "tb_rows.csv"):
         path = run_dir / name
+        digest.update(b"\0file\0" + name.encode("utf-8") + b"\0")
         if path.exists():
             digest.update(path.read_bytes())
-    return f"run_{digest.hexdigest()[:16]}"
+    return f"run_{digest.hexdigest()}"
 
 
 def _label_language(row: dict[str, str]) -> str:
@@ -931,20 +1063,25 @@ def _insert_run(conn: sqlite3.Connection, run: dict[str, Any]) -> None:
     conn.execute(
         """
         INSERT INTO runs (
-            run_id, run_dir, source_pdf, app_version, imported_at,
-            tb_page_count, line_item_count, review_row_count,
+            run_id, run_dir, source_pdf, source_pdf_sha256, app_version,
+            imported_at, tb_page_count, line_item_count, review_row_count,
+            is_published, published_at, published_by,
             config_json, run_report_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run["run_id"],
             run["run_dir"],
             run["source_pdf"],
+            run.get("source_pdf_sha256", ""),
             run["app_version"],
             run["imported_at"],
             run["page_count"],
             run["line_count"],
             run["review_count"],
+            1 if run.get("is_published") else 0,
+            run.get("published_at"),
+            run.get("published_by"),
             json.dumps(run["config"], ensure_ascii=False, sort_keys=True),
             json.dumps(run["report"], ensure_ascii=False, sort_keys=True),
         ),
@@ -1000,6 +1137,135 @@ def _delete_run(conn: sqlite3.Connection, run_id: str) -> None:
     conn.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
 
 
+VERIFICATION_FINGERPRINT_FIELDS = (
+    "pdf_page", "label_raw", "parent_label_standard", "label_standard",
+    "debit_raw", "credit_raw", "debit_amount", "credit_amount",
+)
+
+
+def _verification_fingerprint(row: sqlite3.Row | dict[str, Any]) -> tuple[str, ...]:
+    return tuple(
+        normalize_text(row[field] if row[field] is not None else "")
+        for field in VERIFICATION_FINGERPRINT_FIELDS
+    )
+
+
+def _snapshot_run_verification(
+    conn: sqlite3.Connection, run_id: str
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT li.statement_id, li.row_order, li.pdf_page,
+               li.label_raw, li.parent_label_standard, li.label_standard,
+               li.debit_raw, li.credit_raw, li.debit_amount, li.credit_amount,
+               rv.status, rv.verified_at, rv.verified_by, rv.note
+        FROM row_verification rv
+        JOIN line_items li ON li.line_item_id = rv.line_item_id
+        WHERE li.run_id = ?
+        ORDER BY li.statement_id, li.row_order
+        """,
+        (run_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _restore_run_verification(
+    conn: sqlite3.Connection, snapshot: list[dict[str, Any]]
+) -> int:
+    """Restore verification by stable row identity and OCR fingerprint."""
+    if not snapshot:
+        return 0
+    restored = 0
+    mismatched: list[str] = []
+    for item in snapshot:
+        row = conn.execute(
+            """
+            SELECT line_item_id, pdf_page, label_raw, parent_label_standard,
+                   label_standard, debit_raw, credit_raw, debit_amount,
+                   credit_amount
+            FROM line_items
+            WHERE statement_id = ? AND row_order = ?
+            """,
+            (item["statement_id"], item["row_order"]),
+        ).fetchone()
+        if row is None or _verification_fingerprint(row) != _verification_fingerprint(item):
+            mismatched.append(f"{item['statement_id']}#{item['row_order']}")
+            continue
+        conn.execute(
+            """
+            INSERT INTO row_verification (
+                line_item_id, status, verified_at, verified_by, note
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(line_item_id) DO UPDATE SET
+                status = excluded.status,
+                verified_at = excluded.verified_at,
+                verified_by = excluded.verified_by,
+                note = excluded.note
+            """,
+            (
+                row["line_item_id"],
+                item["status"],
+                item["verified_at"],
+                item["verified_by"],
+                item["note"],
+            ),
+        )
+        restored += 1
+    if mismatched:
+        raise RuntimeError(
+            f"{len(mismatched)} verified row(s) no longer match after re-import "
+            f"({', '.join(mismatched[:5])}); transaction rolled back. "
+            "Export the verification records and use --discard-verification "
+            "only if you intend to drop them."
+        )
+    return restored
+
+
+def _publish_run(
+    conn: sqlite3.Connection,
+    run_id: str,
+    published_by: str,
+) -> None:
+    run = conn.execute(
+        "SELECT source_pdf FROM runs WHERE run_id = ?", (run_id,)
+    ).fetchone()
+    if run is None:
+        raise RuntimeError(f"cannot publish unknown run {run_id}")
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if run["source_pdf"]:
+        conn.execute(
+            "UPDATE runs SET is_published = 0 "
+            "WHERE run_id <> ? AND source_pdf = ? AND is_published = 1",
+            (run_id, run["source_pdf"]),
+        )
+    conn.execute(
+        "UPDATE runs SET is_published = 1, "
+        "published_at = COALESCE(published_at, ?), "
+        "published_by = COALESCE(published_by, ?) "
+        "WHERE run_id = ?",
+        (now, published_by or "operator", run_id),
+    )
+
+
+def _check_bank_alias_drift(
+    conn: sqlite3.Connection,
+    run_id: str,
+    aliases: dict[str, tuple[str, str]],
+) -> list[str]:
+    conflicts: list[str] = []
+    for row in conn.execute(
+        "SELECT statement_id, bank_name_raw, bank_key FROM statements "
+        "WHERE run_id = ? ORDER BY statement_id",
+        (run_id,),
+    ):
+        new_key, _ = resolve_bank(row["bank_name_raw"], aliases)
+        if new_key and new_key != row["bank_key"]:
+            conflicts.append(
+                f"{row['statement_id']}: {row['bank_key']} -> {new_key}"
+            )
+    return conflicts
+
+
 def _load_alias_rows(
     conn: sqlite3.Connection,
     path: Path | None,
@@ -1034,7 +1300,82 @@ def _load_alias_rows(
         )
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    try:
+        return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
+    except sqlite3.Error:
+        return set()
+
+
+def _get_schema_version(conn: sqlite3.Connection) -> int:
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta'"
+    ).fetchone()
+    if not exists:
+        return 0
+    row = conn.execute(
+        "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+    ).fetchone()
+    try:
+        return int(row[0]) if row else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _migrate_schema(conn: sqlite3.Connection, from_version: int) -> None:
+    """Apply forward migrations from ``from_version`` to SCHEMA_VERSION."""
+    if from_version < 2:
+        runs_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runs'"
+        ).fetchone()
+        if runs_exists:
+            columns = _table_columns(conn, "runs")
+            additions = (
+                ("source_pdf_sha256", "TEXT"),
+                ("is_published", "INTEGER NOT NULL DEFAULT 0"),
+                ("published_at", "TEXT"),
+                ("published_by", "TEXT"),
+            )
+            for name, ddl in additions:
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {ddl}")
+            # Runs imported before the publish workflow stay visible. If one
+            # source PDF has several old runs, publish only the newest one so a
+            # test run cannot become current merely because it was imported last.
+            conn.execute("UPDATE runs SET is_published = 0")
+            conn.execute(
+                """
+                UPDATE runs SET is_published = 1
+                WHERE rowid IN (
+                    SELECT rowid FROM (
+                        SELECT rowid,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY COALESCE(NULLIF(source_pdf, ''), run_id)
+                                   ORDER BY imported_at DESC, rowid DESC
+                               ) AS rank
+                        FROM runs
+                    )
+                    WHERE rank = 1
+                )
+                """
+            )
+
+
 def _schema(conn: sqlite3.Connection) -> None:
+    version = _get_schema_version(conn)
+    if version == 0:
+        # A pre-schema_meta database with a runs table is v1.
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runs'"
+        ).fetchone():
+            version = 1
+    if version > SCHEMA_VERSION:
+        raise RuntimeError(
+            f"database schema version {version} is newer than this application "
+            f"({SCHEMA_VERSION}); upgrade the application"
+        )
+    if 0 < version < SCHEMA_VERSION:
+        _migrate_schema(conn, version)
     conn.executescript(SCHEMA_SQL)
     conn.executescript(VIEWS_SQL)
     conn.execute(
@@ -1054,6 +1395,9 @@ def build_database(
     run_dirs: list[Path],
     aliases_path: Path | None = None,
     replace: bool = False,
+    publish: bool = False,
+    published_by: str = "operator",
+    discard_verification: bool = False,
 ) -> dict[str, Any]:
     """Import run directories into ``db_path`` and return a summary report."""
     aliases = load_bank_aliases(aliases_path)
@@ -1073,18 +1417,40 @@ def build_database(
                 if not run_dir.is_dir():
                     raise NotADirectoryError(f"run directory not found: {run_dir}")
                 report = read_json(run_dir / "run_report.json")
-                run_id = _run_id_for(run_dir, report)
+                source_pdf_sha256 = _source_pdf_sha256(report)
+                run_id = _run_id_for(run_dir, report, source_pdf_sha256)
                 existing = conn.execute(
-                    "SELECT tb_page_count, line_item_count FROM runs WHERE run_id = ?",
+                    "SELECT tb_page_count, line_item_count, is_published, "
+                    "published_at, published_by FROM runs WHERE run_id = ?",
                     (run_id,),
                 ).fetchone()
+                drift = _check_bank_alias_drift(conn, run_id, aliases) if existing else []
+                if drift:
+                    warnings.append(
+                        f"{run_dir.name}: bank alias mapping changed for "
+                        f"{len(drift)} statement(s); rebuild the database or "
+                        "re-import with --replace after exporting verification"
+                    )
+                verification_snapshot: list[dict[str, Any]] = []
                 if existing and not replace:
+                    if publish and drift:
+                        raise RuntimeError(
+                            f"{run_dir.name}: refusing to publish because bank "
+                            "alias mapping changed for existing statements; "
+                            "rebuild the database or re-import with --replace"
+                        )
+                    if publish:
+                        _publish_run(conn, run_id, published_by)
                     run_results.append({
                         "run_id": run_id,
                         "run_dir": str(run_dir),
-                        "status": "skipped_existing",
+                        "status": (
+                            "skipped_existing_published" if publish
+                            else "skipped_existing"
+                        ),
                         "tb_pages": existing["tb_page_count"],
                         "line_items": existing["line_item_count"],
+                        "published": bool(existing["is_published"] or publish),
                     })
                     warnings.append(
                         f"{run_dir.name}: already imported as {run_id}; "
@@ -1092,6 +1458,13 @@ def build_database(
                     )
                     continue
                 if existing and replace:
+                    verification_snapshot = _snapshot_run_verification(conn, run_id)
+                    if verification_snapshot and discard_verification:
+                        warnings.append(
+                            f"{run_dir.name}: discarding "
+                            f"{len(verification_snapshot)} verification row(s)"
+                        )
+                        verification_snapshot = []
                     _delete_run(conn, run_id)
 
                 pages, _rows_by_page, page_stats = _collect_pages(
@@ -1102,6 +1475,7 @@ def build_database(
                     "run_id": run_id,
                     "run_dir": str(run_dir),
                     "source_pdf": normalize_text(report.get("source_pdf")),
+                    "source_pdf_sha256": source_pdf_sha256,
                     "app_version": normalize_text(report.get("app_version"))
                     or APP_VERSION,
                     "imported_at": datetime.now(timezone.utc).isoformat(
@@ -1110,6 +1484,9 @@ def build_database(
                     "page_count": page_stats["page_count"],
                     "line_count": 0,
                     "review_count": 0,
+                    "is_published": bool(existing["is_published"]) if existing else False,
+                    "published_at": existing["published_at"] if existing else None,
+                    "published_by": existing["published_by"] if existing else None,
                     "config": {
                         key: report.get(key)
                         for key in (
@@ -1216,13 +1593,25 @@ def build_database(
                     "WHERE run_id = ?",
                     (line_count, review_count, run_id),
                 )
+                restored_verification = _restore_run_verification(
+                    conn, verification_snapshot
+                )
+                if restored_verification:
+                    warnings.append(
+                        f"{run_dir.name}: restored "
+                        f"{restored_verification} verification row(s)"
+                    )
+                if publish:
+                    _publish_run(conn, run_id, published_by)
                 run_results.append({
                     "run_id": run_id,
                     "run_dir": str(run_dir),
                     "status": "replaced" if existing else "imported",
-                    "tb_pages": len(statements),
+                    "tb_pages": page_stats["page_count"],
                     "line_items": line_count,
                     "review_rows": review_count,
+                    "published": bool(publish or (existing and existing["is_published"])),
+                    "verification_restored": restored_verification,
                 })
     finally:
         conn.close()
@@ -1251,6 +1640,9 @@ def _build_report(
     try:
         totals = {
             "runs": _scalar(conn, "SELECT COUNT(*) FROM runs"),
+            "published_runs": _scalar(
+                conn, "SELECT COUNT(*) FROM runs WHERE is_published = 1"
+            ),
             "banks": _scalar(conn, "SELECT COUNT(*) FROM banks"),
             "pages": _scalar(conn, "SELECT COUNT(*) FROM pages"),
             "statements": _scalar(conn, "SELECT COUNT(*) FROM statements"),
@@ -1300,7 +1692,7 @@ def _build_report(
         if duplicate_paper_keys:
             warnings.append(
                 f"{duplicate_paper_keys} paper key(s) exist in more than one run; "
-                "v_current_* uses the newest import"
+                "v_current_* prefers the published run, then the newest import"
             )
     finally:
         conn.close()
@@ -1344,13 +1736,16 @@ def _print_report(report: dict[str, Any]) -> None:
     totals = report["totals"]
     print(f"Database: {report['database']}")
     for run in report["runs"]:
+        published = " [published]" if run.get("published") else ""
         print(
-            f"  {run['status']:<16} {run['run_id']}  "
+            f"  {run['status']:<26} {run['run_id']}  "
             f"{run.get('tb_pages', 0)} page(s), "
-            f"{run.get('line_items', 0)} row(s)  {run['run_dir']}"
+            f"{run.get('line_items', 0)} row(s){published}  {run['run_dir']}"
         )
     print(
-        f"Totals: {totals['runs']} run(s), {totals['pages']} page(s), "
+        f"Totals: {totals['runs']} run(s) "
+        f"({totals.get('published_runs', 0)} published), "
+        f"{totals['pages']} page(s), "
         f"{totals['statements']} statement(s), "
         f"{totals['line_items']} line item(s), {totals['banks']} bank(s)"
     )
@@ -1393,7 +1788,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--replace", action="store_true",
-        help="replace an already imported run instead of skipping it",
+        help="replace an already imported run; verification is preserved when "
+             "the row identity and OCR fingerprint still match",
+    )
+    parser.add_argument(
+        "--discard-verification", action="store_true",
+        help="with --replace, explicitly drop verification rows if they cannot "
+             "be matched",
+    )
+    parser.add_argument(
+        "--publish", action="store_true",
+        help="mark the imported run as published/current for its source PDF",
+    )
+    parser.add_argument(
+        "--published-by", default="operator",
+        help="name recorded in runs.published_by when using --publish",
     )
     parser.add_argument(
         "--report", type=Path,
@@ -1413,6 +1822,9 @@ def main(argv: list[str] | None = None) -> int:
             args.db, args.run_dirs,
             aliases_path=aliases_path,
             replace=args.replace,
+            publish=args.publish,
+            published_by=args.published_by,
+            discard_verification=args.discard_verification,
         )
     except (OSError, ValueError, sqlite3.Error) as exc:
         print(f"error: {exc}")

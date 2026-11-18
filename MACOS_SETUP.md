@@ -1,4 +1,4 @@
-# macOS Setup — Macau Gazette Balancete OCR v0.4.0
+# macOS Setup — Macau Gazette Balancete OCR v0.4.1
 
 ## Recommended route for M1 / M2 / M3 / M4
 
@@ -27,7 +27,7 @@ The Vision framework is part of macOS. No Python binding / Paddle runtime is nee
 Use Python 3.10 or 3.11 for a conservative setup:
 
 ```bash
-cd /path/to/macau_tb_ocr_prototype_v0.4
+cd /path/to/macau_tb_ocr_prototype_v0.4.1
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel

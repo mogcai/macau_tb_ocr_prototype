@@ -1,6 +1,15 @@
-# 澳門公報 Balancete OCR Prototype v0.4.0
+# 澳門公報 Balancete OCR Prototype v0.4.1
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV，並可整合成 SQLite 資料庫作跨期分析。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+
+## v0.4.1 資料完整性保護
+
+1. **`--replace` 保護核實紀錄**：匯入前會 snapshot `row_verification`，只有同一 `statement_id + row_order` 及 OCR fingerprint 完全一致才恢復；不一致會 rollback，除非明確加 `--discard-verification`。
+2. **Published run**：新增 `runs.is_published` 及 `--publish`。`v_current_*` 優先使用已發布 run，單頁測試 run 不會取代完整正式 run；`v_published_*` 只顯示正式發布資料。
+3. **已核實總額**：`v_statement_index` 新增 `debit_verified_cents` / `credit_verified_cents`，同 OCR 總額分開。
+4. **Run provenance**：run ID 改用完整 SHA-256，包含原始 PDF hash、CSV 及 `run_report.json` 設定。
+5. **Schema migration**：schema version 升到 2，舊 DB 會自動加欄；既有 run 會標為 published。
+6. **Bug fix**：imported run 的 `tb_pages` 改為實際 page count；alias 改動後重匯會 warning。
 
 ## v0.4.0 新增：SQLite 整合
 
@@ -214,10 +223,12 @@ python tools/build_database.py \
 
 匯入後主要 view：
 
-- `v_statement_index`：每間銀行／每個 statement 的行數、review 數、缺失 label、重複 key。
-- `v_balance_sheet`：分析用扁平表，含 `verification_status`。
+- `v_statement_index`：每間銀行／每個 statement 的行數、review 數、缺失 label、重複 key、全部及已核實總額。
+- `v_balance_sheet`：current 分析用扁平表，含 `verification_status`。
+- `v_published_balance_sheet`：只含已 publish run 的扁平表。
 - `v_natural_key_duplicates`：五欄 business key 的重複組。
 - `v_review_queue`：仍需 review 且未 `verified` 的行。
+- `v_run_index`：run 的 published 狀態、PDF SHA-256、版本及行數。
 
 查詢例子：
 

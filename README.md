@@ -12,6 +12,17 @@
 
 ## 版本簡介
 
+### v0.4.1 — 資料完整性保護
+
+- `--replace` 會先保存 `row_verification`，只有在 `statement_id + row_order` 及 OCR fingerprint 完全一致時才恢復；不一致會 rollback，除非明確使用 `--discard-verification`。
+- 新增 `runs.is_published` / `--publish`：`v_current_*` 優先使用已發布 run，測試用單頁 run 不會取代完整正式 run。
+- `v_statement_index` 新增 `debit_verified_cents` / `credit_verified_cents`，分開顯示 OCR 總額及已核實總額。
+- Run ID 改用完整 SHA-256，並納入原始 PDF SHA-256、`documents.csv`、`tb_rows.csv` 及完整 `run_report.json` 設定。
+- 新增 schema migration 機制（schema v2），舊 DB 會自動加欄並把既有 run 標為 published。
+- 修正 imported run 報告的 `tb_pages`（之前誤用 statement 數量）。
+- 已存在的 run 若 alias 映射改變，匯入時會 warning，提示 rebuild 或 re-import。
+- 版本同步：`VERSION` 檔案、`APP_VERSION`、`config.example.json` 及各文件。
+
 ### v0.4.0 — SQLite 整合資料庫
 
 新增 `tools/build_database.py`，將多個 OCR run 整合成 SQLite，保留每次 OCR observation，
@@ -212,6 +223,6 @@ python -m unittest discover -s tests -v
 
 **Project:** Macau Gazette Balancete OCR
 
-**Current prototype:** v0.4.0
+**Current prototype:** v0.4.1
 
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

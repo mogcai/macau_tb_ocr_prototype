@@ -1,4 +1,4 @@
-# SQLite 整合資料庫（v0.4）
+# SQLite 整合資料庫（v0.4.1 / schema v2）
 
 呢份文件講清楚點解唔直接用
 `publication_date, statement_date, bank_name, parent_label_standard, label_standard`
@@ -56,7 +56,7 @@ bank_aliases      alias → canonical bank_key（可選 CSV）
 
 | Table | 欄位 | 用途 |
 |---|---|---|
-| `runs` | `run_id`, `run_dir`, `source_pdf`, `app_version`, `imported_at` | 保存每次 OCR run |
+| `runs` | `run_id`, `run_dir`, `source_pdf`, `source_pdf_sha256`, `app_version`, `imported_at`, `is_published`, `published_at`, `published_by` | 保存每次 OCR run 及發布狀態 |
 | `pages` | `pdf_page`, `image_path`, `ocr_status`, `ocr_languages`, `document_json` | 保存每頁 `documents.csv` 原始 metadata |
 | `statements` | `statement_id`, `paper_key`, `publication_date`, `publication_date_source`, `statement_date`, `statement_date_source`, `bank_id`, `identity_status`, `pdf_pages` | 一個報表 |
 | `line_items` | `label_raw`, `label_standard`, `parent_label_standard`, `label_path`, `occurrence`, `natural_key_status`, `debit_amount`, `credit_amount`, `debit_cents`, `credit_cents`, `review_status` | 逐行資料及 provenance |
@@ -113,19 +113,33 @@ alias,canonical,bank_key,note
 - 如果 `bank_name` 是 `A | B` 這種 bilingual 合併名，而 A、B 兩邊都 map 到同一個 canonical bank，會用同一 `bank_key`，不會多開一個合成 name 的銀行。
 - `labels/bank_aliases.csv` 目前只有一個經人手看圖確認的 bilingual seed（郵政儲金局 / CAIXA ECONÓMICA POSTAL）。
 - 只合併你確認是同一個報表實體的名稱；不要為求整齊而合併集團／分行。
+- Alias 改動**不會**自動改寫已存在 statement 的 `statement_id` / `bank_key`。匯入已存在 run 時會出 warning；如果同時 `--publish`，程式會拒絕發布，避免用舊 identity 當成正式 current。要套用新 mapping，應重建 DB 並重新 import 所有 run，唔好用 `--replace` 強改 identity（會令 verification fingerprint 對不上而 rollback）。
+
+## Publish 與 current dataset
+
+每次匯入都只是 **staging observation**。`runs.is_published` 預設 0；完成品質檢查後才用 `--publish` 將某個 run 定為該 source PDF 的正式 current。
+
+- `v_current_*`：同一 `paper_key` 優先取已 published run；如果完全冇 published，才取最新 import（向後兼容）。
+- `v_published_*`：只包含 `is_published = 1` 的 run，適合正式分析。
+- `v_all_line_items`：所有 run 的 observation，包括 staging。
+- `v_run_index`：列出所有 run 的 published 狀態、PDF SHA-256 及設定摘要。
+
+因此單頁測試 run 不會取代已 published 的完整 run。
 
 ## 匯入
 
 ```bash
 python tools/build_database.py \
-  output_v08_issue45_2026 output_v06_issue44_2026 \
-  --db data/macau_balancete.sqlite
+  output_v11_issue45_2026_full output_v06_issue44_2026 \
+  --db data/macau_balancete.sqlite \
+  --publish --published-by reviewer
 ```
 
 - 預設 DB：`data/macau_balancete.sqlite`。
 - 同一內容重複匯入會 `skipped_existing`；要覆蓋用 `--replace`。
+- `--replace` 會 snapshot `row_verification`，只有同一 `statement_id + row_order` 及 OCR fingerprint 完全一致才恢復；不一致會 rollback。真的想放棄核實紀錄才加 `--discard-verification`。
 - 每次匯入會寫 `<db stem>_import_report.json`。
-- `--bank-aliases labels/bank_aliases.csv` 可載入人手 alias。
+- `--bank-aliases labels/bank_aliases.csv` 可載入人手 alias；如果已存在 run 的 alias 映射改變，報告會 warning，唔會靜默改寫舊 statement identity。
 
 輸出摘要包括：
 
@@ -138,14 +152,17 @@ python tools/build_database.py \
 
 | View | 用途 |
 |---|---|
-| `v_page_index` | 逐頁 metadata + 對應 statement／bank |
-| `v_current_statements` | 同一 `paper_key` 的最新 run（`imported_at` 最新） |
-| `v_current_line_items` | 最新 run 的逐行資料 + 銀行名 |
+| `v_page_index` | 逐頁 metadata + 對應 statement／bank／published 狀態 |
+| `v_run_index` | 所有 run 的 published 狀態、PDF SHA-256、版本及行數 |
+| `v_current_statements` | 同一 `paper_key` 優先取 published run，否則最新 import |
+| `v_current_line_items` | 對應 current 的逐行資料 + 銀行名 |
+| `v_published_statements` / `v_published_line_items` | 只含已發布 run |
 | `v_all_line_items` | 所有 run 的 observation（做 before/after 比較） |
-| `v_balance_sheet` | 分析用扁平表，包含五欄 key、金額、review、verification |
-| `v_statement_index` | 每 statement 的行數、review 數、缺失 label 數、重複 key 數、總額近似值 |
+| `v_balance_sheet` | current 分析用扁平表，包含五欄 key、金額、review、verification |
+| `v_published_balance_sheet` | 只含已發布 run 的扁平表 |
+| `v_statement_index` | 每 statement 的行數、review 數、缺失 label、重複 key、全部及已核實總額 |
 | `v_natural_key_duplicates` | 五欄 key 的重複組（唔計 `missing_label`） |
-| `v_review_queue` | 仍需 review 且未 `verified` 的行 |
+| `v_review_queue` / `v_published_review_queue` | 仍需 review 且未 `verified` 的行（current／published） |
 
 例子：
 
@@ -156,12 +173,19 @@ SELECT publication_date, statement_date, bank_name, row_count,
 FROM v_statement_index
 ORDER BY publication_date DESC, bank_name;
 
--- 只取完整、已人手核對的科目
+-- 只取正式發布、完整、已人手核對的科目
 SELECT publication_date, statement_date, bank_name,
        parent_label_standard, label_standard, debit_amount, credit_amount
-FROM v_balance_sheet
+FROM v_published_balance_sheet
 WHERE natural_key_status = 'complete'
   AND verification_status = 'verified';
+
+-- 全部 OCR 總額 vs 已核實總額
+SELECT bank_name, statement_date,
+       debit_total_cents, debit_verified_cents,
+       credit_total_cents, credit_verified_cents
+FROM v_statement_index
+WHERE is_published = 1;
 
 -- 找出重複的五欄 key
 SELECT * FROM v_natural_key_duplicates
@@ -183,12 +207,19 @@ ORDER BY publication_date DESC, bank_name;
 下一步應由人手建立 `label_concepts.csv`（例如 `cash` → `現金` / `Caixa`），
 再由 importer 加入 `label_concept_id`；未經核對前不要自動翻譯或合併。
 
+## Schema migration
+
+- `VERSION` 是 project version（v0.4.1）。
+- `SCHEMA_VERSION` 是資料庫 schema version（現時 2），兩者獨立。
+- 開啟舊 DB 時會自動由 v1 migrate 到 v2：加 `source_pdf_sha256`、`is_published`、`published_at`、`published_by`，並將每個 source PDF 最新的既有 run 標為 published。
+- DB schema 比程式新時會拒絕開啟，避免舊程式寫壞新結構。
+
 ## 限制
 
 - 不會把不同 OCR run 靜默合併；`v_current_*` 只取最新匯入。
 - `identity_status` 不完整的 statement 會用 `incomplete:<run_id>:page:<n>` 作 `paper_key`，所以不會蓋過完整的 statement；分析前應先過濾 `identity_status = 'complete'`。
 - 用未包含 `--header-fallback` 的舊 run 匯入時，page 17 仍會是 `missing_bank_name`；用新 run 重新 OCR 後再匯入，才會寫入 `郵政儲金局 | CAIXA ECONÓMICA POSTAL`。
 - 不會用 OCR confidence、`auto_check_pass` 或借貸相等去證明財務正確。
-- `line_items.debit_cents` / `credit_cents` 是精確的 minor units（例如 `910238538228.96` → `91023853822896`），只會在金額恰好是整仙時填入；`v_statement_index` 另有 `debit_total_cents` / `credit_total_cents`。
+- `line_items.debit_cents` / `credit_cents` 是精確的 minor units（例如 `910238538228.96` → `91023853822896`），只會在金額恰好是整仙時填入；`v_statement_index` 另有 `debit_total_cents` / `credit_total_cents`（所有可解析行）及 `debit_verified_cents` / `credit_verified_cents`（只計 verified 行）。
 - `debit_total_approx` / `credit_total_approx` 是 `CAST(... AS REAL)` 的近似總和，只作快速檢查；精確計算用 `*_cents` 或 `debit_amount` / `credit_amount` 文字值。
 - Schema 變更採「重建 DB」策略；`CREATE TABLE IF NOT EXISTS` 不會自動加欄。

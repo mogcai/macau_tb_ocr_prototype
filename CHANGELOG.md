@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.1
+
+- **`--replace` no longer silently deletes human verification.** The importer snapshots `row_verification` before deleting a run and restores it only when `statement_id + row_order` and the OCR fingerprint (`pdf_page`, raw/standard label, raw/canonical amounts) still match. A mismatch raises and rolls back the transaction. `--discard-verification` is the explicit destructive option. Tests cover preserve, discard and rollback-on-mismatch.
+- **Published/current dataset separation.** `runs.is_published`, `published_at`, `published_by` and `--publish` mark a quality-checked run. `v_current_*` prefers published runs; `v_published_statements`, `v_published_line_items`, `v_published_balance_sheet` and `v_published_review_queue` expose the strict published dataset. A newer single-page staging run no longer replaces a published full run.
+- **Verified totals.** `v_statement_index` now has `debit_verified_cents` / `credit_verified_cents` next to `debit_total_cents` / `credit_total_cents`; all totals coalesce to 0 instead of NULL.
+- **Run provenance.** `run_id` is now a full SHA-256 over the canonical `run_report.json`, the source PDF SHA-256 (stored as `runs.source_pdf_sha256`), `documents.csv` and `tb_rows.csv`. Changing OCR settings or PDF bytes changes the run id.
+- **Schema migrations.** `SCHEMA_VERSION` is now 2 and independent of project version. Opening a v1 DB adds the publish/provenance columns and publishes the newest existing run per source PDF; a DB newer than the app is refused.
+- **Bug fixes:** imported runs report `tb_pages` from the actual page count (previously `len(statements)`); alias drift on an already imported run produces a warning instead of being silently ignored.
+- **Version discipline:** added `VERSION` (project) and `tests/test_version_sync.py`; `SCHEMA_VERSION` remains separate in `tools/build_database.py`.
+- Tests: 124 passing.
+
 ## v0.4.0
 
 - Added `--header-fallback auto|off` (default `auto`): when the embedded table image yields no bank name or statement date, render the full PDF page header at 4x and OCR it separately. It never overwrites an existing name; recovered values set `bank_name_source = ocr_full_page_header`, are logged in `header_fallback_*` columns, and keep `images/page_XXXX_header_fallback.png` plus raw `header_fallback` OCR boxes. Issue-45 page 17 now recovers `郵政儲金局 | CAIXA ECONÓMICA POSTAL` (previously blank).

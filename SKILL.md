@@ -1,4 +1,4 @@
-# Agent Skill: Macau Gazette Balancete OCR v0.4.0
+# Agent Skill: Macau Gazette Balancete OCR v0.4.1
 
 ## Purpose
 
@@ -12,7 +12,7 @@ Process Macau Government Gazette PDFs and extract bank / financial-institution B
 - `MACOS_SETUP.md`: Apple Silicon / macOS installation instructions.
 - `MACOS_VISION_OCR.md`: Apple Vision architecture, ROI and language constraints.
 
-## 2. Architecture (v0.4)
+## 2. Architecture (v0.4.1)
 
 ### Input and extraction
 
@@ -272,6 +272,15 @@ python tools/build_database.py output_v08_issue45_2026 output_v06_issue44_2026 \
   still unverified. `debit_cents` / `credit_cents` hold exact minor units; the
   `*_total_approx` columns are REAL sums for quick checks only.
 - Read `DATABASE.md` before writing SQL. Do not change schema fields without a rebuild plan.
+
+## 7.2 Data-integrity workflow (v0.4.1)
+
+- **Publish before using as current:** imports are staging observations. After quality checks, re-run with `--publish` (or pass it on the import) to mark a run as the published dataset for its source PDF. `v_current_*` prefers published runs; `v_published_*` excludes staging runs.
+- **`--replace` and verification:** `--replace` snapshots `row_verification` and restores only rows whose `statement_id + row_order` and OCR fingerprint still match. A mismatch aborts and rolls back. Use `--discard-verification` only when intentionally dropping verification.
+- **Verified totals:** `debit_total_cents` / `credit_total_cents` cover all parseable rows; `debit_verified_cents` / `credit_verified_cents` cover only `row_verification.status = 'verified'`.
+- **Provenance:** `runs.run_id` is a full SHA-256 over source PDF bytes, CSV outputs and `run_report.json`; `source_pdf_sha256` is stored separately.
+- **Schema:** `SCHEMA_VERSION` is independent of project version. `_schema()` migrates old databases forward and refuses a database newer than the application.
+- **Alias changes:** changing `bank_aliases.csv` does not rewrite existing `bank_key` values. The importer reports drift; rebuild the database or re-import affected runs explicitly.
 
 ## 8. Review policy
 
