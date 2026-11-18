@@ -36,8 +36,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable
 
-APP_VERSION = "0.5.2"
-SCHEMA_VERSION = 4
+APP_VERSION = "0.6.0"
+SCHEMA_VERSION = 5
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 
 SCHEMA_SQL = """
@@ -177,6 +177,8 @@ CREATE TABLE IF NOT EXISTS line_items (
     line_item_concept_id INTEGER,
     mapping_status TEXT,
     mapping_version INTEGER,
+    user_standard_label_id INTEGER,
+    user_standard_match_status TEXT,
     row_confidence REAL,
     row_average_confidence REAL,
     source_image TEXT,
@@ -211,6 +213,36 @@ CREATE TABLE IF NOT EXISTS bank_name_aliases (
     source TEXT,
     note TEXT,
     UNIQUE (bank_id, normalized_name)
+);
+
+CREATE TABLE IF NOT EXISTS standard_labels (
+    standard_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    standard_key TEXT NOT NULL UNIQUE,
+    parent_standard_id INTEGER REFERENCES standard_labels(standard_id),
+    canonical_zh TEXT,
+    canonical_pt TEXT,
+    canonical_en TEXT,
+    level TEXT NOT NULL DEFAULT 'parent'
+        CHECK (level IN ('parent', 'child')),
+    category TEXT,
+    status TEXT NOT NULL DEFAULT 'provisional'
+        CHECK (status IN ('approved', 'provisional', 'rejected')),
+    source TEXT,
+    note TEXT
+);
+
+CREATE TABLE IF NOT EXISTS standard_label_aliases (
+    alias_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    standard_id INTEGER NOT NULL
+        REFERENCES standard_labels(standard_id) ON DELETE CASCADE,
+    raw_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    language TEXT,
+    status TEXT NOT NULL DEFAULT 'provisional'
+        CHECK (status IN ('approved', 'provisional', 'rejected')),
+    source TEXT,
+    note TEXT,
+    UNIQUE (standard_id, normalized_name, language)
 );
 
 CREATE TABLE IF NOT EXISTS line_item_concepts (
@@ -626,6 +658,57 @@ FROM v_current_line_items
 WHERE COALESCE(NULLIF(label_standard, ''), label_raw) <> ''
   AND COALESCE(mapping_status, 'concept_unmapped') = 'concept_unmapped'
 GROUP BY raw_name, label_language
+ORDER BY occurrence_count DESC;
+
+DROP VIEW IF EXISTS v_user_standard_labels;
+CREATE VIEW v_user_standard_labels AS
+SELECT s.standard_id,
+       s.standard_key,
+       p.standard_key AS parent_key,
+       s.canonical_zh,
+       s.canonical_pt,
+       s.canonical_en,
+       s.level,
+       s.category,
+       s.status,
+       s.source,
+       s.note
+FROM standard_labels s
+LEFT JOIN standard_labels p ON p.standard_id = s.parent_standard_id;
+
+DROP VIEW IF EXISTS v_line_item_user_standard;
+CREATE VIEW v_line_item_user_standard AS
+SELECT li.line_item_id,
+       li.statement_id,
+       li.pdf_page,
+       li.row_order,
+       li.label_raw,
+       li.label_standard,
+       li.parent_label_standard,
+       li.label_path,
+       li.label_language,
+       li.user_standard_label_id,
+       li.user_standard_match_status,
+       s.standard_key,
+       s.canonical_zh AS standard_zh,
+       s.canonical_pt AS standard_pt,
+       s.level AS standard_level,
+       s.status AS standard_status
+FROM line_items li
+LEFT JOIN standard_labels s
+       ON s.standard_id = li.user_standard_label_id;
+
+DROP VIEW IF EXISTS v_user_standard_unmapped;
+CREATE VIEW v_user_standard_unmapped AS
+SELECT COALESCE(NULLIF(label_standard, ''), label_raw) AS raw_name,
+       parent_label_standard,
+       label_language,
+       COUNT(*) AS occurrence_count,
+       COUNT(DISTINCT statement_id) AS statement_count
+FROM v_current_line_items
+WHERE COALESCE(user_standard_label_id, 0) = 0
+  AND COALESCE(NULLIF(label_standard, ''), label_raw) <> ''
+GROUP BY raw_name, parent_label_standard, label_language
 ORDER BY occurrence_count DESC;
 
 DROP VIEW IF EXISTS v_statement_index;
@@ -1717,6 +1800,19 @@ def _migrate_schema(conn: sqlite3.Connection, from_version: int) -> None:
                 ("line_item_concept_id", "INTEGER"),
                 ("mapping_status", "TEXT"),
                 ("mapping_version", "INTEGER"),
+            ):
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE line_items ADD COLUMN {name} {ddl}")
+    if from_version < 5:
+        line_items_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'line_items'"
+        ).fetchone()
+        if line_items_exists:
+            columns = _table_columns(conn, "line_items")
+            for name, ddl in (
+                ("user_standard_label_id", "INTEGER"),
+                ("user_standard_match_status", "TEXT"),
             ):
                 if name not in columns:
                     conn.execute(f"ALTER TABLE line_items ADD COLUMN {name} {ddl}")

@@ -1,10 +1,17 @@
-# AI Agent Quick Start — Macau Gazette Balancete OCR v0.5.2
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.6.0
 
 Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`; name registry workflow is in `NAME_STANDARDIZATION.md`.
 
 ## Purpose
 
 Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review.
+
+## v0.6.0 changes
+
+- Added `tools/import_user_standard.py` for the user's parent/child standard CSV. It writes `standard_labels`, `standard_label_aliases` and `line_items.user_standard_label_id` (schema v5).
+- The importer corrects the shifted reserve block, AMCM parent_pt, Greek Μ, 賬/帳 and 總收人; corrected rows are `provisional`.
+- Mapping report: `data/user_standard_mapping_report.csv` (2198 mapped, 163 unmapped at import time).
+- Existing OCR raw fields and the legacy concept registry are untouched.
 
 ## v0.5.2 changes
 
@@ -35,7 +42,7 @@ Extract bank/financial-institution Balancete pages from Macau Government Gazette
 - `--replace` snapshots `row_verification` and restores it only when `statement_id + row_order` and the OCR fingerprint match. A mismatch rolls back; `--discard-verification` is the explicit destructive escape hatch.
 - `runs.is_published` plus `--publish` separate staging imports from the current dataset. `v_current_*` prefers published runs; `v_published_*` is the strict published view.
 - `v_statement_index` reports `debit_verified_cents` / `credit_verified_cents` separately from all-row totals.
-- Run IDs use full SHA-256 over the source PDF bytes, CSV outputs and `run_report.json`. Schema migrations now run automatically (schema v4).
+- Run IDs use full SHA-256 over the source PDF bytes, CSV outputs and `run_report.json`. Schema migrations now run automatically (schema v5).
 - `tb_pages` is the page count, not the statement count. Alias drift on an already imported run emits a warning.
 - `VERSION` is the project version source of truth; `SCHEMA_VERSION` is independent.
 

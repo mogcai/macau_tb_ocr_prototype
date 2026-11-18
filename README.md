@@ -12,6 +12,13 @@
 
 ## 版本簡介
 
+### v0.6.0 — User Standard Label Import
+
+- 新增 `tools/import_user_standard.py`：將 `labels/standard_label_by_user.csv` 匯入 `standard_labels` / `standard_label_aliases`，再 map 現有 `line_items` 到 `user_standard_label_id`。
+- 新增 schema v5：`standard_labels`、`standard_label_aliases`、`line_items.user_standard_label_id`、`user_standard_match_status`。
+- 已修正用戶 CSV 的 reserve block 錯位、AMCM parent_pt、希臘字母 Μ、賬/帳及總收人 typo；修正行標 provisional。
+- 映射結果：2198 rows mapped，163 unmapped；報告在 `data/user_standard_mapping_report.csv`。
+
 ### v0.5.2 — Standard Line Item Master
 
 - 新增 `tools/standard_line_items.py`：由現有 registry + bilingual pairs 匯出 `labels/line_item_standard.csv`，再將 approved standard apply 回 DB。
@@ -255,6 +262,6 @@ python -m unittest discover -s tests -v
 
 **Project:** Macau Gazette Balancete OCR
 
-**Current prototype:** v0.5.2
+**Current prototype:** v0.6.0
 
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

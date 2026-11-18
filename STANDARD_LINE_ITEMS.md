@@ -26,6 +26,36 @@ line_items.mapping_status
 line_items.mapping_version
 ```
 
+## User-provided standard CSV (v0.6.0)
+
+```bash
+python tools/import_user_standard.py build \
+  --db data/macau_balancete.sqlite \
+  --csv labels/standard_label_by_user.csv \
+  --cleaned-csv labels/standard_label_by_user.cleaned.csv \
+  --report data/user_standard_mapping_report.csv
+```
+
+會寫入：
+
+```text
+standard_labels
+standard_label_aliases
+line_items.user_standard_label_id
+line_items.user_standard_match_status
+```
+
+User CSV 的 parent/child 每一行會成為一個 standard（子項會有 parent_standard_id）。現有 row 用 `label_standard` + `parent_label_standard` 對 path；葡萄牙文同時以 canonical_pt / aliases 匹配。
+
+### 已修正但需要確認的地方
+
+- Reserve block 錯位：`股本` 原本配 `FUNDO DE ΜΑΝΕΙΟ`，已改為 `CAPITAL`；`營運資金` → `FUNDO DE MANEIO`；`法定儲備` → `RESERVA LEGAL`；`自定儲備` → `RESERVA ESTATUTÁRIA`；`其他儲備` → `OUTRAS RESERVAS`；另補 `重估儲備` / `RESERVA DA REAVALIAÇÃO`。
+- `總收人` → `總收入`；`總收入` → `PROVEITOS POR NATUREZA`；`總支出` → `CUSTOS POR NATUREZA`。
+- `AMCM 存款` 的 child rows 原本 parent_pt 用了 `PATACAS` / `MOEDAS EXTERNAS`，已改為 `DEPÓSITOS NA AMCM`。
+- 希臘字母 `Μ`（U+039C）已轉回拉丁 `M`；`賬` 統一為 `帳`；`AMCM 存款` 統一為 `AMCM存款`。
+
+以上修正行在 cleaned CSV 標 `provisional`，未經人手確認前不應當成 approved。
+
 ## 現有 draft master
 
 ```text

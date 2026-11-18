@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.0
+
+- **User standard label import:** added `tools/import_user_standard.py` for `labels/standard_label_by_user.csv` (parent/child zh+pt). Schema v5 adds `standard_labels`, `standard_label_aliases`, `line_items.user_standard_label_id` and `user_standard_match_status`.
+- **Validation/corrections:** the importer reports and corrects the shifted reserve block (股本/CAPITAL, 營運資金/FUNDO DE MANEIO, 法定儲備/RESERVA LEGAL, 自定儲備/RESERVA ESTATUTÁRIA, 其他儲備/OUTRAS RESERVAS, inserted 重估儲備/RESERVA DA REAVALIAÇÃO), AMCM child parent_pt, Greek Μ, 賬/帳 variants and 總收人→總收入. Corrected rows are `provisional`.
+- **Mapping:** existing rows are mapped by parent/child path; 2198 rows matched (1874 parent_exact + 324 child_path_exact) and 163 stayed unmapped. Report: `data/user_standard_mapping_report.csv`; unmapped view: `v_user_standard_unmapped`.
+- **Raw evidence untouched:** this mapping writes only `user_standard_label_id` / `user_standard_match_status`; `label_raw`, `label_standard` and the legacy concept registry are unchanged.
+- **Tests:** 144 passing.
+
 ## v0.5.2
 
 - **Standard line-item master:** added `tools/standard_line_items.py` with `export` and `apply`. `labels/line_item_standard.csv` is the human-maintained chart of accounts; one economic account is one standard, and Chinese/Portuguese/combined OCR text are aliases.

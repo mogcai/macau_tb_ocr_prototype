@@ -1,0 +1,67 @@
+﻿source_row,parent_zh,child_zh,parent_pt,child_pt,status,note
+2,現金,,CAIXA,,approved,
+3,現金,澳門元,CAIXA,PATACAS,approved,
+4,現金,外幣,CAIXA,MOEDAS EXTERNAS,approved,
+5,AMCM存款,,DEPÓSITOS NA AMCM,,approved,zh normalized 'AMCM 存款' -> 'AMCM存款'
+6,AMCM存款,澳門元,DEPÓSITOS NA AMCM,PATACAS,provisional,AMCM child parent_pt corrected; zh normalized 'AMCM 存款' -> 'AMCM存款'; pt normalized 'PATACAS' -> 'DEPÓSITOS NA AMCM'
+7,AMCM存款,外幣,DEPÓSITOS NA AMCM,MOEDAS EXTERNAS,provisional,AMCM child parent_pt corrected; zh normalized 'AMCM 存款' -> 'AMCM存款'; pt normalized 'MOEDAS EXTERNAS' -> 'DEPÓSITOS NA AMCM'
+8,應收帳項,,VALORES A COBRAR,,approved,zh normalized '應收賬項' -> '應收帳項'
+9,在本地之其他信用機構活期存款,,DEPÓSITOS À ORDEM NOUTRAS INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,,approved,
+10,在外地之其他信用機構活期存款,,DEPÓSITOS À ORDEM NO EXTERIOR,,approved,
+11,金、銀,,OURO E PRATA,,approved,
+12,其他流動資產,,OUTROS VALORES,,approved,
+13,放款,,CRÉDITO CONCEDIDO,,approved,
+14,在本澳信用機構拆放,,APLICAÇÕES EM INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,,approved,
+15,在外地信用機構之通知及定期存款,,DEPÓSITOS COM PRÉ-AVISO E A PRAZO NO EXTERIOR,,approved,
+16,股票、債券及股權,,"ACÇÕES, OBRIGAÇÕES E QUOTAS",,approved,
+17,承銷資金投資,,APLICAÇÕES DE RECURSOS CONSIGNADOS,,approved,
+18,債務人,,DEVEDORES,,approved,
+19,其他投資,,OUTRAS APLICAÇÕES,,approved,
+20,活期存款,,DEPÓSITOS À ORDEM,,approved,
+21,活期存款,澳門元,DEPÓSITOS À ORDEM,PATACAS,approved,
+22,活期存款,外幣,DEPÓSITOS À ORDEM,MOEDAS EXTERNAS,approved,
+23,通知存款,,DEPÓSITOS COM PRÉ-AVISO,,approved,
+24,通知存款,澳門元,DEPÓSITOS COM PRÉ-AVISO,PATACAS,approved,
+25,通知存款,外幣,DEPÓSITOS COM PRÉ-AVISO,MOEDAS EXTERNAS,approved,
+26,定期存款,,DEPÓSITOS A PRAZO,,approved,
+27,定期存款,澳門元,DEPÓSITOS A PRAZO,PATACAS,approved,
+28,定期存款,外幣,DEPÓSITOS A PRAZO,MOEDAS EXTERNAS,approved,
+29,公共機構存款,,DEPÓSITOS DO SECTOR PÚBLICO,,approved,pt normalized 'DEPÓSITOS DO SECTOR PUBLICO' -> 'DEPÓSITOS DO SECTOR PÚBLICO'
+30,本地信用機構資金,,RECURSOS DE INSTITUIÇÕES DE CRÉDITO NO TERRITÓRIO,,approved,
+31,其他本地機構資金,,RECURSOS DE OUTRAS ENTIDADES LOCAIS,,approved,
+32,外幣借款,,EMPRÉSTIMOS EM MOEDAS EXTERNAS,,approved,
+33,債券借款,,EMPRÉSTIMOS POR OBRIGAÇÕES,,approved,
+34,承銷資金債權人,,CREDORES POR RECURSOS CONSIGNADOS,,approved,
+35,應付支票及票據,,CHEQUES E ORDENS A PAGAR,,approved,
+36,債權人,,CREDORES,,approved,
+37,各項負債,,EXIGIBILIDADES DIVERSAS,,approved,
+38,財務投資,,PARTICIPAÇÕES FINANCEIRAS,,approved,
+39,不動產,,IMÓVEIS,,approved,
+40,設備,,EQUIPAMENTO,,approved,
+41,遞延費用,,CUSTOS PLURIENAIS,,approved,
+42,開辦費用,,DESPESAS DE INSTALAÇÃO,,approved,
+43,未完成不動產,,IMOBILIZAÇÕES EM CURSO,,approved,
+44,其他固定資產,,OUTROS VALORES IMOBILIZADOS,,approved,
+45,內部及調整帳,,CONTAS INTERNAS E DE REGULARIZAÇÃO,,approved,zh normalized '內部及調整賬' -> '內部及調整帳'
+46,各項風險備用金,,PROVISÕES PARA RISCOS DIVERSOS,,approved,
+47,股本,,CAPITAL,,provisional,pt pairing corrected from 'FUNDO DE MANEIO' to 'CAPITAL'; pt normalized 'FUNDO DE ΜΑΝΕΙΟ' -> 'CAPITAL'
+48,營運資金,,FUNDO DE MANEIO,,provisional,pt pairing corrected from 'RESERVA LEGAL' to 'FUNDO DE MANEIO'; pt normalized 'RESERVA LEGAL' -> 'FUNDO DE MANEIO'
+49,法定儲備,,RESERVA LEGAL,,provisional,pt pairing corrected from 'RESERVA ESTATUTÁRIA' to 'RESERVA LEGAL'; pt normalized 'RESERVA ESTATUTÁRIA' -> 'RESERVA LEGAL'
+50,自定儲備,,RESERVA ESTATUTÁRIA,,provisional,pt pairing corrected from 'OUTRAS RESERVAS' to 'RESERVA ESTATUTÁRIA'; pt normalized 'OUTRAS RESERVAS' -> 'RESERVA ESTATUTÁRIA'
+51,其他儲備,,OUTRAS RESERVAS,,provisional,pt pairing corrected from 'RESERVA DA REAVALIAÇÃO' to 'OUTRAS RESERVAS'; pt normalized 'RESERVA DA REAVALIAÇÃO' -> 'OUTRAS RESERVAS'
+47b,重估儲備,,RESERVA DA REAVALIAÇÃO,,provisional,inserted: source block 47-54 is shifted and omits this standard
+52,歷年營業結果,,RESULTADOS TRANSITADOS DE EXERCÍCIOS ANTERIORES,,approved,pt normalized 'RESULTADOS TRANSITADOS DE EXERCICIOS ANTERIORES' -> 'RESULTADOS TRANSITADOS DE EXERCÍCIOS ANTERIORES'
+53,總收入,,PROVEITOS POR NATUREZA,,provisional,pt pairing corrected from 'CUSTOS POR NATUREZA' to 'PROVEITOS POR NATUREZA'; zh normalized '總收人' -> '總收入'; pt normalized 'CUSTOS POR NATUREZA' -> 'PROVEITOS POR NATUREZA'
+54,總支出,,CUSTOS POR NATUREZA,,provisional,pt pairing corrected from 'PROVEITOS POR NATUREZA' to 'CUSTOS POR NATUREZA'; pt normalized 'PROVEITOS POR NATUREZA' -> 'CUSTOS POR NATUREZA'
+55,代客保管帳,,VALORES RECEBIDOS EM DEPÓSITO,,approved,zh normalized '代客保管賬' -> '代客保管帳'
+56,代收帳,,VALORES RECEBIDOS PARA COBRANÇA,,approved,
+57,抵押帳,,VALORES RECEBIDOS EM CAUÇÃO,,approved,zh normalized '抵押賬' -> '抵押帳'
+58,保證及擔保付款(借方),,DEVEDORES POR GARANTIAS E AVALES PRESTADOS,,approved,
+59,信用狀(借方),,DEVEDORES POR CRÉDITOS ABERTOS,,approved,
+60,代客保管帳(貸方),,CREDORES POR VALORES RECEBIDOS EM DEPÓSITO,,approved,
+61,代收帳(貸方),,CREDORES POR VALORES RECEBIDOS PARA COBRANÇA,,approved,
+62,抵押帳(貸方),,CREDORES POR VALORES RECEBIDOS EM CAUÇÃO,,approved,
+63,保證及擔保付款,,GARANTIAS E AVALES PRESTADOS,,approved,
+64,信用狀,,CRÉDITOS ABERTOS,,approved,
+65,其他備查帳,,OUTRAS CONTAS EXTRAPATRIMONIAIS,,approved,zh normalized '其他備查賬' -> '其他備查帳'
+66,總計,,TOTAIS,,approved,

@@ -13,5 +13,6 @@ data/*
 !data/macau_balancete_import_report.json
 !data/macau_balancete_name_registry_report.json
 !data/name_review_queue.csv
+!data/user_standard_mapping_report.csv
 *.sqlite-wal
 *.sqlite-shm

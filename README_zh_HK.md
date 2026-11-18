@@ -1,6 +1,14 @@
-# 澳門公報 Balancete OCR Prototype v0.5.2
+# 澳門公報 Balancete OCR Prototype v0.6.0
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV，並可整合成 SQLite 資料庫作跨期分析。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+
+## v0.6.0 User Standard Label Import
+
+1. **User standard import**：`labels/standard_label_by_user.csv` 匯入 `standard_labels` / `standard_label_aliases`，再 map `line_items.user_standard_label_id`。
+2. **Schema v5**：新增 standard label tables 及 line item mapping 欄位。
+3. **Corrections**：reserve block 錯位、AMCM parent_pt、希臘字母 Μ、賬/帳、總收人 typo 已修正；修正行標 `provisional`。
+4. **Mapping**：2198 rows mapped，163 unmapped；報告見 `data/user_standard_mapping_report.csv`。
+5. 詳見 [`STANDARD_LINE_ITEMS.md`](STANDARD_LINE_ITEMS.md)。
 
 ## v0.5.2 Standard Line Item Master
 

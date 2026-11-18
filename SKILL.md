@@ -1,4 +1,4 @@
-# Agent Skill: Macau Gazette Balancete OCR v0.5.2
+# Agent Skill: Macau Gazette Balancete OCR v0.6.0
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Process Macau Government Gazette PDFs and extract bank / financial-institution B
 - `MACOS_VISION_OCR.md`: Apple Vision architecture, ROI and language constraints.
 - `NAME_STANDARDIZATION.md`: bank / line-item registry, review and approval workflow.
 
-## 2. Architecture (v0.5.2)
+## 2. Architecture (v0.6.0)
 
 ### Input and extraction
 
@@ -274,8 +274,9 @@ python tools/build_database.py output_v08_issue45_2026 output_v06_issue44_2026 \
   `*_total_approx` columns are REAL sums for quick checks only.
 - Read `DATABASE.md` before writing SQL. Do not change schema fields without a rebuild plan.
 
-## 7.2 Data-integrity workflow (v0.5.2)
+## 7.2 Data-integrity workflow (v0.6.0)
 
+- **User standard import:** `tools/import_user_standard.py` loads `labels/standard_label_by_user.csv` into `standard_labels` / `standard_label_aliases` and maps `line_items.user_standard_label_id`; unmatched labels stay visible in `v_user_standard_unmapped`.
 - **Standard master:** `tools/standard_line_items.py export` writes `labels/line_item_standard.csv`; `apply` only loads `status=approved` rows. Bilingual/combined OCR strings are aliases, not concepts.
 - **Name registry:** use `export` / `import-review` for the CSV review workflow. Bank Chinese-name seeds are proposed (`translation_seed`) until approved. Bank aliases and line-item concepts are separate from OCR. Same-language lexicon aliases are approved seeds; bilingual pairs are pending candidates. Only approved aliases populate `line_items.line_item_concept_id`.
 - **Review, don't auto-translate:** `tools/name_registry.py approve` can merge a Portuguese concept into a Chinese concept and records `name_mapping_audit`; `reject` leaves the mapping unchanged.
