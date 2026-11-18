@@ -1,10 +1,17 @@
-# AI Agent Quick Start — Macau Gazette Balancete OCR v0.6.0
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.6.1
 
 Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`; name registry workflow is in `NAME_STANDARDIZATION.md`.
 
 ## Purpose
 
 Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review.
+
+## v0.6.1 changes
+
+- `import_user_standard.py build --from-cleaned` reads the human-edited `labels/standard_label_by_user.cleaned.csv` directly.
+- Raw-label fallback maps rows whose `label_standard` is empty via `label_raw`.
+- User-added standards (銀行貸款, 銀行結存, 銀行透支, 保留溢利, 預付款項, 總公司/關連公司欠款, 儲備) are now approved.
+- Unmapped fell from 163 rows to 89 rows (70 distinct).
 
 ## v0.6.0 changes
 

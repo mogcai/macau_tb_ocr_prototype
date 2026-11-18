@@ -90,6 +90,37 @@ class UserStandardImportTests(unittest.TestCase):
         )[0]
         self.assertEqual(unmapped["user_standard_match_status"], "unmapped")
 
+    def test_cleaned_csv_import_preserves_user_status_and_new_rows(self):
+        cleaned = self.root / "cleaned.csv"
+        with cleaned.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=[
+                "source_row", "parent_zh", "child_zh", "parent_pt",
+                "child_pt", "status", "note",
+            ])
+            writer.writeheader()
+            writer.writerows([
+                {"source_row": "2", "parent_zh": "現金", "child_zh": "",
+                 "parent_pt": "CAIXA", "child_pt": "", "status": "approved",
+                 "note": ""},
+                {"source_row": "3", "parent_zh": "現金", "child_zh": "澳門元",
+                 "parent_pt": "CAIXA", "child_pt": "PATACAS",
+                 "status": "approved", "note": ""},
+                {"source_row": "67", "parent_zh": "銀行貸款", "child_zh": "",
+                 "parent_pt": "", "child_pt": "", "status": "approved",
+                 "note": "葡文之後再補"},
+            ])
+        result = imp.import_standards(
+            self.db, cleaned, from_cleaned=True
+        )
+        self.assertEqual(result["standards"], 3)
+        statuses = {
+            row["canonical_zh"]: row["status"]
+            for row in self.query(
+                "SELECT canonical_zh, status FROM standard_labels"
+            )
+        }
+        self.assertEqual(statuses["銀行貸款"], "approved")
+
     def test_report_lists_unmapped_names(self):
         imp.import_standards(self.db, self.csv)
         out = self.root / "report.csv"

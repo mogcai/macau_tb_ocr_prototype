@@ -180,6 +180,34 @@ def read_raw_csv(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def read_cleaned_csv(path: Path) -> list[dict[str, Any]]:
+    """Read the human-edited cleaned CSV without overwriting user decisions."""
+    rows: list[dict[str, Any]] = []
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        for row in csv.DictReader(handle):
+            parent_zh = clean_zh(row.get("parent_zh", ""))
+            child_zh = clean_zh(row.get("child_zh", ""))
+            parent_pt = clean_pt(row.get("parent_pt", ""))
+            child_pt = clean_pt(row.get("child_pt", ""))
+            if not parent_zh and not parent_pt:
+                continue
+            rows.append({
+                "source_row": normalize_text(row.get("source_row")),
+                "parent_zh": parent_zh,
+                "child_zh": child_zh,
+                "parent_pt": parent_pt,
+                "child_pt": child_pt,
+                "raw_parent_zh": parent_zh,
+                "raw_child_zh": child_zh,
+                "raw_parent_pt": parent_pt,
+                "raw_child_pt": child_pt,
+                "status": normalize_text(row.get("status")).lower()
+                or "provisional",
+                "note": normalize_text(row.get("note")),
+            })
+    return rows
+
+
 def write_cleaned_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     fields = [
         "source_row", "parent_zh", "child_zh", "parent_pt", "child_pt",
@@ -187,7 +215,7 @@ def write_cleaned_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8-sig") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows([{key: row.get(key, "") for key in fields} for row in rows])
 
@@ -201,10 +229,14 @@ def import_standards(
     csv_path: Path,
     *,
     cleaned_csv: Path | None = None,
+    from_cleaned: bool = False,
 ) -> dict[str, Any]:
-    rows = read_raw_csv(csv_path)
-    if cleaned_csv:
-        write_cleaned_csv(cleaned_csv, rows)
+    if from_cleaned:
+        rows = read_cleaned_csv(csv_path)
+    else:
+        rows = read_raw_csv(csv_path)
+        if cleaned_csv:
+            write_cleaned_csv(cleaned_csv, rows)
     conn = _connect(db_path)
     try:
         _schema(conn)
@@ -415,40 +447,52 @@ def map_line_items(conn: sqlite3.Connection) -> Counter[str]:
                 children_by_pt[key].append(sid)
     stats: Counter[str] = Counter()
     for item in conn.execute(
-        "SELECT line_item_id, label_standard, parent_label_standard, "
-        "label_language FROM line_items"
+        "SELECT line_item_id, label_raw, label_standard, "
+        "parent_label_standard, label_path, label_language FROM line_items"
     ).fetchall():
         label = normalize_text(item["label_standard"])
+        raw_label = normalize_text(item["label_raw"])
+        label_text = label or raw_label
+        from_raw = not label
         parent = normalize_text(item["parent_label_standard"])
+        if not parent and item["label_path"]:
+            path_parts = [
+                part.strip()
+                for part in normalize_text(item["label_path"]).split(">")
+                if part.strip()
+            ]
+            if len(path_parts) > 1:
+                parent = path_parts[0]
         language = normalize_text(item["label_language"]) or (
-            "zh-Hant" if CJK_RE.search(label) else "pt"
+            "zh-Hant" if CJK_RE.search(label_text) else "pt"
         )
         standard_id = None
         status = "unmapped"
-        if label and parent:
+        prefix = "raw_" if from_raw else ""
+        if label_text and parent:
             parent_norm_zh = _norm(parent, "zh-Hant")
             parent_norm_pt = _norm(parent, "pt")
             parent_id = parents_zh.get(parent_norm_zh) or parents_pt.get(parent_norm_pt)
             if parent_id:
                 standard_id = (
-                    children.get((parent_id, _norm(label, "zh-Hant")))
-                    or children.get((parent_id, _norm(label, "pt")))
+                    children.get((parent_id, _norm(label_text, "zh-Hant")))
+                    or children.get((parent_id, _norm(label_text, "pt")))
                 )
                 if standard_id:
-                    status = "child_path_exact"
-        if standard_id is None and label:
+                    status = f"{prefix}child_path_exact"
+        if standard_id is None and label_text:
             standard_id = (
-                parents_zh.get(_norm(label, "zh-Hant"))
-                or parents_pt.get(_norm(label, "pt"))
+                parents_zh.get(_norm(label_text, "zh-Hant"))
+                or parents_pt.get(_norm(label_text, "pt"))
             )
             if standard_id:
-                status = "parent_exact"
-        if standard_id is None and label:
-            candidates = set(children_by_zh.get(_norm(label, "zh-Hant"), []))
-            candidates.update(children_by_pt.get(_norm(label, "pt"), []))
+                status = f"{prefix}parent_exact"
+        if standard_id is None and label_text:
+            candidates = set(children_by_zh.get(_norm(label_text, "zh-Hant"), []))
+            candidates.update(children_by_pt.get(_norm(label_text, "pt"), []))
             if len(candidates) == 1:
                 standard_id = next(iter(candidates))
-                status = "child_unique"
+                status = f"{prefix}child_unique"
         conn.execute(
             "UPDATE line_items SET user_standard_label_id = ?, "
             "user_standard_match_status = ? WHERE line_item_id = ?",
@@ -489,7 +533,7 @@ def write_report(db_path: Path, out_path: Path) -> dict[str, Any]:
         "occurrence_count", "statement_count",
     ]
     with out_path.open("w", newline="", encoding="utf-8-sig") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         for row in rows:
             writer.writerow({
@@ -521,6 +565,10 @@ def main(argv: list[str] | None = None) -> int:
                        default=Path("labels/standard_label_by_user.csv"))
     build.add_argument("--cleaned-csv", type=Path,
                        default=Path("labels/standard_label_by_user.cleaned.csv"))
+    build.add_argument("--from-cleaned", action="store_true",
+                       help="read the edited cleaned CSV instead of the raw user CSV")
+    build.add_argument("--overwrite-cleaned", action="store_true",
+                       help="regenerate the cleaned CSV from the raw user CSV")
     build.add_argument("--report", type=Path,
                        default=Path("data/user_standard_mapping_report.csv"))
     report = sub.add_parser("report", help="write the current mapping report")
@@ -530,8 +578,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "build":
+            if (
+                args.cleaned_csv.exists()
+                and not args.from_cleaned
+                and not args.overwrite_cleaned
+            ):
+                raise RuntimeError(
+                    f"{args.cleaned_csv} already exists; use --from-cleaned "
+                    "to import the edited file, or --overwrite-cleaned to "
+                    "regenerate it from the raw CSV"
+                )
             result = import_standards(
-                args.db, args.csv, cleaned_csv=args.cleaned_csv
+                args.db, args.csv, cleaned_csv=args.cleaned_csv,
+                from_cleaned=args.from_cleaned,
             )
             result["report"] = write_report(args.db, args.report)
         else:

@@ -12,6 +12,13 @@
 
 ## 版本簡介
 
+### v0.6.1 — Use edited cleaned standard CSV
+
+- `import_user_standard.py build --from-cleaned` 直接讀你編輯過的 `labels/standard_label_by_user.cleaned.csv`，唔會再用 raw CSV 覆蓋。
+- 新增 raw-label fallback：`label_standard` 空白時用 `label_raw` 配 standard，修正 66 條 parent + 8 條 child mapping。
+- 你新增的 銀行貸款、銀行結存、銀行透支、保留溢利、預付款項、總公司／關連公司欠款、儲備 已成為 approved standards。
+- 未 map 由 163 行降至 89 行（70 distinct）。
+
 ### v0.6.0 — User Standard Label Import
 
 - 新增 `tools/import_user_standard.py`：將 `labels/standard_label_by_user.csv` 匯入 `standard_labels` / `standard_label_aliases`，再 map 現有 `line_items` 到 `user_standard_label_id`。
@@ -262,6 +269,6 @@ python -m unittest discover -s tests -v
 
 **Project:** Macau Gazette Balancete OCR
 
-**Current prototype:** v0.6.0
+**Current prototype:** v0.6.1
 
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

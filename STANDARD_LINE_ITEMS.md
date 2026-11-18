@@ -26,15 +26,17 @@ line_items.mapping_status
 line_items.mapping_version
 ```
 
-## User-provided standard CSV (v0.6.0)
+## User-provided standard CSV (v0.6.1)
 
 ```bash
+# after editing labels/standard_label_by_user.cleaned.csv
 python tools/import_user_standard.py build \
   --db data/macau_balancete.sqlite \
-  --csv labels/standard_label_by_user.csv \
-  --cleaned-csv labels/standard_label_by_user.cleaned.csv \
+  --csv labels/standard_label_by_user.cleaned.csv --from-cleaned \
   --report data/user_standard_mapping_report.csv
 ```
+
+`--from-cleaned` reads the edited file directly; without it, the tool refuses to overwrite an existing cleaned CSV unless `--overwrite-cleaned` is passed.
 
 會寫入：
 
@@ -46,6 +48,10 @@ line_items.user_standard_match_status
 ```
 
 User CSV 的 parent/child 每一行會成為一個 standard（子項會有 parent_standard_id）。現有 row 用 `label_standard` + `parent_label_standard` 對 path；葡萄牙文同時以 canonical_pt / aliases 匹配。
+
+Current edited file: **74 standards, all approved**. 8 new standards were added by the user (銀行貸款、銀行結存、銀行透支、保留溢利/（損失）、預付款項、總公司之欠款、關連公司之欠款、儲備).
+
+Mapping: 1874 `parent_exact`, 324 `child_path_exact`, 66 `raw_parent_exact`, 8 `raw_child_path_exact`; 89 rows / 70 distinct remain unmapped.
 
 ### 已修正但需要確認的地方
 
