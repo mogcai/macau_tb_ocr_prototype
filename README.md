@@ -12,6 +12,13 @@
 
 ## 版本簡介
 
+### v0.6.4 — Import 2026 issue 31 and OCR repair priority
+
+- 新增 2026 年第 31 期：11 pages / 713 rows；506 rows review，主要係 low OCR confidence。
+- User standard mapping：700/713 rows mapped，13 unmapped；全庫 3036/3074 mapped。
+- OCR repair alias 會優先於錯誤的 `label_standard`，修正 issue31 的 `兒金`、`-般監管儲備`、`持定監管儲備` 等。
+- 發現 `國泰海通證劵(澳門)一人有限公司 | 〔前稱為…〕` 產生重複 bank entity；已加 alias，未來匯入會 map 回同一銀行。
+
 ### v0.6.3 — More standards + split combined reserve row
 
 - 支援 Portuguese-only parent standards（`user:pt:...`），處理 TESOURO PÚBLICO 兩行。
@@ -282,6 +289,6 @@ python -m unittest discover -s tests -v
 
 **Project:** Macau Gazette Balancete OCR
 
-**Current prototype:** v0.6.3
+**Current prototype:** v0.6.4
 
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

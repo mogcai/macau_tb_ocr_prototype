@@ -155,6 +155,31 @@ class UserStandardImportTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_cleaned_status_aliases_are_normalized(self):
+        cleaned = self.root / "status.csv"
+        with cleaned.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=[
+                "source_row", "parent_zh", "child_zh", "parent_pt",
+                "child_pt", "status", "note",
+            ])
+            writer.writeheader()
+            writer.writerows([
+                {"source_row": "1", "parent_zh": "現金", "child_zh": "",
+                 "parent_pt": "CAIXA", "child_pt": "", "status": "Approve",
+                 "note": ""},
+                {"source_row": "2", "parent_zh": "財務負價租貨", "child_zh": "",
+                 "parent_pt": "", "child_pt": "", "status": "Reject",
+                 "note": ""},
+                {"source_row": "3", "parent_zh": "未知", "child_zh": "",
+                 "parent_pt": "", "child_pt": "", "status": "modify",
+                 "note": ""},
+            ])
+        rows = imp.read_cleaned_csv(cleaned)
+        statuses = {row["parent_zh"]: row["status"] for row in rows}
+        self.assertEqual(statuses["現金"], "approved")
+        self.assertEqual(statuses["財務負價租貨"], "rejected")
+        self.assertEqual(statuses["未知"], "provisional")
+
     def test_report_lists_unmapped_names(self):
         imp.import_standards(self.db, self.csv)
         out = self.root / "report.csv"

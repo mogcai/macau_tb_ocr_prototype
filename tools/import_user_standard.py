@@ -532,6 +532,12 @@ def map_line_items(conn: sqlite3.Connection) -> Counter[str]:
                 children_by_zh[key].append(sid)
             elif language == "pt":
                 children_by_pt[key].append(sid)
+    repair_lookup: dict[tuple[str, str], int] = {}
+    for alias in conn.execute(
+        "SELECT standard_id, normalized_name, language FROM standard_label_aliases "
+        "WHERE source = 'ocr_repair' AND status = 'approved'"
+    ):
+        repair_lookup[(alias["normalized_name"], normalize_text(alias["language"]))] = int(alias["standard_id"])
     stats: Counter[str] = Counter()
     for item in conn.execute(
         "SELECT line_item_id, label_raw, label_standard, "
@@ -556,6 +562,21 @@ def map_line_items(conn: sqlite3.Connection) -> Counter[str]:
         standard_id = None
         status = "unmapped"
         prefix = "raw_" if from_raw else ""
+        if raw_label:
+            for lang in (language, "zh-Hant", "pt"):
+                repaired = repair_lookup.get((_norm(raw_label, lang), lang))
+                if repaired:
+                    standard_id = repaired
+                    status = "raw_repair_exact"
+                    break
+        if standard_id is not None:
+            conn.execute(
+                "UPDATE line_items SET user_standard_label_id = ?, "
+                "user_standard_match_status = ? WHERE line_item_id = ?",
+                (standard_id, status, item["line_item_id"]),
+            )
+            stats[status] += 1
+            continue
         if label_text and parent:
             parent_norm_zh = _norm(parent, "zh-Hant")
             parent_norm_pt = _norm(parent, "pt")

@@ -1,4 +1,4 @@
-# SQLite 整合資料庫（v0.6.3 / schema v5）
+# SQLite 整合資料庫（v0.6.4 / schema v5）
 
 呢份文件講清楚點解唔直接用
 `publication_date, statement_date, bank_name, parent_label_standard, label_standard`
@@ -229,7 +229,7 @@ ORDER BY publication_date DESC, bank_name;
 - 開啟舊 DB 時會自動 migrate：v2 加 `source_pdf_sha256`、`is_published`、`published_at`、`published_by`，並將每個 source PDF 最新的既有 run 標為 published；v3 加 `source_pdf_sha256_source`（`ocr_report` / `import_time` / `missing`）；v4 加名稱 registry 表及 `line_items` mapping 欄位；v5 加 user standard label tables 及 `line_items.user_standard_label_id`。
 - DB schema 比程式新時會拒絕開啟，避免舊程式寫壞新結構。
 
-## User standard labels (schema v5 / v0.6.3)
+## User standard labels (schema v5 / v0.6.4)
 
 Re-import the edited cleaned file with:
 

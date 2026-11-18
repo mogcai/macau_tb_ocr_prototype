@@ -1,4 +1,4 @@
-# macOS Setup — Macau Gazette Balancete OCR v0.6.3
+# macOS Setup — Macau Gazette Balancete OCR v0.6.4
 
 ## Recommended route for M1 / M2 / M3 / M4
 

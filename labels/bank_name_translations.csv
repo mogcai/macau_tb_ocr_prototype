@@ -1,9 +1,9 @@
-bank_key,canonical_zh,canonical_pt,entity_type,status,source,note
-bank:hangsengbanklimitedsucursaldemacau,恒生銀行有限公司澳門分行,HANG SENG BANK LIMITED | SUCURSAL DE MACAU,branch,proposed,Hang Seng Bank official Chinese name,澳門分行
-bank:bancoindustrialecomercialdachinamacausa,中國工商銀行（澳門）股份有限公司,"BANCO INDUSTRIAL E COMERCIAL DA CHINA (MACAU), S.A.",bank,proposed,ICBC Macau official Chinese name,工銀澳門
-bank:bancoindustrialecomercialdachinamacausagrupo,中國工商銀行（澳門）股份有限公司（集團）,"BANCO INDUSTRIAL E COMERCIAL DA CHINA (MACAU), S.A. (GRUPO)",group,proposed,ICBC Macau group,括號內「集團」為 proposed 翻譯
-bank:bancoindustrialecomercialdachinasasucursaldemacau,中國工商銀行股份有限公司澳門分行,"BANCO INDUSTRIAL E COMERCIAL DA CHINA S.A., SUCURSAL DE MACAU",branch,proposed,ICBC head office Macau branch,中國工商銀行澳門分行
-bank:sociedadefinanceiraicbcmacaucapitalsa,工銀（澳門）投資股份有限公司,"SOCIEDADE FINANCEIRA ICBC (MACAU) CAPITAL, S.A.",bank,proposed,ICBC Macau official subsidiary name,前稱誠興投資亞洲
-bank:standardcharteredbankmacaubranch,渣打銀行澳門分行,"STANDARD CHARTERED BANK, MACAU BRANCH",branch,proposed,Standard Chartered Macau branch,渣打銀行
-bank:thehongkongandshanghaibankingcorporationlimitedsucursaldemacau,香港上海滙豐銀行有限公司澳門分行,The Hongkong and Shanghai Banking Corporation Limited | Sucursal de Macau,branch,proposed,HSBC official Chinese name,香港上海滙豐銀行有限公司
-bank:banconacionalultramarinosa,大西洋銀行股份有限公司,"BANCO NACIONAL ULTRAMARINO, S.A.",bank,proposed,BNU official Chinese name,大西洋銀行
+﻿bank_key,canonical_zh,canonical_pt,entity_type,status,source,note
+bank:hangsengbanklimitedsucursaldemacau,恒生銀行有限公司澳門分行,HANG SENG BANK LIMITED | SUCURSAL DE MACAU,branch,Approved,Hang Seng Bank official Chinese name,澳門分行
+bank:bancoindustrialecomercialdachinamacausa,中國工商銀行（澳門）股份有限公司,"BANCO INDUSTRIAL E COMERCIAL DA CHINA (MACAU), S.A.",bank,Approved,ICBC Macau official Chinese name,工銀澳門
+bank:bancoindustrialecomercialdachinamacausagrupo,中國工商銀行（澳門）股份有限公司（集團）,"BANCO INDUSTRIAL E COMERCIAL DA CHINA (MACAU), S.A. (GRUPO)",group,Approved,ICBC Macau group,括號內「集團」為 proposed 翻譯
+bank:bancoindustrialecomercialdachinasasucursaldemacau,中國工商銀行股份有限公司澳門分行,"BANCO INDUSTRIAL E COMERCIAL DA CHINA S.A., SUCURSAL DE MACAU",branch,Approved,ICBC head office Macau branch,中國工商銀行澳門分行
+bank:sociedadefinanceiraicbcmacaucapitalsa,工銀（澳門）投資股份有限公司,"SOCIEDADE FINANCEIRA ICBC (MACAU) CAPITAL, S.A.",bank,Approved,ICBC Macau official subsidiary name,前稱誠興投資亞洲
+bank:standardcharteredbankmacaubranch,渣打銀行澳門分行,"STANDARD CHARTERED BANK, MACAU BRANCH",branch,Approved,Standard Chartered Macau branch,渣打銀行
+bank:thehongkongandshanghaibankingcorporationlimitedsucursaldemacau,香港上海滙豐銀行有限公司澳門分行,The Hongkong and Shanghai Banking Corporation Limited | Sucursal de Macau,branch,Approved,HSBC official Chinese name,香港上海滙豐銀行有限公司
+bank:banconacionalultramarinosa,大西洋銀行股份有限公司,"BANCO NACIONAL ULTRAMARINO, S.A.",bank,Approved,BNU official Chinese name,大西洋銀行

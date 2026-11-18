@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.4
+
+- **Imported 2026 issue 31:** 11 TB pages, 713 rows, 506 rows routed to review (71%). Low OCR confidence dominates (481), consistent with other Chinese issues; 27 labels remained unmatched before repairs.
+- **User standard mapping after repair:** issue 31 maps 700/713 rows (13 unmapped); whole DB maps 3036/3074 rows, 38 unmapped.
+- **Repair priority:** an approved `ocr_repair` alias for `label_raw` now takes precedence over a non-empty but wrong `label_standard`. Added issue-31 repairs such as 兒金→現金, -般監管儲備→一般監管儲備, 持定監管儲備→特定監管儲備, 澳門特區負僨證明書→澳門特區負債證明書.
+- **Bank duplicate found:** `國泰海通證劵(澳門)一人有限公司 | 〔前稱為…〕` created a second bank entity (id 49) alongside the canonical id 11. Added a bank alias for future imports and set the provisional display; the existing statement still references id 49 until a rebuild/remap.
+- **Staging:** issue 31 remains `is_published = 0`; publish after review with `--publish`.
+- **Tests:** 147 passing.
+
 ## v0.6.3
 
 - **Portuguese-only parent standards:** the cleaned CSV now supports rows with Chinese pending (`parent_zh` blank, `parent_pt` set), stored as `user:pt:<PT name>`. The two TESOURO PÚBLICO rows are loaded this way and marked provisional.

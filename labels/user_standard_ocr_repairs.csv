@@ -33,3 +33,16 @@ DEPÓSITOS COM PRÉ - AVISO - MOEDAS EXTERNAS,user:通知存款>外幣,pt,merged
 DEVDORESPORCREDITOSABERTOS信用狀（借方）,user:信用狀(借方),zh-Hant,OCR typo (missing E)
 其他應付款項及應計負償,user:其他應付款項及應計負債,zh-Hant,OCR typo 負償->負債
 澳門特區負價證明書,user:澳門特區負債證明書,zh-Hant,OCR typo 負價->負債
+Depósitos à ordem noutras instituições de crédito,user:在本地之其他信用機構活期存款,pt,first half of full label
+no Território,user:在本地之其他信用機構活期存款,pt,second half of full label
+財務負價租貨,user:財務負債,zh-Hant,OCR typo corrected by user
+兒金,user:現金,zh-Hant,OCR typo 兒金->現金 (issue31)
+金、焦,user:金、銀,zh-Hant,OCR typo (issue31)
+佰従人,user:債權人,zh-Hant,OCR typo (issue31)
+價橃入,user:債權人,zh-Hant,OCR typo (issue31)
+價務入,user:債權人,zh-Hant,OCR typo (issue31)
+代客保管賬（食方）,user:代客保管帳(貸方),zh-Hant,OCR typo (issue31)
+澳門特區負僨證明書,user:澳門特區負債證明書,zh-Hant,OCR typo (issue31)
+澳門待區紙幣流通頟,user:澳門特區紙幣流通額,zh-Hant,OCR typo (issue31)
+-般監管儲備,user:一般監管儲備,zh-Hant,OCR typo (issue31)
+持定監管儲備,user:特定監管儲備,zh-Hant,OCR typo (issue31)

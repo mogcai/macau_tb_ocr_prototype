@@ -1,6 +1,13 @@
-# 澳門公報 Balancete OCR Prototype v0.6.3
+# 澳門公報 Balancete OCR Prototype v0.6.4
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV，並可整合成 SQLite 資料庫作跨期分析。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+
+## v0.6.4 Import 2026 issue 31
+
+1. Issue 31：11 pages / 713 rows，506 review（主要 low OCR confidence）。
+2. User standard mapping：700/713 mapped，13 unmapped。
+3. OCR repair alias 優先於錯誤 label_standard。
+4. 發現國泰海通 former-name 產生重複 bank entity；已加 alias。
 
 ## v0.6.3 More standards + split combined reserve row
 
