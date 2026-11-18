@@ -37,7 +37,7 @@ class VersionSyncTests(unittest.TestCase):
         self.assertIn(f"**Current prototype:** {expected}", readme)
 
     def test_schema_version_is_independent(self):
-        self.assertEqual(db.SCHEMA_VERSION, 2)
+        self.assertEqual(db.SCHEMA_VERSION, 3)
 
 
 if __name__ == "__main__":

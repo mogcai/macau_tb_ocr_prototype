@@ -1,4 +1,4 @@
-# SQLite 整合資料庫（v0.4.1 / schema v2）
+# SQLite 整合資料庫（v0.4.2 / schema v3）
 
 呢份文件講清楚點解唔直接用
 `publication_date, statement_date, bank_name, parent_label_standard, label_standard`
@@ -56,7 +56,7 @@ bank_aliases      alias → canonical bank_key（可選 CSV）
 
 | Table | 欄位 | 用途 |
 |---|---|---|
-| `runs` | `run_id`, `run_dir`, `source_pdf`, `source_pdf_sha256`, `app_version`, `imported_at`, `is_published`, `published_at`, `published_by` | 保存每次 OCR run 及發布狀態 |
+| `runs` | `run_id`, `run_dir`, `source_pdf`, `source_pdf_sha256`, `source_pdf_sha256_source`, `app_version`, `imported_at`, `is_published`, `published_at`, `published_by` | 保存每次 OCR run、provenance 及發布狀態 |
 | `pages` | `pdf_page`, `image_path`, `ocr_status`, `ocr_languages`, `document_json` | 保存每頁 `documents.csv` 原始 metadata |
 | `statements` | `statement_id`, `paper_key`, `publication_date`, `publication_date_source`, `statement_date`, `statement_date_source`, `bank_id`, `identity_status`, `pdf_pages` | 一個報表 |
 | `line_items` | `label_raw`, `label_standard`, `parent_label_standard`, `label_path`, `occurrence`, `natural_key_status`, `debit_amount`, `credit_amount`, `debit_cents`, `credit_cents`, `review_status` | 逐行資料及 provenance |
@@ -126,6 +126,8 @@ alias,canonical,bank_key,note
 
 因此單頁測試 run 不會取代已 published 的完整 run。
 
+`--publish` 亦會比較 TB 頁碼集合：如果新 run 缺少現有 published run 的頁數，會拒絕，必須明確用 `--force-publish`。發布識別優先使用 `source_pdf_sha256`（同一 PDF 搬去不同資料夾仍可取代舊 run），冇 hash 才 fallback `source_pdf` 路徑。
+
 ## 匯入
 
 ```bash
@@ -133,6 +135,10 @@ python tools/build_database.py \
   output_v11_issue45_2026_full output_v06_issue44_2026 \
   --db data/macau_balancete.sqlite \
   --publish --published-by reviewer
+
+# 只有確認要移除部分頁數時：
+python tools/build_database.py output_partial --db data/macau_balancete.sqlite \
+  --publish --force-publish --published-by reviewer
 ```
 
 - 預設 DB：`data/macau_balancete.sqlite`。
@@ -210,8 +216,8 @@ ORDER BY publication_date DESC, bank_name;
 ## Schema migration
 
 - `VERSION` 是 project version（v0.4.1）。
-- `SCHEMA_VERSION` 是資料庫 schema version（現時 2），兩者獨立。
-- 開啟舊 DB 時會自動由 v1 migrate 到 v2：加 `source_pdf_sha256`、`is_published`、`published_at`、`published_by`，並將每個 source PDF 最新的既有 run 標為 published。
+- `SCHEMA_VERSION` 是資料庫 schema version（現時 3），兩者獨立。
+- 開啟舊 DB 時會自動 migrate：v2 加 `source_pdf_sha256`、`is_published`、`published_at`、`published_by`，並將每個 source PDF 最新的既有 run 標為 published；v3 加 `source_pdf_sha256_source`（`ocr_report` / `import_time` / `missing`）。
 - DB schema 比程式新時會拒絕開啟，避免舊程式寫壞新結構。
 
 ## 限制

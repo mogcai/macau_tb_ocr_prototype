@@ -1,3 +1,7 @@
+# Linux/Docker image: PaddleOCR only.
+# Apple Vision is a macOS framework and cannot run in this container, so the
+# Swift worker is intentionally not copied. Use the native macOS setup for
+# --engine vision.
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -13,5 +17,8 @@ RUN python -m pip install --upgrade pip && \
     python -m pip install paddlepaddle && \
     python -m pip install -r requirements.txt -r requirements-paddle.txt
 
-COPY macau_tb_ocr.py vision_ocr_worker.swift README_zh_HK.md config.example.json ./
+COPY macau_tb_ocr.py README.md DATABASE.md config.example.json ./
+COPY labels/ labels/
+COPY tools/ tools/
+
 ENTRYPOINT ["python", "macau_tb_ocr.py"]

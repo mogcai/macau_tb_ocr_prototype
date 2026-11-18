@@ -1,6 +1,14 @@
-# 澳門公報 Balancete OCR Prototype v0.4.1
+# 澳門公報 Balancete OCR Prototype v0.4.2
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV，並可整合成 SQLite 資料庫作跨期分析。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
+
+## v0.4.2 Provenance 及 Partial Publish 保護
+
+1. **Partial run 保護**：`--publish` 會比較新舊 run 的 TB 頁碼集合；如果新 run 缺少已發布 run 的頁數，會拒絕，必須用 `--force-publish`。
+2. **PDF hash 優先**：發布識別先用 `source_pdf_sha256`，再 fallback 路徑；同一 PDF 搬資料夾仍可正確取代舊 run。
+3. **OCR-time provenance**：`macau_tb_ocr.py` 開始時計算 PDF SHA-256 及 size，寫入 `run_report.json`；DB 優先採用 `ocr_report` hash，並記錄 `source_pdf_sha256_source`。
+4. **DB 約束**：加入 `CHECK` / trigger 驗證 `is_published`、`natural_key_status`、`source_pdf_sha256_source`；每個連線啟用 foreign keys。
+5. **Docker**：Dockerfile 只支援 PaddleOCR，唔會包含 Apple Vision Swift worker。
 
 ## v0.4.1 資料完整性保護
 

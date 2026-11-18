@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Macau Gazette Balancete OCR prototype v0.4.1.
+"""Macau Gazette Balancete OCR prototype v0.4.2.
 
 Extract embedded statement images, run native Apple Vision on macOS or an optional
 PaddleOCR/Tesseract backend, reconstruct Account/Debit/Credit rows, normalize
@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import csv
 import difflib
+import hashlib
 import io
 import json
 import re
@@ -29,7 +30,7 @@ from typing import Any, Iterable
 
 import fitz  # PyMuPDF
 
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.4.2"
 TB_TERMS = (
     "試算表", "BALANCETE", "TRIAL BALANCE", "BALANCE OF THE LEDGER",
     "BALANCETE DO RAZAO", "BALANCETE DO RAZÃO",
@@ -52,6 +53,15 @@ HEADER_NOISE_RE = re.compile(
     r"^\d{1,4}$|^\d{2}[-/]\d{2}[-/]\d{4}$",
     re.I,
 )
+
+
+def sha256_file(path: Path) -> str:
+    """SHA-256 of a file, computed before OCR so provenance is OCR-time."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 @dataclass
@@ -2154,6 +2164,10 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
     pdf_path = Path(args.pdf).expanduser().resolve()
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF 不存在：{pdf_path}")
+    # Capture provenance before OCR. Hashing at import time is unsafe if the
+    # file is later moved or replaced.
+    source_pdf_sha256 = sha256_file(pdf_path)
+    source_pdf_size = pdf_path.stat().st_size
     out_dir = Path(args.outdir).expanduser().resolve()
     images_dir = out_dir / "images"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -2414,6 +2428,8 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
     report = {
         "app_version": APP_VERSION,
         "source_pdf": str(pdf_path),
+        "source_pdf_sha256": source_pdf_sha256,
+        "source_pdf_size": source_pdf_size,
         "pdf_pages": len(doc),
         "tb_pages_detected": len(document_rows),
         "tb_rows_extracted": len(tb_rows),
@@ -2459,7 +2475,7 @@ def parse_page_range(value: str, total_pages: int) -> tuple[int, int]:
 
 def build_parser() -> argparse.ArgumentParser:
     default_engine = "vision" if sys.platform == "darwin" else "paddle"
-    p = argparse.ArgumentParser(description="澳門公報 Balancete OCR / Excel / CSV prototype v0.4.1")
+    p = argparse.ArgumentParser(description="澳門公報 Balancete OCR / Excel / CSV prototype v0.4.2")
     p.add_argument("pdf", help="輸入 PDF 路徑")
     p.add_argument("--outdir", default="output", help="輸出資料夾（預設：output）")
     p.add_argument("--pages", default="all", help="處理頁數，例如 7-32；預設 all")

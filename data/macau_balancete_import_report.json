@@ -1,17 +1,19 @@
 {
   "database": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/macau_balancete.sqlite",
-  "app_version": "0.4.1",
-  "schema_version": 2,
-  "generated_at": "2026-11-18T06:28:02+00:00",
+  "app_version": "0.4.2",
+  "schema_version": 3,
+  "generated_at": "2026-11-18T10:08:41+00:00",
   "run_dirs": [
-    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_issue42_2026",
-    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_issue43_2026",
-    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_issue46_2026"
+    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue42_2026_full",
+    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue43_2026_full",
+    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue44_2026_full",
+    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue45_2026_full",
+    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue46_2026_full"
   ],
   "runs": [
     {
-      "run_id": "run_1274ce1410379648a458d9faa95c08b6394178e8dc7683bb5891a5eb318c770a",
-      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_issue42_2026",
+      "run_id": "run_e0f06167ebf350f5ce6c1fb101d24ae1a2aa23fba45074dd5cbfa65c21d949d8",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue42_2026_full",
       "status": "imported",
       "tb_pages": 2,
       "line_items": 129,
@@ -20,8 +22,8 @@
       "verification_restored": 0
     },
     {
-      "run_id": "run_e07d54414bfa86024dd143c0e68a704c651c9f682ec07ae24852c57ca570f3d8",
-      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_issue43_2026",
+      "run_id": "run_a7602c753e1ea47ef16bc2bb0fdefb595e41abb5b5d5ae80873f4618c5308e2a",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue43_2026_full",
       "status": "imported",
       "tb_pages": 4,
       "line_items": 258,
@@ -30,8 +32,28 @@
       "verification_restored": 0
     },
     {
-      "run_id": "run_4f8604fb54271291fdd57b1dbd3cc4ec1478b06c09530fcd7e70656826be149a",
-      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_issue46_2026",
+      "run_id": "run_d605172cdcbc2303d4bb39cdb7b690a43d1e35778b0965c6792c38c129cd8982",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue44_2026_full",
+      "status": "imported",
+      "tb_pages": 5,
+      "line_items": 322,
+      "review_rows": 212,
+      "published": true,
+      "verification_restored": 0
+    },
+    {
+      "run_id": "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue45_2026_full",
+      "status": "imported",
+      "tb_pages": 26,
+      "line_items": 1587,
+      "review_rows": 840,
+      "published": true,
+      "verification_restored": 0
+    },
+    {
+      "run_id": "run_8b735dd8b309e9ac06a417db4d0f18ad251c0360dd9b98e51e1b3da779397034",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output_v13_issue46_2026_full",
       "status": "imported",
       "tb_pages": 1,
       "line_items": 65,
@@ -78,10 +100,28 @@
     "rows": 31
   },
   "warnings": [
-    "run_1274ce1410379648a458d9faa95c08b6394178e8dc7683bb5891a5eb318c770a:2026-10-21|2026-09-30|bank:海通銀行澳門分行: 4 rows have no standard label",
-    "run_e07d54414bfa86024dd143c0e68a704c651c9f682ec07ae24852c57ca570f3d8:2026-10-28|2026-09-30|bank:中信銀行國際有限公司澳門分行: 2 rows have no standard label",
-    "run_e07d54414bfa86024dd143c0e68a704c651c9f682ec07ae24852c57ca570f3d8:2026-10-28|2026-09-30|bank:澳門華人銀行股份有限公司: 3 rows have no standard label",
-    "run_e07d54414bfa86024dd143c0e68a704c651c9f682ec07ae24852c57ca570f3d8:2026-10-28|2026-09-30|bank:華南商業銀行股份有限公司澳門分行: 1 rows have no standard label",
-    "run_4f8604fb54271291fdd57b1dbd3cc4ec1478b06c09530fcd7e70656826be149a:2026-11-18|2026-09-30|bank:澳門發展銀行股份有限公司: 5 rows have no standard label"
+    "run_e0f06167ebf350f5ce6c1fb101d24ae1a2aa23fba45074dd5cbfa65c21d949d8:2026-10-21|2026-09-30|bank:海通銀行澳門分行: 4 rows have no standard label",
+    "run_a7602c753e1ea47ef16bc2bb0fdefb595e41abb5b5d5ae80873f4618c5308e2a:2026-10-28|2026-09-30|bank:中信銀行國際有限公司澳門分行: 2 rows have no standard label",
+    "run_a7602c753e1ea47ef16bc2bb0fdefb595e41abb5b5d5ae80873f4618c5308e2a:2026-10-28|2026-09-30|bank:澳門華人銀行股份有限公司: 3 rows have no standard label",
+    "run_a7602c753e1ea47ef16bc2bb0fdefb595e41abb5b5d5ae80873f4618c5308e2a:2026-10-28|2026-09-30|bank:華南商業銀行股份有限公司澳門分行: 1 rows have no standard label",
+    "run_d605172cdcbc2303d4bb39cdb7b690a43d1e35778b0965c6792c38c129cd8982:2026-11-04|2026-09-30|bank:交通銀行股份有限公司澳門分行: 4 rows have no standard label",
+    "run_d605172cdcbc2303d4bb39cdb7b690a43d1e35778b0965c6792c38c129cd8982:2026-11-04|2026-09-30|bank:第一商業銀行股份有限公司澳門分行: 2 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:澳門國際銀行股份有限公司: 3 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:海通國際證券有限公司澳門分行: 13 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:bancoindustrialecomercialdachinamacausa: 2 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:中國光大銀行股份有限公司澳門分行: 1 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:創興銀行有限公司澳門分行: 6 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:葡萄牙商業銀行有限公司澳門分行bancocomercialportuguessasucursaldemacau: 62 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:澳門通股份有限公司: 2 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:中國銀行澳門股份有限公司: 2 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:中國銀行股份有限公司澳門分行: 6 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:澳門商業銀行股份有限公司: 1 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:standardcharteredbankmacaubranch: 2 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:thehongkongandshanghaibankingcorporationlimitedsucursaldemacau: 1 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:立橋銀行股份有限公司: 1 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:大豐銀行股份有限公司: 1 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:光大證劵投資服務香港有限公司澳門分行: 13 rows have no standard label",
+    "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0:2026-11-11|2026-09-30|bank:banconacionalultramarinosa: 10 rows have no standard label",
+    "run_8b735dd8b309e9ac06a417db4d0f18ad251c0360dd9b98e51e1b3da779397034:2026-11-18|2026-09-30|bank:澳門發展銀行股份有限公司: 5 rows have no standard label"
   ]
 }

@@ -498,6 +498,119 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(flags[first["runs"][0]["run_id"]], 0)
         self.assertEqual(flags[third["runs"][0]["run_id"]], 1)
 
+    def test_publish_refuses_partial_run_unless_forced(self):
+        run_full = make_run(self.root / "full", [
+            {"pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows()},
+            {"pdf_page": 2, "bank_name": "BANK A", "rows": simple_rows()},
+        ])
+        run_partial = make_run(self.root / "partial", [
+            {"pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows()},
+        ])
+        first = build_database(self.db, [run_full], publish=True)
+        build_database(self.db, [run_partial])  # staging only
+        with self.assertRaises(RuntimeError):
+            build_database(self.db, [run_partial], publish=True)
+        forced = build_database(
+            self.db, [run_partial], publish=True, force_publish=True
+        )
+        self.assertTrue(forced["runs"][0]["published"])
+        flags = {
+            row["run_id"]: row["is_published"]
+            for row in self.query("SELECT run_id, is_published FROM runs")
+        }
+        self.assertEqual(flags[first["runs"][0]["run_id"]], 0)
+        self.assertEqual(flags[forced["runs"][0]["run_id"]], 1)
+
+    def test_publish_uses_pdf_hash_across_different_paths(self):
+        pdf_one = self.root / "one.pdf"
+        pdf_two = self.root / "two.pdf"
+        pdf_one.write_bytes(b"%PDF-1.4 same bytes")
+        pdf_two.write_bytes(b"%PDF-1.4 same bytes")
+        run_one = make_run(self.root / "one_run", [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        run_two = make_run(self.root / "two_run", [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        for run, pdf in ((run_one, pdf_one), (run_two, pdf_two)):
+            report = json.loads(
+                (run / "run_report.json").read_text(encoding="utf-8")
+            )
+            report["source_pdf"] = str(pdf)
+            (run / "run_report.json").write_text(
+                json.dumps(report), encoding="utf-8"
+            )
+        first = build_database(self.db, [run_one], publish=True)
+        second = build_database(self.db, [run_two], publish=True)
+        flags = {
+            row["run_id"]: row["is_published"]
+            for row in self.query("SELECT run_id, is_published FROM runs")
+        }
+        self.assertEqual(flags[first["runs"][0]["run_id"]], 0)
+        self.assertEqual(flags[second["runs"][0]["run_id"]], 1)
+
+    def test_source_pdf_hash_recorded_at_ocr_is_preferred(self):
+        run = make_run(self.root, [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        recorded = "a" * 64
+        report = json.loads(
+            (run / "run_report.json").read_text(encoding="utf-8")
+        )
+        report["source_pdf_sha256"] = recorded
+        (run / "run_report.json").write_text(
+            json.dumps(report), encoding="utf-8"
+        )
+        build_database(self.db, [run])
+        row = self.query(
+            "SELECT source_pdf_sha256, source_pdf_sha256_source FROM runs"
+        )[0]
+        self.assertEqual(row["source_pdf_sha256"], recorded)
+        self.assertEqual(row["source_pdf_sha256_source"], "ocr_report")
+
+    def test_source_pdf_hash_mismatch_is_a_warning(self):
+        pdf_path = self.root / "source.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 current bytes")
+        run = make_run(self.root, [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        report = json.loads(
+            (run / "run_report.json").read_text(encoding="utf-8")
+        )
+        report["source_pdf"] = str(pdf_path)
+        report["source_pdf_sha256"] = "b" * 64
+        (run / "run_report.json").write_text(
+            json.dumps(report), encoding="utf-8"
+        )
+        result = build_database(self.db, [run])
+        self.assertTrue(any("differs from the hash recorded" in warning
+                            for warning in result["warnings"]))
+        row = self.query("SELECT source_pdf_sha256 FROM runs")[0]
+        self.assertEqual(row["source_pdf_sha256"], "b" * 64)
+
+    def test_database_constraints_reject_invalid_enums_and_foreign_keys(self):
+        run = make_run(self.root, [{
+            "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
+        }])
+        build_database(self.db, [run])
+        conn = dbmod._connect(self.db)
+        try:
+            with self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(
+                    "UPDATE runs SET is_published = 2"
+                )
+            with self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(
+                    "UPDATE line_items SET natural_key_status = 'weird'"
+                )
+            with self.assertRaises(sqlite3.IntegrityError):
+                conn.execute(
+                    "INSERT INTO pages (run_id, pdf_page) "
+                    "VALUES ('missing_run', 99)"
+                )
+        finally:
+            conn.close()
+
     def test_run_id_includes_pdf_bytes_and_report_config(self):
         run = make_run(self.root, [{
             "pdf_page": 1, "bank_name": "BANK A", "rows": simple_rows(),
@@ -556,8 +669,8 @@ class DatabaseTests(unittest.TestCase):
         columns = {
             row[1] for row in self.query("PRAGMA table_info(runs)")
         }
-        self.assertTrue({"source_pdf_sha256", "is_published",
-                         "published_at", "published_by"} <= columns)
+        self.assertTrue({"source_pdf_sha256", "source_pdf_sha256_source",
+                         "is_published", "published_at", "published_by"} <= columns)
         version = self.query(
             "SELECT value FROM schema_meta WHERE key = 'schema_version'"
         )[0]["value"]

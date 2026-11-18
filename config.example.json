@@ -1,5 +1,5 @@
 {
-  "version": "0.4.1",
+  "version": "0.4.2",
   "engine": "vision",
   "vision_level": "accurate",
   "vision_minimum_text_height": 0.004,

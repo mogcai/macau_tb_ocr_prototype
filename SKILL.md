@@ -1,4 +1,4 @@
-# Agent Skill: Macau Gazette Balancete OCR v0.4.1
+# Agent Skill: Macau Gazette Balancete OCR v0.4.2
 
 ## Purpose
 
@@ -12,7 +12,7 @@ Process Macau Government Gazette PDFs and extract bank / financial-institution B
 - `MACOS_SETUP.md`: Apple Silicon / macOS installation instructions.
 - `MACOS_VISION_OCR.md`: Apple Vision architecture, ROI and language constraints.
 
-## 2. Architecture (v0.4.1)
+## 2. Architecture (v0.4.2)
 
 ### Input and extraction
 
@@ -273,7 +273,11 @@ python tools/build_database.py output_v08_issue45_2026 output_v06_issue44_2026 \
   `*_total_approx` columns are REAL sums for quick checks only.
 - Read `DATABASE.md` before writing SQL. Do not change schema fields without a rebuild plan.
 
-## 7.2 Data-integrity workflow (v0.4.1)
+## 7.2 Data-integrity workflow (v0.4.2)
+
+- **Partial publish guard:** `--publish` compares the new run's `pages.pdf_page` set with the currently published run(s) for the same source PDF. Missing pages block publishing unless `--force-publish`. Publish identity uses `source_pdf_sha256` first, then path.
+- **OCR-time hash:** the OCR run writes `source_pdf_sha256` and `source_pdf_size` to `run_report.json` before processing. The importer uses that hash; `runs.source_pdf_sha256_source` records `ocr_report`, `import_time` or `missing`, and a changed PDF raises a warning.
+- **DB constraints:** CHECK/trigger validation covers `runs.is_published`, `line_items.natural_key_status` and `source_pdf_sha256_source`; all importer connections enable `PRAGMA foreign_keys=ON`.
 
 - **Publish before using as current:** imports are staging observations. After quality checks, re-run with `--publish` (or pass it on the import) to mark a run as the published dataset for its source PDF. `v_current_*` prefers published runs; `v_published_*` excludes staging runs.
 - **`--replace` and verification:** `--replace` snapshots `row_verification` and restores only rows whose `statement_id + row_order` and OCR fingerprint still match. A mismatch aborts and rolls back. Use `--discard-verification` only when intentionally dropping verification.

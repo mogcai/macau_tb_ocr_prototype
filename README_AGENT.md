@@ -1,4 +1,4 @@
-# AI Agent Quick Start — Macau Gazette Balancete OCR v0.4.1
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.4.2
 
 Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`.
 
@@ -6,12 +6,20 @@ Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF.
 
 Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review.
 
+## v0.4.2 changes
+
+- `--publish` now refuses a run whose TB page set does not cover the currently published run for the same source PDF; `--force-publish` is explicit.
+- Publish identity prefers `source_pdf_sha256` over path, so the same PDF copied elsewhere still supersedes the old published run.
+- OCR records `source_pdf_sha256` / `source_pdf_size` in `run_report.json`; the importer prefers the OCR-time hash and records `source_pdf_sha256_source = ocr_report|import_time|missing`. A changed PDF produces a warning.
+- SQLite adds CHECK/trigger validation for `is_published`, `natural_key_status` and `source_pdf_sha256_source`; every importer connection enables foreign keys.
+- Docker is PaddleOCR-only; Apple Vision remains macOS-native.
+
 ## v0.4.1 changes
 
 - `--replace` snapshots `row_verification` and restores it only when `statement_id + row_order` and the OCR fingerprint match. A mismatch rolls back; `--discard-verification` is the explicit destructive escape hatch.
 - `runs.is_published` plus `--publish` separate staging imports from the current dataset. `v_current_*` prefers published runs; `v_published_*` is the strict published view.
 - `v_statement_index` reports `debit_verified_cents` / `credit_verified_cents` separately from all-row totals.
-- Run IDs use full SHA-256 over the source PDF bytes, CSV outputs and `run_report.json`. Schema migrations now run automatically (schema v2).
+- Run IDs use full SHA-256 over the source PDF bytes, CSV outputs and `run_report.json`. Schema migrations now run automatically (schema v3).
 - `tb_pages` is the page count, not the statement count. Alias drift on an already imported run emits a warning.
 - `VERSION` is the project version source of truth; `SCHEMA_VERSION` is independent.
 
@@ -178,6 +186,7 @@ Database importer options:
 --replace
 --discard-verification
 --publish
+--force-publish
 --published-by NAME
 --bank-aliases labels/bank_aliases.csv
 --report PATH

@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.2
+
+- **Partial publish guard:** `--publish` now compares the new run's `pages.pdf_page` set with every currently published run for the same source PDF. A run missing any published page is refused unless `--force-publish` is passed. This prevents a single-page test run from removing the rest of a full published issue.
+- **Publish by content hash:** peer lookup prefers `source_pdf_sha256`; runs without a recorded hash fall back to the `source_pdf` path. The same PDF copied to a different folder still supersedes the old published run.
+- **OCR-time provenance:** `macau_tb_ocr.py` now computes `source_pdf_sha256` and `source_pdf_size` before OCR and writes both to `run_report.json`. The importer prefers this OCR-time hash, stores `runs.source_pdf_sha256_source` (`ocr_report` / `import_time` / `missing`) and warns if the PDF bytes no longer match the recorded hash.
+- **Database constraints:** `runs.is_published` and `line_items.natural_key_status` have CHECK constraints for new databases plus BEFORE INSERT/UPDATE triggers for existing databases; `source_pdf_sha256_source` is validated. All importer connections set `PRAGMA foreign_keys = ON`.
+- **Docker clarified:** the Linux image no longer copies the Apple Vision Swift worker and is documented as PaddleOCR-only.
+- **Schema v3:** adds `runs.source_pdf_sha256_source`; v1/v2 databases migrate automatically.
+- **Tests:** new coverage for partial-publish refusal/force, hash-based peer replacement, OCR-time hash precedence/mismatch, DB constraints/foreign keys, and file hashing. **130 tests passing.**
+- **Validation:** re-ran issues 42–46 with v0.4.2 and rebuilt the committed database from the five new runs. The DB now has 5 published runs, 38 statements, 2361 line items, `source_pdf_sha256_source = ocr_report` for all five, 0 statements with incomplete identity, and no hash warnings.
+
 ## v0.4.1
 
 - **`--replace` no longer silently deletes human verification.** The importer snapshots `row_verification` before deleting a run and restores it only when `statement_id + row_order` and the OCR fingerprint (`pdf_page`, raw/standard label, raw/canonical amounts) still match. A mismatch raises and rolls back the transaction. `--discard-verification` is the explicit destructive option. Tests cover preserve, discard and rollback-on-mismatch.

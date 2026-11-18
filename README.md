@@ -12,6 +12,14 @@
 
 ## 版本簡介
 
+### v0.4.2 — Provenance 及 Partial Publish 保護
+
+- `--publish` 會比較新舊 run 的 PDF 頁碼集合；如果新 run 缺少已發布 run 的頁數，會拒絕發布，必須明確使用 `--force-publish`。
+- 發布識別優先用 `source_pdf_sha256`，再 fallback `source_pdf` 路徑；同一 PDF 搬去不同資料夾仍可正確取代舊 published run。
+- OCR 開始時已計算 `source_pdf_sha256` 及 `source_pdf_size`，寫入 `run_report.json`；DB 匯入優先採用 OCR-time hash，並記錄 `source_pdf_sha256_source`（`ocr_report` / `import_time` / `missing`）。如果 PDF 已被替換，會 warning。
+- SQLite 加入 `CHECK` 及 trigger 驗證 `is_published`、`natural_key_status`、`source_pdf_sha256_source`；每次 DB 連線都啟用 `PRAGMA foreign_keys=ON`。
+- Dockerfile 明確標示只支援 PaddleOCR，移除 Apple Vision Swift worker。
+
 ### v0.4.1 — 資料完整性保護
 
 - `--replace` 會先保存 `row_verification`，只有在 `statement_id + row_order` 及 OCR fingerprint 完全一致時才恢復；不一致會 rollback，除非明確使用 `--discard-verification`。
@@ -124,6 +132,8 @@
 
 v0.2 在 macOS 上預設使用 Apple Vision；PaddleOCR 及 Tesseract 可按需要選用。
 
+**Linux / Docker：** `Dockerfile` 只支援 PaddleOCR，唔會複製或編譯 Apple Vision 的 Swift worker。Apple Vision run 必須在 macOS 原生環境執行。
+
 ## 安裝及執行（v0.4）
 
 ```bash
@@ -223,6 +233,6 @@ python -m unittest discover -s tests -v
 
 **Project:** Macau Gazette Balancete OCR
 
-**Current prototype:** v0.4.1
+**Current prototype:** v0.4.2
 
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

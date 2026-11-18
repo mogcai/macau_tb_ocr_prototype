@@ -36,8 +36,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable
 
-APP_VERSION = "0.4.1"
-SCHEMA_VERSION = 2
+APP_VERSION = "0.4.2"
+SCHEMA_VERSION = 3
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 
 SCHEMA_SQL = """
@@ -53,12 +53,14 @@ CREATE TABLE IF NOT EXISTS runs (
     run_dir TEXT NOT NULL,
     source_pdf TEXT,
     source_pdf_sha256 TEXT,
+    source_pdf_sha256_source TEXT,
     app_version TEXT,
     imported_at TEXT NOT NULL,
     tb_page_count INTEGER NOT NULL DEFAULT 0,
     line_item_count INTEGER NOT NULL DEFAULT 0,
     review_row_count INTEGER NOT NULL DEFAULT 0,
-    is_published INTEGER NOT NULL DEFAULT 0,
+    is_published INTEGER NOT NULL DEFAULT 0
+        CHECK (is_published IN (0, 1)),
     published_at TEXT,
     published_by TEXT,
     config_json TEXT,
@@ -151,7 +153,8 @@ CREATE TABLE IF NOT EXISTS line_items (
     label_path_key TEXT NOT NULL DEFAULT '',
     occurrence INTEGER NOT NULL,
     natural_key TEXT NOT NULL,
-    natural_key_status TEXT NOT NULL,
+    natural_key_status TEXT NOT NULL
+        CHECK (natural_key_status IN ('complete', 'duplicate', 'missing_label')),
     debit_raw TEXT,
     credit_raw TEXT,
     debit_amount TEXT,
@@ -194,6 +197,44 @@ CREATE INDEX IF NOT EXISTS idx_line_items_parent
     ON line_items (parent_label_standard);
 CREATE INDEX IF NOT EXISTS idx_statements_paper_key
     ON statements (paper_key);
+
+-- Existing databases cannot gain CHECK constraints through ALTER TABLE, so
+-- validate the most safety-critical enums with triggers as well.
+CREATE TRIGGER IF NOT EXISTS trg_runs_is_published_insert
+BEFORE INSERT ON runs
+WHEN NEW.is_published NOT IN (0, 1)
+BEGIN
+    SELECT RAISE(ABORT, 'runs.is_published must be 0 or 1');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_runs_is_published_update
+BEFORE UPDATE OF is_published ON runs
+WHEN NEW.is_published NOT IN (0, 1)
+BEGIN
+    SELECT RAISE(ABORT, 'runs.is_published must be 0 or 1');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_runs_hash_source_insert
+BEFORE INSERT ON runs
+WHEN NEW.source_pdf_sha256_source IS NOT NULL
+ AND NEW.source_pdf_sha256_source NOT IN ('ocr_report', 'import_time', 'missing')
+BEGIN
+    SELECT RAISE(ABORT, 'invalid runs.source_pdf_sha256_source');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_line_items_natural_status_insert
+BEFORE INSERT ON line_items
+WHEN NEW.natural_key_status NOT IN ('complete', 'duplicate', 'missing_label')
+BEGIN
+    SELECT RAISE(ABORT, 'invalid line_items.natural_key_status');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_line_items_natural_status_update
+BEFORE UPDATE OF natural_key_status ON line_items
+WHEN NEW.natural_key_status NOT IN ('complete', 'duplicate', 'missing_label')
+BEGIN
+    SELECT RAISE(ABORT, 'invalid line_items.natural_key_status');
+END;
 """
 
 VIEWS_SQL = """
@@ -395,6 +436,7 @@ SELECT run_id,
        run_dir,
        source_pdf,
        source_pdf_sha256,
+       source_pdf_sha256_source,
        app_version,
        imported_at,
        is_published,
@@ -635,12 +677,52 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _source_pdf_sha256(report: dict[str, Any]) -> str:
+def _computed_source_pdf_sha256(report: dict[str, Any]) -> str:
     source = normalize_text(report.get("source_pdf"))
     if not source:
         return ""
     path = Path(source).expanduser()
     return _sha256_file(path) if path.is_file() else ""
+
+
+def _source_pdf_sha256(report: dict[str, Any]) -> str:
+    """Prefer the hash recorded at OCR time over an import-time computation."""
+    recorded = normalize_text(report.get("source_pdf_sha256")).lower()
+    if re.fullmatch(r"[0-9a-f]{64}", recorded):
+        return recorded
+    return _computed_source_pdf_sha256(report)
+
+
+def _source_pdf_sha_for_import(
+    report: dict[str, Any],
+) -> tuple[str, str, list[str]]:
+    """Return (sha256, source, warnings) for a run being imported."""
+    recorded = normalize_text(report.get("source_pdf_sha256")).lower()
+    computed = _computed_source_pdf_sha256(report)
+    warnings: list[str] = []
+    if re.fullmatch(r"[0-9a-f]{64}", recorded):
+        if computed and computed != recorded:
+            warnings.append(
+                "source PDF hash differs from the hash recorded by OCR; "
+                "keeping the OCR-time hash, but the PDF may have been replaced"
+            )
+        return recorded, "ocr_report", warnings
+    if recorded:
+        warnings.append(
+            "run_report source_pdf_sha256 is not a valid SHA-256; "
+            "falling back to import-time computation"
+        )
+    if computed:
+        warnings.append(
+            "run_report has no source_pdf_sha256; computed at import time "
+            "(re-run OCR to capture provenance at source)"
+        )
+        return computed, "import_time", warnings
+    warnings.append(
+        "run_report has no source_pdf_sha256 and the source PDF is unavailable; "
+        "provenance hash is empty"
+    )
+    return "", "missing", warnings
 
 
 def _run_id_for(
@@ -1063,17 +1145,19 @@ def _insert_run(conn: sqlite3.Connection, run: dict[str, Any]) -> None:
     conn.execute(
         """
         INSERT INTO runs (
-            run_id, run_dir, source_pdf, source_pdf_sha256, app_version,
+            run_id, run_dir, source_pdf, source_pdf_sha256,
+            source_pdf_sha256_source, app_version,
             imported_at, tb_page_count, line_item_count, review_row_count,
             is_published, published_at, published_by,
             config_json, run_report_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run["run_id"],
             run["run_dir"],
             run["source_pdf"],
             run.get("source_pdf_sha256", ""),
+            run.get("source_pdf_sha256_source", ""),
             run["app_version"],
             run["imported_at"],
             run["page_count"],
@@ -1221,22 +1305,74 @@ def _restore_run_verification(
     return restored
 
 
+def _run_page_set(conn: sqlite3.Connection, run_id: str) -> set[int]:
+    return {
+        int(row[0])
+        for row in conn.execute(
+            "SELECT DISTINCT pdf_page FROM pages WHERE run_id = ?", (run_id,)
+        )
+    }
+
+
+def _published_peers(
+    conn: sqlite3.Connection,
+    run_id: str,
+    source_pdf: str,
+    source_pdf_sha256: str,
+) -> list[sqlite3.Row]:
+    """Find published runs for the same source PDF, preferring content hash."""
+    if source_pdf_sha256:
+        return conn.execute(
+            "SELECT run_id, source_pdf FROM runs "
+            "WHERE run_id <> ? AND is_published = 1 AND ("
+            "  source_pdf_sha256 = ? OR "
+            "  (COALESCE(source_pdf_sha256, '') = '' AND source_pdf = ?)"
+            ")",
+            (run_id, source_pdf_sha256, source_pdf),
+        ).fetchall()
+    if source_pdf:
+        return conn.execute(
+            "SELECT run_id, source_pdf FROM runs "
+            "WHERE run_id <> ? AND is_published = 1 AND source_pdf = ?",
+            (run_id, source_pdf),
+        ).fetchall()
+    return []
+
+
 def _publish_run(
     conn: sqlite3.Connection,
     run_id: str,
     published_by: str,
+    force: bool = False,
 ) -> None:
     run = conn.execute(
-        "SELECT source_pdf FROM runs WHERE run_id = ?", (run_id,)
+        "SELECT source_pdf, source_pdf_sha256 FROM runs WHERE run_id = ?",
+        (run_id,),
     ).fetchone()
     if run is None:
         raise RuntimeError(f"cannot publish unknown run {run_id}")
+    new_pages = _run_page_set(conn, run_id)
+    peers = _published_peers(
+        conn, run_id, run["source_pdf"] or "", run["source_pdf_sha256"] or ""
+    )
+    missing: list[str] = []
+    for peer in peers:
+        peer_pages = _run_page_set(conn, peer["run_id"])
+        absent = sorted(peer_pages - new_pages)
+        if peer_pages and absent:
+            missing.append(f"{peer['run_id']} pages {absent}")
+    if missing and not force:
+        raise RuntimeError(
+            "refusing to publish an incomplete run: the currently published "
+            "run covers pages this run does not (" + "; ".join(missing) + "). "
+            "Use --force-publish only after confirming those pages should be "
+            "removed from the published dataset."
+        )
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    if run["source_pdf"]:
+    for peer in peers:
         conn.execute(
-            "UPDATE runs SET is_published = 0 "
-            "WHERE run_id <> ? AND source_pdf = ? AND is_published = 1",
-            (run_id, run["source_pdf"]),
+            "UPDATE runs SET is_published = 0 WHERE run_id = ?",
+            (peer["run_id"],),
         )
     conn.execute(
         "UPDATE runs SET is_published = 1, "
@@ -1359,6 +1495,22 @@ def _migrate_schema(conn: sqlite3.Connection, from_version: int) -> None:
                 )
                 """
             )
+    if from_version < 3:
+        runs_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runs'"
+        ).fetchone()
+        if runs_exists:
+            columns = _table_columns(conn, "runs")
+            if "source_pdf_sha256_source" not in columns:
+                conn.execute(
+                    "ALTER TABLE runs ADD COLUMN source_pdf_sha256_source TEXT"
+                )
+            conn.execute(
+                "UPDATE runs SET source_pdf_sha256_source = "
+                "CASE WHEN COALESCE(source_pdf_sha256, '') <> '' "
+                "THEN 'import_time' ELSE 'missing' END "
+                "WHERE source_pdf_sha256_source IS NULL"
+            )
 
 
 def _schema(conn: sqlite3.Connection) -> None:
@@ -1390,6 +1542,13 @@ def _schema(conn: sqlite3.Connection) -> None:
     )
 
 
+def _connect(db_path: Path) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
 def build_database(
     db_path: Path,
     run_dirs: list[Path],
@@ -1397,6 +1556,7 @@ def build_database(
     replace: bool = False,
     publish: bool = False,
     published_by: str = "operator",
+    force_publish: bool = False,
     discard_verification: bool = False,
 ) -> dict[str, Any]:
     """Import run directories into ``db_path`` and return a summary report."""
@@ -1405,9 +1565,7 @@ def build_database(
     run_results: list[dict[str, Any]] = []
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = _connect(db_path)
     try:
         _schema(conn)
         _load_alias_rows(conn, aliases_path)
@@ -1417,7 +1575,12 @@ def build_database(
                 if not run_dir.is_dir():
                     raise NotADirectoryError(f"run directory not found: {run_dir}")
                 report = read_json(run_dir / "run_report.json")
-                source_pdf_sha256 = _source_pdf_sha256(report)
+                source_pdf_sha256, source_pdf_sha256_source, hash_warnings = (
+                    _source_pdf_sha_for_import(report)
+                )
+                warnings.extend(
+                    f"{run_dir.name}: {warning}" for warning in hash_warnings
+                )
                 run_id = _run_id_for(run_dir, report, source_pdf_sha256)
                 existing = conn.execute(
                     "SELECT tb_page_count, line_item_count, is_published, "
@@ -1440,7 +1603,7 @@ def build_database(
                             "rebuild the database or re-import with --replace"
                         )
                     if publish:
-                        _publish_run(conn, run_id, published_by)
+                        _publish_run(conn, run_id, published_by, force=force_publish)
                     run_results.append({
                         "run_id": run_id,
                         "run_dir": str(run_dir),
@@ -1476,6 +1639,7 @@ def build_database(
                     "run_dir": str(run_dir),
                     "source_pdf": normalize_text(report.get("source_pdf")),
                     "source_pdf_sha256": source_pdf_sha256,
+                    "source_pdf_sha256_source": source_pdf_sha256_source,
                     "app_version": normalize_text(report.get("app_version"))
                     or APP_VERSION,
                     "imported_at": datetime.now(timezone.utc).isoformat(
@@ -1602,7 +1766,7 @@ def build_database(
                         f"{restored_verification} verification row(s)"
                     )
                 if publish:
-                    _publish_run(conn, run_id, published_by)
+                    _publish_run(conn, run_id, published_by, force=force_publish)
                 run_results.append({
                     "run_id": run_id,
                     "run_dir": str(run_dir),
@@ -1636,7 +1800,7 @@ def _build_report(
     run_results: list[dict[str, Any]],
     warnings: list[str],
 ) -> dict[str, Any]:
-    conn = sqlite3.connect(db_path)
+    conn = _connect(db_path)
     try:
         totals = {
             "runs": _scalar(conn, "SELECT COUNT(*) FROM runs"),
@@ -1801,6 +1965,11 @@ def main(argv: list[str] | None = None) -> int:
         help="mark the imported run as published/current for its source PDF",
     )
     parser.add_argument(
+        "--force-publish", action="store_true",
+        help="allow publishing a run whose page set is smaller than the "
+             "currently published run for the same source PDF",
+    )
+    parser.add_argument(
         "--published-by", default="operator",
         help="name recorded in runs.published_by when using --publish",
     )
@@ -1824,9 +1993,10 @@ def main(argv: list[str] | None = None) -> int:
             replace=args.replace,
             publish=args.publish,
             published_by=args.published_by,
+            force_publish=args.force_publish,
             discard_verification=args.discard_verification,
         )
-    except (OSError, ValueError, sqlite3.Error) as exc:
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         print(f"error: {exc}")
         return 1
     write_report(report_path, report)
