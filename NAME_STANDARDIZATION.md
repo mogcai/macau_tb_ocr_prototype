@@ -45,6 +45,23 @@ Report 會寫入：
 data/macau_balancete_name_registry_report.json
 ```
 
+## Bank 中文名
+
+`labels/bank_name_translations.csv` 為 Latin-only bank 提供 proposed 中文名：
+
+```csv
+bank_key,canonical_zh,canonical_pt,entity_type,status,source,note
+bank:banconacionalultramarinosa,大西洋銀行股份有限公司,BANCO NACIONAL ULTRAMARINO, S.A.,bank,proposed,BNU official Chinese name,大西洋銀行
+```
+
+Build 會：
+
+- 寫入 `banks.canonical_zh` / `canonical_pt`。
+- 加一條 pending `bank_name_aliases` 中文 alias。
+- 產生 `translation_seed` bank review。
+
+Approved 後 `banks.registry_status` 會變成 `approved`。
+
 ## 查看待審候選
 
 ```bash
@@ -56,6 +73,21 @@ python tools/name_registry.py list --db data/macau_balancete.sqlite \
 ```
 
 輸出會按 `occurrence_count` 排序，方便先處理最常見名稱。
+
+## 匯出／匯入 review CSV
+
+```bash
+python tools/name_registry.py export \
+  --db data/macau_balancete.sqlite \
+  --csv data/name_review_queue.csv
+
+# 人手在 CSV 填 decision: approve / reject
+python tools/name_registry.py import-review \
+  --db data/macau_balancete.sqlite \
+  --csv data/name_review_queue.csv --by tony
+```
+
+CSV 欄位包括 `review_id`、`entity_type`、`raw_name`、`language`、`occurrence_count`、`source_issues`、`source_pages`、`match_method`、`match_score`、`current_entity_id`、`suggested_entity_id`、`suggested_canonical`、`decision`、`approved_entity_id`、`note`。
 
 ## 批准
 

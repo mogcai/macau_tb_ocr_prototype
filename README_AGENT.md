@@ -1,4 +1,4 @@
-# AI Agent Quick Start — Macau Gazette Balancete OCR v0.5.0
+# AI Agent Quick Start — Macau Gazette Balancete OCR v0.5.1
 
 Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`; name registry workflow is in `NAME_STANDARDIZATION.md`.
 
@@ -6,8 +6,10 @@ Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF.
 
 Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review.
 
-## v0.5.0 changes
+## v0.5.1 changes
 
+- `name_registry.py export` / `import-review` provide a CSV review workflow (`data/name_review_queue.csv`).
+- `labels/bank_name_translations.csv` proposes Chinese names for Latin-only banks; `banks.canonical_zh` is filled and a pending `translation_seed` review is created.
 - Added the bank / line-item name standardization registry (`tools/name_registry.py`).
 - Same-language lexicon aliases are approved seeds; cross-language bilingual pairs become pending reviews, never automatic merges.
 - Only approved aliases populate `line_items.line_item_concept_id`; raw OCR fields stay untouched.

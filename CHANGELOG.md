@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.1
+
+- **Review CSV workflow:** `name_registry.py export` writes `data/name_review_queue.csv` with editable `decision`, `approved_entity_id` and `note` columns; `import-review` applies approve/reject decisions. 153 pending items currently exported (8 bank + 145 line item).
+- **Latin bank Chinese names:** added `labels/bank_name_translations.csv` with proposed Chinese canonical names for HANG SENG, ICBC Macau/group/head-office branch, ICBC Capital, Standard Chartered, HSBC and BNU. `build` fills `banks.canonical_zh` and creates pending `translation_seed` bank reviews; approval promotes `registry_status` to `approved`.
+- **Docs/tests:** `NAME_STANDARDIZATION.md` covers export/import and bank translations. **137 tests passing.**
+- Rebuilt the committed DB: 5 published runs, 38 statements, 2361 line items, 38 banks with `canonical_zh`, 216 concepts, 123 approved aliases, 8 pending bank translations and 145 pending line-item reviews.
+
 ## v0.5.0
 
 - **Name Standardization Registry:** added `tools/name_registry.py` with `build`, `list`, `approve`, `reject` and `remap` commands. Raw OCR names are never overwritten.
@@ -10,7 +17,9 @@
 - **Schema v4:** v3 databases migrate in place with the registry tables/columns.
 - **Docs:** added `NAME_STANDARDIZATION.md` and cross-references in README, README_zh_HK, README_AGENT, SKILL and DATABASE.
 - **Current seed:** 216 concepts (120 lexicon + 96 provisional discovery candidates), 123 approved line-item aliases, 145 pending line-item reviews, 38 bank entities; 2214 line items map `concept_exact`, 1 `concept_alias`, 140 `concept_unmapped`, 6 `concept_missing_label`.
-- **Tests:** 135 passing.
+- **Bank Chinese-name seed:** `labels/bank_name_translations.csv` supplies proposed Chinese names for Latin-only banks; they set `banks.canonical_zh` and create pending `translation_seed` reviews.
+- **Review CSV workflow:** `name_registry.py export` writes `data/name_review_queue.csv` with blank `decision` / `approved_entity_id` / `note` columns; `import-review` applies the filled decisions.
+- **Tests:** 137 passing.
 
 ## v0.4.2
 

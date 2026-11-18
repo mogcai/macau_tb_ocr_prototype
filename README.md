@@ -12,6 +12,11 @@
 
 ## 版本簡介
 
+### v0.5.1 — Review CSV 及銀行中文名
+
+- `name_registry.py export` 輸出 `data/name_review_queue.csv`，可直接填 `decision` / `approved_entity_id` / `note`，再用 `import-review` 匯入。
+- `labels/bank_name_translations.csv` 為 Latin-only 銀行提供 proposed 中文名；DB 會填 `banks.canonical_zh` 並產生 pending `translation_seed` review。
+
 ### v0.5.0 — Name Standardization Registry
 
 - 新增 `tools/name_registry.py`：建立 bank / line-item 的名稱標準化主檔、待審候選及 audit。
@@ -242,6 +247,6 @@ python -m unittest discover -s tests -v
 
 **Project:** Macau Gazette Balancete OCR
 
-**Current prototype:** v0.5.0
+**Current prototype:** v0.5.1
 
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

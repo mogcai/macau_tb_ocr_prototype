@@ -1,4 +1,4 @@
-# SQLite 整合資料庫（v0.5.0 / schema v4）
+# SQLite 整合資料庫（v0.5.1 / schema v4）
 
 呢份文件講清楚點解唔直接用
 `publication_date, statement_date, bank_name, parent_label_standard, label_standard`

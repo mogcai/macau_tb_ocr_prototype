@@ -353,7 +353,11 @@ def seed_lexicon(conn: sqlite3.Connection, lexicon_path: Path) -> Counter[str]:
     return stats
 
 
-def seed_banks(conn: sqlite3.Connection, aliases_path: Path | None) -> Counter[str]:
+def seed_banks(
+    conn: sqlite3.Connection,
+    aliases_path: Path | None,
+    translations_path: Path | None = None,
+) -> Counter[str]:
     stats: Counter[str] = Counter()
     alias_map: dict[str, int] = {}
     if aliases_path and aliases_path.exists():
@@ -370,6 +374,64 @@ def seed_banks(conn: sqlite3.Connection, aliases_path: Path | None) -> Counter[s
                 if bank is None:
                     continue
                 alias_map[alias.casefold()] = int(bank["bank_id"])
+
+    if translations_path and translations_path.exists():
+        with translations_path.open(newline="", encoding="utf-8-sig") as handle:
+            for row in csv.DictReader(handle):
+                bank_key = normalize_text(row.get("bank_key"))
+                canonical_zh = normalize_text(row.get("canonical_zh"))
+                if not bank_key or not canonical_zh:
+                    continue
+                bank = conn.execute(
+                    "SELECT bank_id, display_name FROM banks WHERE bank_key = ?",
+                    (bank_key,),
+                ).fetchone()
+                if bank is None:
+                    continue
+                bank_id = int(bank["bank_id"])
+                canonical_pt = normalize_text(row.get("canonical_pt"))
+                entity_type = normalize_text(row.get("entity_type")) or "bank"
+                conn.execute(
+                    """
+                    UPDATE banks SET canonical_zh = ?, canonical_pt = ?,
+                                     entity_type = ?
+                    WHERE bank_id = ?
+                    """,
+                    (canonical_zh, canonical_pt or None, entity_type, bank_id),
+                )
+                status = normalize_text(row.get("status")).lower()
+                alias_status = "approved" if status == "approved" else "pending"
+                _upsert_bank_alias(
+                    conn, bank_id, canonical_zh, "zh-Hant",
+                    alias_type="official", status=alias_status,
+                    source="translation_seed",
+                    note=normalize_text(row.get("note")),
+                )
+                if alias_status == "approved":
+                    conn.execute(
+                        "UPDATE banks SET registry_status = 'approved' "
+                        "WHERE bank_id = ?",
+                        (bank_id,),
+                    )
+                else:
+                    count = conn.execute(
+                        "SELECT COUNT(*) FROM v_current_statements "
+                        "WHERE bank_id = ?",
+                        (bank_id,),
+                    ).fetchone()[0]
+                    _add_review(
+                        conn, entity_type="bank",
+                        raw_name=normalize_text(bank["display_name"]),
+                        normalized_name=bank_key,
+                        language=_language_of(bank["display_name"]),
+                        current_entity_id=bank_id,
+                        suggested_entity_id=bank_id,
+                        suggested_canonical=canonical_zh,
+                        match_method="translation_seed", match_score=0.80,
+                        occurrence_count=int(count),
+                        source_issues="", source_pages="",
+                    )
+                    stats["bank_translation_reviews"] += 1
 
     for row in conn.execute(
         "SELECT bank_id, bank_key, display_name, notes FROM banks"
@@ -388,12 +450,17 @@ def seed_banks(conn: sqlite3.Connection, aliases_path: Path | None) -> Counter[s
             entity_type = "branch"
         conn.execute(
             """
-            UPDATE banks SET canonical_zh = ?, canonical_pt = ?,
-                             entity_type = ?,
-                             registry_status = CASE
-                                 WHEN registry_status = 'approved' THEN 'approved'
-                                 ELSE 'provisional'
-                             END
+            UPDATE banks SET
+                canonical_zh = COALESCE(NULLIF(canonical_zh, ''), ?),
+                canonical_pt = COALESCE(NULLIF(canonical_pt, ''), ?),
+                entity_type = CASE
+                    WHEN entity_type = 'group' THEN 'group'
+                    ELSE ?
+                END,
+                registry_status = CASE
+                    WHEN registry_status = 'approved' THEN 'approved'
+                    ELSE 'provisional'
+                END
             WHERE bank_id = ?
             """,
             (zh or None, pt or None, entity_type, bank_id),
@@ -666,6 +733,7 @@ def build_registry(
     *,
     lexicon_path: Path,
     bank_aliases_path: Path | None,
+    bank_translations_path: Path | None = None,
 ) -> dict[str, Any]:
     conn = _connect(db_path)
     try:
@@ -674,7 +742,9 @@ def build_registry(
             version = _next_registry_version(conn)
             stats: Counter[str] = Counter()
             stats.update(seed_lexicon(conn, lexicon_path))
-            stats.update(seed_banks(conn, bank_aliases_path))
+            stats.update(seed_banks(
+                conn, bank_aliases_path, bank_translations_path
+            ))
             stats.update(generate_line_item_reviews(conn))
             stats.update(generate_bilingual_reviews(conn))
             mapping = apply_line_item_mappings(conn, version)
@@ -965,6 +1035,119 @@ def reject_review(
         conn.close()
 
 
+REVIEW_EXPORT_FIELDS = [
+    "review_id", "entity_type", "raw_name", "language",
+    "occurrence_count", "source_issues", "source_pages",
+    "match_method", "match_score", "current_entity_id",
+    "suggested_entity_id", "suggested_canonical",
+    "decision", "approved_entity_id", "note",
+]
+
+
+def export_reviews(
+    db_path: Path,
+    out_path: Path,
+    *,
+    entity_type: str | None = None,
+    match_method: str | None = None,
+) -> int:
+    conn = _connect(db_path)
+    try:
+        _schema(conn)
+        sql = (
+            "SELECT review_id, entity_type, raw_name, language, "
+            "occurrence_count, source_issues, source_pages, match_method, "
+            "match_score, current_entity_id, suggested_entity_id, "
+            "suggested_canonical FROM name_mapping_review "
+            "WHERE status = 'pending'"
+        )
+        params: list[Any] = []
+        if entity_type:
+            sql += " AND entity_type = ?"
+            params.append(entity_type)
+        if match_method:
+            sql += " AND match_method = ?"
+            params.append(match_method)
+        sql += (
+            " ORDER BY CASE entity_type WHEN 'bank' THEN 0 ELSE 1 END, "
+            "occurrence_count DESC, review_id"
+        )
+        rows = conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.DictWriter(handle, fieldnames=REVIEW_EXPORT_FIELDS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({
+                "review_id": row["review_id"],
+                "entity_type": row["entity_type"],
+                "raw_name": row["raw_name"],
+                "language": row["language"] or "",
+                "occurrence_count": row["occurrence_count"],
+                "source_issues": row["source_issues"] or "",
+                "source_pages": row["source_pages"] or "",
+                "match_method": row["match_method"] or "",
+                "match_score": f"{row['match_score']:.2f}"
+                if row["match_score"] is not None else "",
+                "current_entity_id": row["current_entity_id"] or "",
+                "suggested_entity_id": row["suggested_entity_id"] or "",
+                "suggested_canonical": row["suggested_canonical"] or "",
+                "decision": "",
+                "approved_entity_id": "",
+                "note": "",
+            })
+    return len(rows)
+
+
+def import_review_decisions(
+    db_path: Path,
+    csv_path: Path,
+    actor: str,
+) -> dict[str, Any]:
+    """Apply decisions from an exported CSV.
+
+    ``decision`` accepts approve/approved/yes/1 and reject/rejected/no/0.
+    ``approved_entity_id`` can override the suggested entity.
+    """
+    counts: Counter[str] = Counter()
+    errors: list[str] = []
+    with csv_path.open(newline="", encoding="utf-8-sig") as handle:
+        for row in csv.DictReader(handle):
+            decision = normalize_text(row.get("decision")).lower()
+            if decision not in {"approve", "approved", "yes", "1",
+                                "reject", "rejected", "no", "0"}:
+                continue
+            review_id = normalize_text(row.get("review_id"))
+            if not review_id.isdigit():
+                continue
+            note = normalize_text(row.get("note"))
+            entity_type = normalize_text(row.get("entity_type"))
+            override = normalize_text(row.get("approved_entity_id"))
+            try:
+                if decision in {"approve", "approved", "yes", "1"}:
+                    kwargs: dict[str, Any] = {}
+                    if override.isdigit():
+                        if entity_type == "bank":
+                            kwargs["bank_id"] = int(override)
+                        else:
+                            kwargs["concept_id"] = int(override)
+                    result = approve_review(
+                        db_path, int(review_id), actor, note=note, **kwargs
+                    )
+                    counts["approved"] += 1
+                    if result.get("target_id"):
+                        counts["target_ids"] += 1
+                else:
+                    reject_review(db_path, int(review_id), actor, note)
+                    counts["rejected"] += 1
+            except (RuntimeError, ValueError, sqlite3.Error) as exc:
+                counts["errors"] += 1
+                errors.append(f"review {review_id}: {exc}")
+    return {"counts": dict(counts), "errors": errors}
+
+
 def _print_reviews(rows: Iterable[sqlite3.Row]) -> None:
     for row in rows:
         print(
@@ -987,6 +1170,8 @@ def main(argv: list[str] | None = None) -> int:
                        default=Path("labels/label_lexicon.csv"))
     build.add_argument("--bank-aliases", type=Path,
                        default=Path("labels/bank_aliases.csv"))
+    build.add_argument("--bank-translations", type=Path,
+                       default=Path("labels/bank_name_translations.csv"))
     build.add_argument("--report", type=Path)
 
     list_cmd = sub.add_parser("list", help="list pending name mappings")
@@ -994,7 +1179,7 @@ def main(argv: list[str] | None = None) -> int:
     list_cmd.add_argument("--entity-type", choices=["bank", "line_item"])
     list_cmd.add_argument("--match-method",
                           choices=["exact", "fuzzy", "bilingual_pair",
-                                   "new_candidate"])
+                                   "new_candidate", "translation_seed"])
     list_cmd.add_argument("--limit", type=int, default=30)
 
     approve = sub.add_parser("approve", help="approve a pending mapping")
@@ -1011,6 +1196,21 @@ def main(argv: list[str] | None = None) -> int:
     reject.add_argument("--by", required=True)
     reject.add_argument("--note", default="")
 
+    export = sub.add_parser("export", help="export pending mappings to CSV")
+    export.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
+    export.add_argument("--csv", type=Path,
+                        default=Path("data/name_review_queue.csv"))
+    export.add_argument("--entity-type", choices=["bank", "line_item"])
+    export.add_argument("--match-method")
+
+    import_decisions = sub.add_parser(
+        "import-review", help="apply decisions from an exported CSV"
+    )
+    import_decisions.add_argument("--db", type=Path,
+                                  default=Path("data/macau_balancete.sqlite"))
+    import_decisions.add_argument("--csv", type=Path, required=True)
+    import_decisions.add_argument("--by", required=True)
+
     remap = sub.add_parser("remap", help="re-apply approved aliases to line_items")
     remap.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
 
@@ -1021,7 +1221,13 @@ def main(argv: list[str] | None = None) -> int:
             report = build_registry(
                 args.db,
                 lexicon_path=args.lexicon,
-                bank_aliases_path=args.bank_aliases if args.bank_aliases.exists() else None,
+                bank_aliases_path=(
+                    args.bank_aliases if args.bank_aliases.exists() else None
+                ),
+                bank_translations_path=(
+                    args.bank_translations
+                    if args.bank_translations.exists() else None
+                ),
             )
             report_path = args.report or args.db.with_name(
                 f"{args.db.stem}_name_registry_report.json"
@@ -1047,6 +1253,21 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "reject":
             print(json.dumps(
                 reject_review(args.db, args.id, args.by, args.note),
+                ensure_ascii=False, indent=2,
+            ))
+        elif args.command == "export":
+            count = export_reviews(
+                args.db, args.csv,
+                entity_type=args.entity_type,
+                match_method=args.match_method,
+            )
+            print(json.dumps({
+                "csv": str(args.csv.resolve()),
+                "rows": count,
+            }, ensure_ascii=False, indent=2))
+        elif args.command == "import-review":
+            print(json.dumps(
+                import_review_decisions(args.db, args.csv, args.by),
                 ensure_ascii=False, indent=2,
             ))
         elif args.command == "remap":

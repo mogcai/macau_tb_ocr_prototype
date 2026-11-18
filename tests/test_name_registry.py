@@ -193,6 +193,71 @@ class NameRegistryTests(unittest.TestCase):
                          review["suggested_entity_id"])
         self.assertEqual(mapped["mapping_status"], "concept_alias")
 
+    def test_bank_translation_seed_sets_chinese_name_and_pending_review(self):
+        translations = self.root / "bank_translations.csv"
+        with translations.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=[
+                "bank_key", "canonical_zh", "canonical_pt",
+                "entity_type", "status", "source", "note",
+            ])
+            writer.writeheader()
+            writer.writerow({
+                "bank_key": "bank:banka",
+                "canonical_zh": "銀行甲",
+                "canonical_pt": "BANK A",
+                "entity_type": "bank",
+                "status": "proposed",
+                "source": "test",
+                "note": "",
+            })
+        report = reg.build_registry(
+            self.db, lexicon_path=self.lexicon,
+            bank_aliases_path=None,
+            bank_translations_path=translations,
+        )
+        self.assertEqual(report["counts"]["pending_reviews"].get("bank"), 1)
+        bank = self.query(
+            "SELECT canonical_zh, canonical_pt, registry_status "
+            "FROM banks WHERE bank_id = 1"
+        )[0]
+        self.assertEqual(bank["canonical_zh"], "銀行甲")
+        self.assertEqual(bank["canonical_pt"], "BANK A")
+        self.assertEqual(bank["registry_status"], "provisional")
+        review = self.query(
+            "SELECT review_id, suggested_canonical FROM name_mapping_review "
+            "WHERE entity_type = 'bank' AND match_method = 'translation_seed'"
+        )[0]
+        self.assertEqual(review["suggested_canonical"], "銀行甲")
+        reg.approve_review(self.db, review["review_id"], "reviewer")
+        bank = self.query(
+            "SELECT registry_status FROM banks WHERE bank_id = 1"
+        )[0]
+        self.assertEqual(bank["registry_status"], "approved")
+
+    def test_export_and_import_review_csv(self):
+        reg.build_registry(
+            self.db, lexicon_path=self.lexicon, bank_aliases_path=None
+        )
+        csv_path = self.root / "review.csv"
+        count = reg.export_reviews(self.db, csv_path)
+        self.assertGreater(count, 0)
+        with csv_path.open(newline="", encoding="utf-8-sig") as handle:
+            rows = list(csv.DictReader(handle))
+        self.assertIn("decision", rows[0])
+        approved_id = rows[0]["review_id"]
+        rows[0]["decision"] = "approve"
+        with csv_path.open("w", newline="", encoding="utf-8-sig") as handle:
+            writer = csv.DictWriter(handle, fieldnames=reg.REVIEW_EXPORT_FIELDS)
+            writer.writeheader()
+            writer.writerows(rows)
+        result = reg.import_review_decisions(self.db, csv_path, "reviewer")
+        self.assertEqual(result["counts"].get("approved"), 1)
+        status = self.query(
+            "SELECT status FROM name_mapping_review WHERE review_id = ?",
+            (approved_id,),
+        )[0]["status"]
+        self.assertEqual(status, "approved")
+
     def test_build_is_idempotent(self):
         first = reg.build_registry(
             self.db, lexicon_path=self.lexicon, bank_aliases_path=None
