@@ -49,6 +49,53 @@ class NumberFormatTests(unittest.TestCase):
     def test_us_style_value(self):
         self.assertEqual(parse_amount("1,234,567.89", "comma_dot"), ("1234567.89", ""))
 
+    def test_degrades_last_separator_substitution_but_flags_it(self):
+        # Source prints 14.702,016,826,10: first thousands mark looks like a dot.
+        self.assertEqual(
+            parse_amount("14.702,016,826,10", "comma_dot"),
+            ("14702016826.10", "recovered_ocr_separator"),
+        )
+
+    def test_space_used_as_decimal_separator_is_flagged(self):
+        # Source prints 5,083,140,620 78 (space instead of the decimal mark).
+        self.assertEqual(
+            parse_amount("5,083,140,620 78", "comma_dot"),
+            ("5083140620.78", "recovered_ocr_separator"),
+        )
+        self.assertEqual(
+            parse_amount("1 234,56", "dot_comma"),
+            ("1234.56", "recovered_ocr_separator"),
+        )
+
+    def test_space_grouping_is_recovered_only_with_flagging(self):
+        self.assertEqual(
+            parse_amount("1 234 567", "comma_dot"),
+            ("1234567", "recovered_ocr_separator"),
+        )
+
+    def test_space_next_to_punctuation_is_not_a_repair(self):
+        self.assertEqual(
+            parse_amount("32, 713, 062.68", "comma_dot"), ("32713062.68", "")
+        )
+        self.assertEqual(
+            parse_amount("5, 830, 945, 637. 01", "comma_dot"), ("5830945637.01", "")
+        )
+
+    def test_space_inside_a_group_is_treated_as_ocr_noise(self):
+        self.assertEqual(
+            parse_amount("6,04 1,499.40", "comma_dot"),
+            ("6041499.40", "recovered_ocr_separator"),
+        )
+
+    def test_conflicting_space_readings_stay_ambiguous(self):
+        self.assertEqual(parse_amount("1 234 56", "comma_dot"), ("", "ambiguous_format"))
+
+    def test_trailing_letter_noise_is_removed_but_flagged(self):
+        self.assertEqual(
+            parse_amount("30,214,693,162.03g", "comma_dot"),
+            ("30214693162.03", "recovered_ocr_character"),
+        )
+
     def test_european_style_value(self):
         self.assertEqual(parse_amount("1.234.567,89", "dot_comma"), ("1234567.89", ""))
 

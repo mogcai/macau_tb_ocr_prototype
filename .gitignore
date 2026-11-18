@@ -6,3 +6,5 @@ models/
 input/
 .vision_cache
 .DS_Store
+lasped/
+ground_truth/**/crops/

@@ -30,7 +30,7 @@ Process Macau Government Gazette PDFs and extract bank / financial-institution B
 
 ### Vision region strategy
 
-Before OCR, Python detects the two vertical separators for Account / Debit / Credit. The Swift worker receives one image and a set of region tasks in a single process invocation per page:
+Before OCR, Python detects the two vertical separators for Account / Debit / Credit. The Swift worker receives one image and a set of region tasks in a single process invocation per page. Some Balancetes add a leading account-code column (issue 45 page 29); the layout step takes the **two rightmost** rules as the debit/credit separators and trims the label ROI at the code/label rule, so codes are never treated as account labels.
 
 - Header region: page image top 25%, for OCR metadata fallback.
 - Account-label column: selected page language (`zh-Hant`, Portuguese, or English).
@@ -42,6 +42,10 @@ For bilingual pages, separate header/label tasks may run for both Chinese and Po
 Vision `fast` and `accurate` modes are available. `accurate` is the default to protect small financial text; benchmark `fast` separately on the same pages. Vision `fast` has no Traditional Chinese recognizer, so any `zh-Hant` task is always executed at `accurate` regardless of `--vision-level`; the requested and actually used levels are both recorded (`vision_level` vs `vision_levels_used`). The default minimum text height is 0.004 relative to image height. Raising it may improve speed but can omit small rows.
 
 The ROI mapping uses Apple's Vision coordinate-conversion API; it must still be visually smoke-tested on the user's Mac with pages 7 and 10, since the Vision worker cannot be executed in a Linux build environment. Do not claim that ROI coordinate mapping or Vision performance has been verified in a Linux environment.
+
+Experimental helpers are available but off by default: `--amount-verifier tesseract` (digit-only second reading kept as evidence; disagreements are only escalated when Vision's parse already failed) and `--row-structure auto|projection` (ink-projection row bands with a guard). On issue 45 both left row counts and blank-label counts unchanged, so they are opt-in and not evidence of higher accuracy.
+
+Amount cells that are empty, unparsed, ambiguous or low-confidence **and contain ink** get one targeted re-read at 3x (`--amount-second-pass ink`, default). The first reading stays in `*_raw`; the re-read is stored in `*_second_pass_raw`. A re-read is adopted only when the first reading was empty/unparsed, or when a low-confidence first reading disagrees with a clean re-read; adopted values are marked `recovered_second_pass` and always enter review. On issue 45 this fixed all page-15 amounts with no change on the other benchmark pages.
 
 ## 3. Environment setup
 
@@ -196,6 +200,10 @@ The normalizer supports grouping-aware recovery when the integer side still form
 | `2.496,722,065.08` | `2496722065.08` |
 | `405.228,717.57` | `405228717.57` |
 | `65.045.622.601.52` | `65045622601.52` |
+| `14.702,016,826,10` | `14702016826.10` |
+| `5,083,140,620 78` | `5083140620.78` |
+
+A space between digit groups is treated as a possible separator (`5,083,140,620 78`), while a space next to existing punctuation is removed as whitespace noise (`32, 713, 062.68` → `32713062.68`, no repair). When the two readings of a spaced token disagree (`1 234 56`) the amount is left `ambiguous_format` instead of guessed.
 
 Every such repair returns `recovered_ocr_separator` and must enter `review_queue.csv`. No digit is added, removed or inferred. Invalid grouping returns `invalid_grouping` / `ambiguous_format`. O/0, I/1 and similar character substitutions remain flagged `ambiguous_ocr_character`, even if a candidate numeric value is emitted.
 
@@ -260,6 +268,8 @@ Before changing OCR routes, row grouping, normalization, thresholds or number ru
 4. Preserve raw OCR and configuration for reproducibility.
 5. Report separate metrics for each language and `fast` / `accurate` level.
 
+`tools/gt_build_sheet.py` creates a pre-filled worksheet (all rows `verified=0`), `ground_truth/README.md` defines the manual review rules, and `tools/gt_score.py` reports label exact/CER, debit/credit exact, row alignment F1, review rate and `auto_pass_wrong_amount_rows`. Only rows marked `verified=1` by a human are scored.
+
 Do not claim an OCR accuracy rate or speed improvement without a calculation from this benchmark.
 
 ## 10. Troubleshooting
@@ -298,6 +308,7 @@ Inspect the native PDF text and image list. Gazette layout may have changed. Upd
 
 - Vision runtime, language availability, speed and OCR quality must be verified on the actual macOS machine; this package's Python tests run outside macOS and cannot execute Apple Vision.
 - Current ROI y-range and two-separator / three-column assumptions were tuned around issue 45 and need revalidation for other layouts.
+- `--amount-verifier tesseract` and `--row-structure projection` are unvalidated experiments; they must be compared against manual ground truth before being enabled for real runs.
 - Bilingual pages may produce overlapping language observations; visually sample those rows.
 - OpenCC converts script/region variants but cannot correct wrong account recognition.
 - Number separator recovery relies on structurally valid digit grouping; it cannot identify omitted, duplicated or substituted digits with certainty.

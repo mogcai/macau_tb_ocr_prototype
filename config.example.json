@@ -3,6 +3,11 @@
   "engine": "vision",
   "vision_level": "accurate",
   "vision_minimum_text_height": 0.004,
+  "vision_preprocess": "off",
+  "vision_language_correction": "labels",
+  "amount_verifier": "off",
+  "amount_second_pass": "ink",
+  "row_structure": "clustered",
   "ocr_languages": "auto",
   "number_format": "auto",
   "chinese_label_normalization": "s2hk",
@@ -13,6 +18,11 @@
     "language_routing": "Traditional Chinese account labels use zh-Hant; Portuguese uses an available pt-* locale; amount columns use English/digit recognition.",
     "raw_policy": "Raw OCR text and source images are immutable evidence; normalized labels and amounts are stored separately.",
     "number_policy": "Infer comma_dot or dot_comma from each statement's numeric evidence, not from Chinese/Portuguese language. Recovered OCR separators are sent to review.",
+    "vision_preprocess": "Experimental grayscale/contrast preprocessing in the Swift worker; off by default because it changes OCR text and digit separators. Benchmark against manual ground truth before enabling.",
+    "vision_language_correction": "labels keeps Vision language correction off the numeric debit/credit columns so amounts stay raw OCR; all/off are for A/B benchmarking only.",
+    "amount_verifier": "Experimental Tesseract digit-only second reading. Evidence columns only; it never replaces raw or parsed amounts. Default off because Tesseract read digits less reliably than Vision on issue 45.",
+    "row_structure": "clustered (default) or experimental projection row bands. Projection is guarded and was not an improvement on issue 45; diff row counts before using it on a new issue.",
+    "amount_second_pass": "ink (default) re-reads empty/unparsed/low-confidence amount cells at 3x; adopted values are flagged recovered_second_pass and reviewed. off restores single-pass OCR.",
     "config_file": "Reference example only; the current CLI reads command-line options, not this JSON file."
   }
 }

@@ -2,6 +2,8 @@ import Foundation
 import Vision
 import ImageIO
 import CoreGraphics
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 struct RegionTask: Codable {
     let name: String
@@ -11,12 +13,16 @@ struct RegionTask: Codable {
     let y0: Double // top-origin normalized coordinate
     let x1: Double
     let y1: Double
+    // Optional per-region override; nil keeps Vision's default policy (off).
+    let usesLanguageCorrection: Bool?
 }
 
 struct WorkerInput: Codable {
     let imagePath: String
     let tasks: [RegionTask]
     let minimumTextHeight: Double?
+    // Opt-in experiment: contrast/grayscale preprocessing before recognition.
+    let preprocessImage: Bool?
 }
 
 struct Observation: Codable {
@@ -25,6 +31,7 @@ struct Observation: Codable {
     let selectedLanguage: String
     let requestedLevel: String
     let recognitionLevel: String
+    let usesLanguageCorrection: Bool
     let text: String
     let confidence: Float
     let x0: Double
@@ -41,7 +48,34 @@ struct WorkerOutput: Codable {
     let elapsedSeconds: Double
     let supportedLanguages: [String]
     let levelsUsed: [String]
+    let preprocessing: String
     let observations: [Observation]
+}
+
+// Reuse one CIContext: constructing it per page is expensive.
+let sharedCIContext = CIContext(options: [.cacheIntermediates: false])
+
+/// Optional contrast/grayscale preprocessing. This is an experiment, not a
+/// quality guarantee: Vision already handles anti-aliased text, and boosting
+/// contrast can erase thin strokes. It never changes image dimensions, so the
+/// ROI coordinates stay valid. Falls back to the original image on failure.
+func preprocessImage(_ cgImage: CGImage) -> CGImage {
+    let ciImage = CIImage(cgImage: cgImage)
+    let colorControls = CIFilter.colorControls()
+    colorControls.inputImage = ciImage
+    colorControls.contrast = 1.3
+    colorControls.brightness = 0.05
+    colorControls.saturation = 0.0
+    guard let outputImage = colorControls.outputImage,
+          let processedCGImage = sharedCIContext.createCGImage(
+              outputImage,
+              from: outputImage.extent,
+              format: .RGBA8,
+              colorSpace: CGColorSpaceCreateDeviceRGB()
+          ) else {
+        return cgImage
+    }
+    return processedCGImage
 }
 
 func fail(_ message: String, code: Int32 = 1) -> Never {
@@ -135,6 +169,13 @@ do {
 
     let width = image.width
     let height = image.height
+    // Preprocess once per page: ROI rectangles are relative, so all tasks can
+    // share the same processed image and keep identical coordinates.
+    let shouldPreprocess = input.preprocessImage ?? false
+    let recognitionImage = shouldPreprocess ? preprocessImage(image) : image
+    let preprocessingDescription = shouldPreprocess
+        ? "grayscale(contrast=1.3,brightness=0.05)"
+        : "none"
     var allObservations: [Observation] = []
     var languageCache: [String: [String]] = [:]
     var usedLevels: Set<String> = []
@@ -169,12 +210,13 @@ do {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = level
         request.recognitionLanguages = [selected]
-        request.usesLanguageCorrection = false
+        let useCorrection = task.usesLanguageCorrection ?? false
+        request.usesLanguageCorrection = useCorrection
         request.automaticallyDetectsLanguage = false
         request.minimumTextHeight = Float(input.minimumTextHeight ?? 0.004)
         request.regionOfInterest = roi
 
-        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        let handler = VNImageRequestHandler(cgImage: recognitionImage, options: [:])
         try handler.perform([request])
 
         for observation in request.results ?? [] {
@@ -191,6 +233,7 @@ do {
                 selectedLanguage: selected,
                 requestedLevel: levelName(levelValue(task.level)),
                 recognitionLevel: levelKey,
+                usesLanguageCorrection: useCorrection,
                 text: candidate.string,
                 confidence: candidate.confidence,
                 x0: Double(imageRect.minX),
@@ -210,6 +253,7 @@ do {
         elapsedSeconds: ProcessInfo.processInfo.systemUptime - started,
         supportedLanguages: queriedLanguages,
         levelsUsed: usedLevels.sorted(),
+        preprocessing: preprocessingDescription,
         observations: allObservations.sorted {
             if abs($0.y0 - $1.y0) > 2.0 { return $0.y0 < $1.y0 }
             return $0.x0 < $1.x0

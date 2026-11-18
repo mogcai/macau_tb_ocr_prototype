@@ -1,0 +1,25 @@
+{
+  "issue": "issue45_2026",
+  "created_at": "2026-11-17T23:01:57",
+  "source_run": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/output",
+  "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-45-2026.pdf",
+  "pages": [
+    7,
+    9,
+    10,
+    15,
+    17,
+    29
+  ],
+  "new_pages": [
+    9,
+    15,
+    17,
+    29
+  ],
+  "gt_rows": 367,
+  "new_gt_rows": 240,
+  "skipped_empty_rows": 0,
+  "crops": 240,
+  "note": "verified=0 means pre-filled by OCR and NOT yet human-checked. Only verified=1 rows are scored."
+}

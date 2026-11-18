@@ -83,6 +83,8 @@ Examples of OCR separator recovery under a confirmed `comma_dot` page profile:
 - `2.496,722,065.08` → `2496722065.08`
 - `405.228,717.57` → `405228717.57`
 - `65.045.622.601.52` → `65045622601.52`
+- `14.702,016,826,10` → `14702016826.10`
+- `5,083,140,620 78` → `5083140620.78`
 
 These values are recovered candidates, not silently approved financial data. Their parse status is `recovered_ocr_separator` and the row remains in `review_queue.csv`.
 
@@ -104,6 +106,11 @@ These values are recovered candidates, not silently approved financial data. The
 --engine vision|paddle|tesseract
 --vision-level fast|accurate
 --vision-minimum-text-height 0.004
+--vision-preprocess on|off
+--vision-language-correction off|labels|all
+--amount-verifier off|tesseract
+--amount-second-pass ink|off
+--row-structure clustered|auto|projection
 --ocr-langs auto|chinese_cht,pt,en
 --number-format auto|comma_dot|dot_comma
 --chinese-label-normalization off|s2t|s2hk
@@ -113,6 +120,19 @@ These values are recovered candidates, not silently approved financial data. The
 ```
 
 On macOS, engine defaults to Vision. On non-macOS, it defaults to Paddle. Paddle is optional and requires a separately installed PaddlePaddle backend plus `requirements-paddle.txt`.
+
+## Ground truth benchmark
+
+Do not claim OCR accuracy or a speed improvement without a human-verified benchmark. Build the worksheet from a finished run, verify every row against the image/crops, then score:
+
+```bash
+python tools/gt_build_sheet.py output_v02_issue45_full_1900 \
+  --out ground_truth --issue issue45_2026 --pages 7,10
+# human step: correct label/debit/credit in gt_rows.csv, set verified=1
+python tools/gt_score.py ground_truth/issue45_2026 --run output_v03_issue45
+```
+
+Only `verified=1` rows are scored. `ground_truth/README.md` has the full rules and metric definitions. Never treat the OCR pre-filled worksheet as ground truth, and never overwrite a verified sheet with `--force`.
 
 ## Success criteria
 

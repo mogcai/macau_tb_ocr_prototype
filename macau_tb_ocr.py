@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import re
 import shutil
 import statistics
 import subprocess
 import sys
+import tempfile
 import unicodedata
 from dataclasses import dataclass, asdict
 from datetime import date
@@ -254,8 +256,16 @@ def extract_best_embedded_image(doc: fitz.Document, page: fitz.Page, page_index:
     return TableImage(page_index, out_path, pix.width, pix.height, None, False)
 
 
-def detect_column_boundaries(image_path: Path) -> tuple[float, float, str]:
-    """Find two internal vertical table rules; returns normalised x fractions."""
+def detect_column_layout(image_path: Path) -> tuple[float, float, float, str]:
+    """Find the two amount-column rules and the label column's left edge.
+
+    Returns ``(sep1, sep2, label_x0, source)``. Some Balancetes add a leading
+    account-code column (issue 45 page 29 has code / label / debit / credit), so
+    the two **rightmost** rules are the amount columns and any rule further left
+    is treated as the code/label separator. Picking the strongest rules instead
+    would put the label text into the debit ROI and both amounts into the credit
+    ROI, which silently shifts every value.
+    """
     try:
         import cv2
         import numpy as np
@@ -268,7 +278,7 @@ def detect_column_boundaries(image_path: Path) -> tuple[float, float, str]:
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_h))
         vertical = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
         projection = (vertical > 0).sum(axis=0)
-        candidates = []
+        candidates: list[tuple[float, float]] = []
         min_run = max(2, int(w * 0.0015))
         xs = np.where(projection >= max(20, int(h * 0.10)))[0]
         if len(xs):
@@ -285,18 +295,27 @@ def detect_column_boundaries(image_path: Path) -> tuple[float, float, str]:
                 strength = float(projection[g].max())
                 if 0.08 < frac < 0.92:
                     candidates.append((strength, frac))
-        # Select two strongest internal rules, then sort left-to-right.
-        candidates.sort(reverse=True)
-        chosen: list[float] = []
-        for _, frac in candidates:
-            if all(abs(frac - old) > 0.035 for old in chosen):
-                chosen.append(frac)
-            if len(chosen) == 2:
-                break
-        if len(chosen) == 2:
-            chosen.sort()
-            if chosen[0] + 0.08 < chosen[1]:
-                return chosen[0], chosen[1], "detected_morphology"
+        # Double rules (two edges of one separator) are merged before choosing.
+        merged: list[tuple[float, float]] = []
+        for strength, frac in sorted(candidates, key=lambda item: item[1]):
+            if merged and frac - merged[-1][1] < 0.02:
+                if strength > merged[-1][0]:
+                    merged[-1] = (strength, frac)
+            else:
+                merged.append((strength, frac))
+        if len(merged) >= 2:
+            right = merged[-2:]
+            sep1, sep2 = right[0][1], right[1][1]
+            if sep1 + 0.08 < sep2:
+                label_x0 = 0.005
+                if len(merged) >= 3:
+                    left_rules = [item for item in merged[:-2] if item[1] < sep1 - 0.05]
+                    if left_rules:
+                        code_strength, code_frac = max(left_rules, key=lambda item: item[1])
+                        strongest = max(item[0] for item in merged)
+                        if code_strength >= 0.4 * strongest:
+                            label_x0 = min(0.99, max(0.005, code_frac + 0.003))
+                return sep1, sep2, label_x0, "detected_morphology"
 
         # Some scans have interrupted/faint vertical rules, so morphology-open
         # may not preserve them. Raw dark-pixel column projection is a fallback.
@@ -309,20 +328,124 @@ def detect_column_boundaries(image_path: Path) -> tuple[float, float, str]:
             frac = x / w
             if 0.08 < frac < 0.92 and smooth[x] >= smooth[x - 1] and smooth[x] > smooth[x + 1] and smooth[x] >= min_strength:
                 local_peaks.append((float(smooth[x]), frac))
-        local_peaks.sort(reverse=True)
-        chosen = []
-        for _, frac in local_peaks:
-            if all(abs(frac - old) > 0.045 for old in chosen):
-                chosen.append(frac)
-            if len(chosen) == 2:
-                break
-        if len(chosen) == 2:
-            chosen.sort()
-            if chosen[0] + 0.08 < chosen[1]:
-                return chosen[0], chosen[1], "detected_projection"
+        merged = []
+        for strength, frac in sorted(local_peaks, key=lambda item: item[1]):
+            if merged and frac - merged[-1][1] < 0.02:
+                if strength > merged[-1][0]:
+                    merged[-1] = (strength, frac)
+            else:
+                merged.append((strength, frac))
+        if len(merged) >= 2:
+            sep1, sep2 = merged[-2][1], merged[-1][1]
+            if sep1 + 0.08 < sep2:
+                # The projection fallback cannot distinguish a real code column
+                # from peaks caused by dense label text, so it never trims the
+                # label ROI. Only a clear morphology rule may do that.
+                return sep1, sep2, 0.005, "detected_projection"
     except Exception:
         pass
-    return 0.48, 0.75, "fallback_0.48_0.75"
+    return 0.48, 0.75, 0.005, "fallback_0.48_0.75"
+
+
+def detect_column_boundaries(image_path: Path) -> tuple[float, float, str]:
+    """Backward-compatible wrapper returning only the two amount separators."""
+    sep1, sep2, _label_x0, source = detect_column_layout(image_path)
+    return sep1, sep2, source
+
+
+def detect_row_bands(image_path: Path, boundaries: tuple[float, float]
+                     ) -> tuple[list[tuple[float, float]], str]:
+    """Detect text rows from the horizontal ink projection of the amount columns.
+
+    Gazette Balancetes use dotted row separators that morphology-open cannot
+    keep, and tall Chinese glyphs can bridge neighbouring label lines. The amount
+    columns contain short, isolated numeric lines, so their projection gives
+    cleaner row boundaries; boxes from label-only rows (no amount) fall outside
+    every band and are clustered separately. Bands are a structural hint only.
+    """
+    try:
+        import cv2
+        import numpy as np
+        image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+        if image is None:
+            return [], "clustered"
+        h, w = image.shape[:2]
+        if h < 50 or w < 100:
+            return [], "clustered"
+        sep1, _sep2 = boundaries
+        x0, x1 = int(max(0.0, sep1) * w), int(0.995 * w)
+        if x1 - x0 < 100:
+            return [], "clustered"
+        binary = cv2.threshold(
+            image[:, x0:x1], 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )[1]
+        counts = (binary > 0).sum(axis=1)
+        ink_threshold = max(5, int((x1 - x0) * 0.01))
+        runs: list[list[int]] = []
+        in_run = False
+        start = 0
+        for y, value in enumerate(counts > ink_threshold):
+            if value and not in_run:
+                start = y
+                in_run = True
+            elif not value and in_run:
+                runs.append([start, y])
+                in_run = False
+        if in_run:
+            runs.append([start, len(counts)])
+        if not runs:
+            return [], "clustered"
+        # Merge sub-line gaps (broken strokes, ligature gaps) before filtering.
+        merge_gap = max(3, int(h * 0.001))
+        merged: list[list[int]] = []
+        for run in runs:
+            if merged and run[0] - merged[-1][1] <= merge_gap:
+                merged[-1][1] = max(merged[-1][1], run[1])
+            else:
+                merged.append([run[0], run[1]])
+        min_height = max(6, int(h * 0.003))
+        bands = [
+            (float(a), float(b))
+            for a, b in merged
+            if b - a >= min_height
+        ]
+        if len(bands) < 2:
+            return [], "clustered"
+        return bands, "projection"
+    except Exception:
+        return [], "clustered"
+
+
+def _cluster_boxes(boxes: list[OCRBox], tolerance: float) -> list[dict[str, Any]]:
+    """Cluster boxes into reading rows by vertical centre distance."""
+    rows: list[dict[str, Any]] = []
+    for box in sorted(boxes, key=lambda b: (b.cy, b.x0)):
+        best = None
+        best_dist = None
+        for row in reversed(rows[-4:]):
+            dist = abs(box.cy - row["cy"])
+            if dist <= tolerance and (best_dist is None or dist < best_dist):
+                best, best_dist = row, dist
+        if best is None:
+            rows.append({"cy": box.cy, "boxes": [box]})
+        else:
+            best["boxes"].append(box)
+            best["cy"] = statistics.mean(x.cy for x in best["boxes"])
+    return sorted(rows, key=lambda r: r["cy"])
+
+
+def _band_for_box(box: OCRBox, bands: list[tuple[float, float]]) -> int | None:
+    """Return the band whose vertical span covers most of the box, if any."""
+    best_index: int | None = None
+    best_overlap = 0.0
+    for index, (y0, y1) in enumerate(bands):
+        overlap = min(box.y1, y1) - max(box.y0, y0)
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_index = index
+    if best_index is not None and best_overlap >= 0.5 * box.height:
+        return best_index
+    return None
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -477,18 +600,27 @@ def _vision_language_profiles(languages: list[str]) -> list[tuple[str, str]]:
 
 def run_vision_ocr(image_path: Path, languages: list[str],
                    boundaries: tuple[float, float], level: str = "accurate",
-                   minimum_text_height: float = 0.004) -> tuple[list[OCRBox], dict[str, Any]]:
+                   minimum_text_height: float = 0.004, preprocess: bool = False,
+                   language_correction: str = "labels",
+                   label_x0: float = 0.005) -> tuple[list[OCRBox], dict[str, Any]]:
     """Run native Vision once per page, with separate label/amount column ROIs.
 
     ROI positions are normalised top-left fractions in the source image. Chinese
     uses zh-Hant, Portuguese uses a Portuguese model, and amount columns use
     English/digits. A page's script/language never dictates its number format.
+
+    ``preprocess`` applies the worker's optional contrast/grayscale filter once
+    per page. ``language_correction`` is ``off``, ``labels`` (text regions only)
+    or ``all``; numeric columns default to no correction so Vision cannot rewrite
+    an amount before it is preserved as raw evidence.
     """
     binary = _ensure_vision_worker()
     image_path = image_path.resolve()
     sep1, sep2 = boundaries
-    # Table body excludes the double-height column-heading band and page footer.
-    body_y0, body_y1 = 0.035, 0.985
+    # Table body excludes the column-heading band. The bottom edge is kept close
+    # to the image border because tall Balancetes print the final total row at
+    # the very bottom (issue 45 page 29); 0.985 clipped its glyphs into garbage.
+    body_y0, body_y1 = 0.035, 0.997
     profiles = _vision_language_profiles(languages)
     tasks: list[dict[str, Any]] = []
 
@@ -496,11 +628,11 @@ def run_vision_ocr(image_path: Path, languages: list[str],
         tasks.append({"name": f"header_{profile_name}", "language": lang_code,
                       "level": level, "x0": 0.005, "y0": 0.0, "x1": 0.995, "y1": 0.25})
         tasks.append({"name": f"label_{profile_name}", "language": lang_code,
-                      "level": level, "x0": 0.005, "y0": body_y0,
+                      "level": level, "x0": max(0.005, label_x0), "y0": body_y0,
                       "x1": max(0.01, sep1 - 0.002), "y1": body_y1})
 
     # Numeric columns use a dedicated Latin/digit recognizer, not a Chinese or
-    # Portuguese language assumption. This also avoids language correction.
+    # Portuguese language assumption.
     tasks.extend([
         {"name": "debit_numeric", "language": "en", "level": level,
          "x0": min(0.99, sep1 + 0.002), "y0": body_y0,
@@ -510,8 +642,18 @@ def run_vision_ocr(image_path: Path, languages: list[str],
          "x1": 0.995, "y1": body_y1},
     ])
 
+    # Language correction is a per-region policy: text labels may benefit from a
+    # lexicon, but an amount must never be "corrected" before it is stored raw.
+    for task in tasks:
+        is_numeric = task["name"].endswith("_numeric")
+        task["usesLanguageCorrection"] = (
+            language_correction == "all"
+            or (language_correction == "labels" and not is_numeric)
+        )
+
     payload = {"imagePath": str(image_path), "tasks": tasks,
-               "minimumTextHeight": minimum_text_height}
+               "minimumTextHeight": minimum_text_height,
+               "preprocessImage": preprocess}
     try:
         completed = subprocess.run([str(binary)], input=json.dumps(payload),
                                    capture_output=True, text=True, timeout=300)
@@ -546,9 +688,40 @@ def run_vision_ocr(image_path: Path, languages: list[str],
         # routes zh-Hant tasks to `accurate`. Record the levels actually used
         # next to the operator-requested level for audit.
         "vision_levels_used": ",".join(result.get("levelsUsed", [])),
+        "vision_preprocessed": result.get("preprocessing", "none"),
+        "vision_preprocess_requested": "on" if preprocess else "off",
+        "vision_language_correction": language_correction,
         "vision_minimum_text_height": minimum_text_height,
     }
     return boxes, diagnostics
+
+
+def _box_iou(a: OCRBox, b: OCRBox) -> float:
+    ix0, iy0 = max(a.x0, b.x0), max(a.y0, b.y0)
+    ix1, iy1 = min(a.x1, b.x1), min(a.y1, b.y1)
+    inter = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
+    area_a = max(1.0, (a.x1 - a.x0) * (a.y1 - a.y0))
+    area_b = max(1.0, (b.x1 - b.x0) * (b.y1 - b.y0))
+    return inter / max(1.0, area_a + area_b - inter)
+
+
+def _preferred_cross_language(a: OCRBox, b: OCRBox) -> OCRBox:
+    """Choose which overlapping bilingual reading to keep.
+
+    Chinese and Portuguese names sit on separate lines in bilingual Gazettes, so
+    two strongly overlapping boxes from different language passes are duplicate
+    readings of the same line, not two real labels. Prefer the reading whose
+    script matches the line: Chinese text from the Chinese pass, Latin text from
+    the Portuguese pass, then the higher confidence.
+    """
+    a_chinese, b_chinese = has_chinese(a.text), has_chinese(b.text)
+    if a_chinese != b_chinese:
+        return a if a_chinese else b
+    a_portuguese = a.language.lower().startswith("pt")
+    b_portuguese = b.language.lower().startswith("pt")
+    if a_portuguese != b_portuguese:
+        return a if a_portuguese else b
+    return a if a.score >= b.score else b
 
 
 def dedupe_boxes(boxes: list[OCRBox]) -> list[OCRBox]:
@@ -559,45 +732,71 @@ def dedupe_boxes(boxes: list[OCRBox]) -> list[OCRBox]:
         for old in kept:
             if box.region != old.region:
                 continue
-            # Do not discard overlapping but different-language labels on
-            # bilingual Gazette pages; only dedupe cross-language exact text.
+            # Cross-language overlaps are resolved after this loop with script
+            # awareness; exact duplicates are dropped immediately.
             if box.language != old.language and norm_text(box.text) != norm_text(old.text):
                 continue
-            ix0, iy0 = max(box.x0, old.x0), max(box.y0, old.y0)
-            ix1, iy1 = min(box.x1, old.x1), min(box.y1, old.y1)
-            inter = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
-            area_a = max(1.0, (box.x1 - box.x0) * (box.y1 - box.y0))
-            area_b = max(1.0, (old.x1 - old.x0) * (old.y1 - old.y0))
-            iou = inter / max(1.0, area_a + area_b - inter)
-            if iou >= 0.55:
+            if _box_iou(box, old) >= 0.55:
                 duplicate = True
                 break
         if not duplicate:
             kept.append(box)
-    return sorted(kept, key=lambda b: (b.cy, b.x0))
+    # Two language passes can read the same line differently; keep one reading.
+    resolved = list(kept)
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(resolved)):
+            for j in range(i + 1, len(resolved)):
+                a, b = resolved[i], resolved[j]
+                if a.region != b.region or a.language == b.language:
+                    continue
+                if _box_iou(a, b) < 0.55:
+                    continue
+                loser = b if _preferred_cross_language(a, b) is a else a
+                resolved.remove(loser)
+                changed = True
+                break
+            if changed:
+                break
+    return sorted(resolved, key=lambda b: (b.cy, b.x0))
 
 
 def group_boxes_into_rows(boxes: list[OCRBox], image_width: int, image_height: int,
-                          boundaries: tuple[float, float]) -> list[dict[str, Any]]:
+                          boundaries: tuple[float, float],
+                          row_bands: list[tuple[float, float]] | None = None
+                          ) -> list[dict[str, Any]]:
     if not boxes:
         return []
     heights = [b.height for b in boxes if b.height > 2]
     median_h = statistics.median(heights) if heights else max(10, image_height * 0.01)
     tolerance = max(8.0, median_h * 0.58)
+    source = "projection" if row_bands else "clustered"
     rows: list[dict[str, Any]] = []
-    for box in sorted(boxes, key=lambda b: (b.cy, b.x0)):
-        best = None
-        best_dist = None
-        for row in reversed(rows[-4:]):
-            dist = abs(box.cy - row["cy"])
-            if dist <= tolerance and (best_dist is None or dist < best_dist):
-                best, best_dist = row, dist
-        if best is None:
-            rows.append({"cy": box.cy, "boxes": [box]})
-        else:
-            best["boxes"].append(box)
-            best["cy"] = statistics.mean(x.cy for x in best["boxes"])
-    rows.sort(key=lambda r: r["cy"])
+    if row_bands:
+        buckets: dict[int, list[OCRBox]] = {}
+        orphans: list[OCRBox] = []
+        for box in boxes:
+            index = _band_for_box(box, row_bands)
+            if index is None:
+                orphans.append(box)
+            else:
+                buckets.setdefault(index, []).append(box)
+        for index in sorted(buckets):
+            y0, y1 = row_bands[index]
+            rows.append({
+                "cy": statistics.mean(x.cy for x in buckets[index]),
+                "boxes": buckets[index],
+                "band": (y0, y1),
+            })
+        if orphans:
+            orphan_rows = _cluster_boxes(orphans, tolerance)
+            for orphan_row in orphan_rows:
+                orphan_row["orphan"] = True
+            rows.extend(orphan_rows)
+        rows.sort(key=lambda r: r["cy"])
+    else:
+        rows = _cluster_boxes(boxes, tolerance)
     sep1, sep2 = boundaries
     structured: list[dict[str, Any]] = []
     for row in rows:
@@ -614,6 +813,15 @@ def group_boxes_into_rows(boxes: list[OCRBox], image_width: int, image_height: i
                 cols["credit"].append(b)
         for key in cols:
             cols[key].sort(key=lambda x: x.x0)
+        col_boxes = {}
+        for key, arr in cols.items():
+            if arr:
+                col_boxes[key] = (
+                    min(x.x0 for x in arr), min(x.y0 for x in arr),
+                    max(x.x1 for x in arr), max(x.y1 for x in arr),
+                )
+            else:
+                col_boxes[key] = None
         def join_col(arr: list[OCRBox]) -> str:
             value = " ".join(x.text for x in arr).strip()
             if has_chinese(value):
@@ -639,6 +847,21 @@ def group_boxes_into_rows(boxes: list[OCRBox], image_width: int, image_height: i
             "bbox_x1": round(max(x.x1 for x in row["boxes"]), 2),
             "bbox_y1": round(max(x.y1 for x in row["boxes"]), 2),
             "languages": ",".join(sorted(set(x.language for x in row["boxes"]))),
+            "label_bbox_x0": round(col_boxes["label"][0], 2) if col_boxes["label"] else "",
+            "label_bbox_y0": round(col_boxes["label"][1], 2) if col_boxes["label"] else "",
+            "label_bbox_x1": round(col_boxes["label"][2], 2) if col_boxes["label"] else "",
+            "label_bbox_y1": round(col_boxes["label"][3], 2) if col_boxes["label"] else "",
+            "debit_bbox_x0": round(col_boxes["debit"][0], 2) if col_boxes["debit"] else "",
+            "debit_bbox_y0": round(col_boxes["debit"][1], 2) if col_boxes["debit"] else "",
+            "debit_bbox_x1": round(col_boxes["debit"][2], 2) if col_boxes["debit"] else "",
+            "debit_bbox_y1": round(col_boxes["debit"][3], 2) if col_boxes["debit"] else "",
+            "credit_bbox_x0": round(col_boxes["credit"][0], 2) if col_boxes["credit"] else "",
+            "credit_bbox_y0": round(col_boxes["credit"][1], 2) if col_boxes["credit"] else "",
+            "credit_bbox_x1": round(col_boxes["credit"][2], 2) if col_boxes["credit"] else "",
+            "credit_bbox_y1": round(col_boxes["credit"][3], 2) if col_boxes["credit"] else "",
+            "row_structure_source": "clustered" if row.get("orphan") else source,
+            "row_band_y0": round(row["band"][0], 2) if "band" in row else "",
+            "row_band_y1": round(row["band"][1], 2) if "band" in row else "",
         })
     # Remove only recognizable column-heading rows near the top. Do not use a
     # fixed top crop: some TBs place the first real account line very close to y=0.
@@ -655,13 +878,333 @@ def group_boxes_into_rows(boxes: list[OCRBox], image_width: int, image_height: i
     ]
 
 
+@lru_cache(maxsize=1)
+def _tesseract_version() -> str:
+    """Return the installed Tesseract version line, or "" when unavailable."""
+    try:
+        completed = subprocess.run(
+            ["tesseract", "--version"], capture_output=True, text=True, timeout=10
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    text = (completed.stdout or completed.stderr).strip()
+    return text.splitlines()[0].strip() if text else ""
+
+
+def _numeric_column_crop(image: Any, width: int, height: int,
+                         boundaries: tuple[float, float], column: str
+                         ) -> tuple[Any, int]:
+    sep1, sep2 = boundaries
+    if column == "debit":
+        x0 = int(min(0.99, sep1 + 0.002) * width)
+        x1 = int(max(sep1 + 0.01, sep2 - 0.002) * width)
+    else:
+        x0 = int(min(0.99, sep2 + 0.002) * width)
+        x1 = int(0.995 * width)
+    y0 = int(0.035 * height)
+    y1 = int(0.997 * height)
+    return image[y0:y1, max(0, x0):min(width, x1)], y0
+
+
+def _parse_tesseract_tsv(payload: str, y_offset: int) -> list[dict[str, Any]]:
+    """Group Tesseract word rows into reading lines in full-image coordinates."""
+    reader = csv.DictReader(io.StringIO(payload), delimiter="\t")
+    groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for record in reader:
+        try:
+            level = int(record.get("level") or -1)
+        except (TypeError, ValueError):
+            continue
+        if level != 5:
+            continue
+        word = (record.get("text") or "").strip()
+        if not word:
+            continue
+        key = (
+            record.get("block_num") or "",
+            record.get("par_num") or "",
+            record.get("line_num") or "",
+        )
+        try:
+            top = float(record.get("top") or 0)
+            line_height = float(record.get("height") or 0)
+        except (TypeError, ValueError):
+            continue
+        group = groups.setdefault(key, {"parts": [], "top": float("inf"), "bottom": 0.0})
+        group["parts"].append(word)
+        group["top"] = min(group["top"], top)
+        group["bottom"] = max(group["bottom"], top + line_height)
+    lines: list[dict[str, Any]] = []
+    for group in groups.values():
+        lines.append({
+            "y_center": y_offset + (group["top"] + group["bottom"]) / 2.0,
+            "text": " ".join(group["parts"]),
+        })
+    return lines
+
+
+def tesseract_numeric_lines(image_path: Path, width: int, height: int,
+                            boundaries: tuple[float, float], column: str
+                            ) -> list[dict[str, Any]]:
+    """Independent digit-only reading of one amount column (verification only)."""
+    import cv2
+    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        raise RuntimeError(f"cv2 could not load {image_path.name}")
+    crop, y_offset = _numeric_column_crop(image, width, height, boundaries, column)
+    if crop.size == 0:
+        return []
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+        temp_path = Path(handle.name)
+    try:
+        cv2.imwrite(str(temp_path), crop)
+        completed = subprocess.run(
+            [
+                "tesseract", str(temp_path), "stdout",
+                "--psm", "6",
+                "-c", "tessedit_char_whitelist=0123456789.,-",
+                "tsv",
+            ],
+            capture_output=True, text=True, timeout=180,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                (completed.stderr or completed.stdout).strip()[:300] or "tesseract failed"
+            )
+        return _parse_tesseract_tsv(completed.stdout, y_offset)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _match_lines_to_rows(rows: list[dict[str, Any]], lines: list[dict[str, Any]],
+                         tolerance: float) -> dict[int, dict[str, Any]]:
+    """One-to-one nearest match so one verifier line cannot validate two rows."""
+    candidates: list[tuple[float, int, int]] = []
+    for i, row in enumerate(rows):
+        for j, line in enumerate(lines):
+            distance = abs(row["y_center"] - line["y_center"])
+            if distance <= tolerance:
+                candidates.append((distance, i, j))
+    candidates.sort()
+    matched_rows: set[int] = set()
+    matched_lines: set[int] = set()
+    match: dict[int, dict[str, Any]] = {}
+    for _, i, j in candidates:
+        if i in matched_rows or j in matched_lines:
+            continue
+        matched_rows.add(i)
+        matched_lines.add(j)
+        match[i] = lines[j]
+    return match
+
+
+def attach_amount_verifier(rows: list[dict[str, Any]], image_path: Path,
+                           width: int, height: int,
+                           boundaries: tuple[float, float], engine: str
+                           ) -> dict[str, Any]:
+    """Attach an independent Tesseract reading to each row as *evidence only*.
+
+    The verifier never replaces `debit_raw`/`credit_raw` and never changes a
+    parsed amount: agreement is recorded, disagreement is routed to review.
+    """
+    diagnostics: dict[str, Any] = {
+        "amount_verifier_engine": "",
+        "amount_verifier_status": "off",
+        "amount_verifier_lines": 0,
+    }
+    if engine == "off" or not rows:
+        return diagnostics
+    version = _tesseract_version()
+    if not version:
+        diagnostics["amount_verifier_status"] = "unavailable"
+        return diagnostics
+    diagnostics["amount_verifier_engine"] = version
+    try:
+        debit_lines = tesseract_numeric_lines(image_path, width, height, boundaries, "debit")
+        credit_lines = tesseract_numeric_lines(image_path, width, height, boundaries, "credit")
+    except Exception as exc:  # noqa: BLE001 - verifier must never break a run
+        diagnostics["amount_verifier_status"] = f"error: {exc}"
+        return diagnostics
+    diagnostics["amount_verifier_status"] = "ran"
+    diagnostics["amount_verifier_lines"] = len(debit_lines) + len(credit_lines)
+    tolerance = max(12.0, height * 0.012)
+    for column, lines in (("debit", debit_lines), ("credit", credit_lines)):
+        matches = _match_lines_to_rows(rows, lines, tolerance)
+        for index, line in matches.items():
+            rows[index][f"{column}_verifier_raw"] = line["text"]
+            rows[index][f"{column}_verifier_y_delta"] = round(
+                abs(rows[index]["y_center"] - line["y_center"]), 2
+            )
+    return diagnostics
+
+
+_AMOUNT_SIGNATURE_STRIP = re.compile(r"[.,\-\u2212\u2013\u2014\s\u00a0\u202f]")
+
+
+def amount_digit_signature(text: str) -> str:
+    """Separator-free signature used to compare two engines' digit readings."""
+    return _AMOUNT_SIGNATURE_STRIP.sub("", norm_text(text or ""))
+
+
+def amount_verifier_status(vision_raw: str, verifier_raw: str) -> str:
+    vision = amount_digit_signature(vision_raw)
+    verifier = amount_digit_signature(verifier_raw)
+    if not vision and not verifier:
+        return "blank"
+    if vision and verifier:
+        return "agree" if vision == verifier else "digit_mismatch"
+    return "verifier_only" if verifier else "vision_only"
+
+
+def _cell_ink_fraction(image: Any, x0: int, x1: int, y0: int, y1: int) -> float:
+    """Fraction of dark pixels in one amount cell (used to skip empty cells)."""
+    import cv2
+    crop = image[max(0, y0):max(0, y1), max(0, x0):max(0, x1)]
+    if crop.size == 0:
+        return 0.0
+    binary = cv2.threshold(
+        crop, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+    )[1]
+    return float((binary > 0).sum()) / float(crop.size)
+
+
+def second_pass_amount_cells(rows: list[dict[str, Any]], image_path: Path,
+                             width: int, height: int,
+                             boundaries: tuple[float, float],
+                             page_format: str,
+                             confidence_threshold: float = 0.88,
+                             max_cells: int = 80) -> dict[str, Any]:
+    """Re-read suspicious amount cells from the source image at 3x scale.
+
+    The primary OCR remains in ``*_raw``. A second, targeted reading is stored in
+    ``*_second_pass_raw`` and only adopted (always with review) when the primary
+    cell was empty/unparsed, or when a low-confidence primary disagrees with a
+    clean high-resolution re-read.
+    """
+    diagnostics: dict[str, Any] = {
+        "amount_second_pass_status": "off",
+        "amount_second_pass_cells": 0,
+        "amount_second_pass_filled": 0,
+    }
+    if not rows:
+        return diagnostics
+    try:
+        import cv2
+        image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    except Exception:  # noqa: BLE001
+        image = None
+    if image is None:
+        diagnostics["amount_second_pass_status"] = "unavailable"
+        return diagnostics
+    worker = _ensure_vision_worker()
+    sep1, sep2 = boundaries
+    columns = {
+        "debit": (min(0.99, sep1 + 0.002), max(sep1 + 0.01, sep2 - 0.002)),
+        "credit": (min(0.99, sep2 + 0.002), 0.995),
+    }
+    cells = 0
+    filled = 0
+    for row in rows:
+        if cells >= max_cells:
+            break
+        try:
+            top = int(float(row.get("bbox_y0") or 0))
+            bottom = int(float(row.get("bbox_y1") or 0))
+        except (TypeError, ValueError):
+            continue
+        if bottom - top < 8:
+            continue
+        for column, (fx0, fx1) in columns.items():
+            if cells >= max_cells:
+                break
+            primary = (row.get(f"{column}_raw") or "").strip()
+            value, issue = parse_amount(primary, page_format) if primary else ("", "")
+            try:
+                column_confidence = float(row.get(f"{column}_confidence") or 1.0)
+            except (TypeError, ValueError):
+                column_confidence = 1.0
+            needs_second_pass = (
+                not primary
+                or not value
+                or issue == "ambiguous_ocr_character"
+                or (value and column_confidence < confidence_threshold)
+            )
+            if not needs_second_pass:
+                continue
+            x0 = max(0, int(fx0 * width))
+            x1 = min(width, int(fx1 * width))
+            cell_top, cell_bottom = max(0, top), min(height, bottom)
+            if x1 - x0 < 20 or cell_bottom - cell_top < 8:
+                continue
+            try:
+                ink = _cell_ink_fraction(image, x0, x1, cell_top, cell_bottom)
+            except Exception:  # noqa: BLE001
+                ink = 0.0
+            if ink < 0.02:
+                continue
+            crop = image[cell_top:cell_bottom, x0:x1]
+            if crop.size == 0:
+                continue
+            crop = cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+            crop = cv2.copyMakeBorder(crop, 12, 12, 12, 12, cv2.BORDER_CONSTANT, value=255)
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+                temp_path = Path(handle.name)
+            try:
+                cv2.imwrite(str(temp_path), crop)
+                payload = {
+                    "imagePath": str(temp_path),
+                    "tasks": [{
+                        "name": f"{column}_second_pass",
+                        "language": "en",
+                        "level": "accurate",
+                        "x0": 0.0, "y0": 0.0, "x1": 1.0, "y1": 1.0,
+                        "usesLanguageCorrection": False,
+                    }],
+                    "minimumTextHeight": 0.004,
+                    "preprocessImage": False,
+                }
+                completed = subprocess.run(
+                    [str(worker)], input=json.dumps(payload),
+                    capture_output=True, text=True, timeout=120,
+                )
+                if completed.returncode != 0:
+                    continue
+                observations = json.loads(completed.stdout).get("observations", [])
+                text = " ".join(
+                    str(item.get("text", "")).strip()
+                    for item in observations
+                    if str(item.get("text", "")).strip()
+                )
+            except Exception:  # noqa: BLE001 - a second pass must never break a run
+                text = ""
+            finally:
+                temp_path.unlink(missing_ok=True)
+            row[f"{column}_second_pass_raw"] = text
+            cells += 1
+            if text:
+                filled += 1
+    diagnostics["amount_second_pass_status"] = "ran"
+    diagnostics["amount_second_pass_cells"] = cells
+    diagnostics["amount_second_pass_filled"] = filled
+    return diagnostics
+
+
 def _clean_amount_token(raw: str) -> tuple[str, bool, str]:
     """Strip display-only material and map common OCR-confusable glyphs.
 
     Returns (token, negative, issue). The original input is never modified in
-    the exported *_raw field.
+    the exported *_raw field. A space between digits is kept as a possible
+    separator because Gazette scans sometimes print a space where a decimal or
+    thousands mark belongs; it is only used with page-level format evidence and
+    any resulting repair is flagged by the caller.
     """
-    s = norm_text(raw).replace(" ", "").replace("\u00a0", "").replace("\u202f", "")
+    s = norm_text(raw).replace("\u00a0", " ").replace("\u202f", " ")
+    # Spaces next to existing punctuation are pure whitespace noise
+    # ("32, 713, 062.68"); keep only gaps that could themselves be separators.
+    s = re.sub(r"\s+(?=[.,])", "", s)
+    s = re.sub(r"(?<=[.,])\s+", "", s)
+    s = re.sub(r"(?<=\d)\s+(?=\d)", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
     s = s.replace("−", "-").replace("–", "-").replace("—", "-")
     if not s or s in {"-", "－", ".", ","}:
         return "", False, "dash_or_blank"
@@ -683,10 +1226,15 @@ def _clean_amount_token(raw: str) -> tuple[str, bool, str]:
     if re.search(r"[OoIl|]", s):
         s = s.translate(str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1"}))
         issue = "ambiguous_ocr_character"
-    if not re.fullmatch(r"[0-9.,']+", s):
+    # A single trailing letter is a common scan/OCR artifact on amounts
+    # (30,214,693,162.03g). Removing it invents no digit and is flagged.
+    if re.fullmatch(r"[0-9.,' ]+[A-Za-z]", s):
+        s = s[:-1]
+        issue = issue or "recovered_ocr_character"
+    if not re.fullmatch(r"[0-9.,' ]+", s):
         return "", negative, issue or "invalid_characters"
     s = s.replace("'", "")
-    return s, negative, issue
+    return s.strip(), negative, issue
 
 
 def _grouping_is_valid(groups: list[str]) -> bool:
@@ -697,46 +1245,46 @@ def _grouping_is_valid(groups: list[str]) -> bool:
     return all(len(x) == 3 for x in groups[1:])
 
 
-def _parse_amount_for_style(token: str, style: str) -> tuple[str, str, bool]:
-    """Parse one token using a known page convention.
-
-    style is comma_dot (1,234.56) or dot_comma (1.234,56).
-    Punctuation in the integer portion may be OCR-corrupted, but only when
-    all digit groups remain structurally valid. Such repairs are flagged.
-    """
+def _parse_variant(token: str, style: str, forced_repair: bool = False
+                   ) -> tuple[str, str, bool]:
+    """Parse one token under one style; spaces may act as separators."""
     decimal_sep = "." if style == "comma_dot" else ","
     grouping_sep = "," if style == "comma_dot" else "."
-    separators = [c for c in token if c in ",."]
+    separators = [c for c in token if c in ",. "]
     if not separators:
         if token.isdigit():
-            return token, "", False
+            return token, "", forced_repair
         return "", "unparsed_amount", False
 
-    last_sep_pos = max(token.rfind("."), token.rfind(","))
+    last_sep_pos = max(token.rfind("."), token.rfind(","), token.rfind(" "))
     last_sep = token[last_sep_pos]
     tail = token[last_sep_pos + 1:]
     prefix = token[:last_sep_pos]
 
-    # Financial balances normally use two decimal places. A different number
-    # of trailing digits is not silently guessed as a currency fraction.
-    if last_sep == decimal_sep and len(tail) in (1, 2, 4) and tail.isdigit():
-        int_groups = re.split(r"[.,]", prefix) if prefix else ["0"]
+    # Financial balances normally use two decimal places. The last separator is
+    # accepted as the decimal mark when the remaining digit groups are still
+    # structurally valid, even if OCR substituted the glyph (comma vs dot) or a
+    # space was printed instead. Any such substitution is flagged as repaired.
+    if len(tail) in (1, 2, 4) and tail.isdigit():
+        int_groups = re.split(r"[., ]", prefix) if prefix else ["0"]
         if not _grouping_is_valid(int_groups):
             return "", "invalid_grouping", False
         integer = "".join(int_groups)
         if not integer:
             integer = "0"
-        repaired = any(sep != grouping_sep for sep in re.findall(r"[.,]", prefix))
+        repaired = (forced_repair or last_sep != decimal_sep or any(
+            sep != grouping_sep for sep in re.findall(r"[., ]", prefix)
+        ))
         value = integer + "." + tail
         return value, ("recovered_ocr_separator" if repaired else ""), repaired
 
     # Grouping-only values: every group after the first must have three digits.
-    groups = re.split(r"[.,]", token)
+    groups = re.split(r"[., ]", token)
     if _grouping_is_valid(groups):
         original_separators = set(separators)
-        expected_only = original_separators == {grouping_sep}
+        expected_only = bool(original_separators) and original_separators <= {grouping_sep}
         if expected_only:
-            return "".join(groups), "", False
+            return "".join(groups), "", forced_repair
         # Recover only a consistent all-one-separator grouping substitution.
         # Mixed punctuation with a 3-digit tail may instead be a nonstandard
         # decimal precision, so do not silently collapse it into an integer.
@@ -745,6 +1293,40 @@ def _parse_amount_for_style(token: str, style: str) -> tuple[str, str, bool]:
         return "", "ambiguous_format", False
 
     return "", "ambiguous_format", False
+
+
+def _parse_amount_for_style(token: str, style: str) -> tuple[str, str, bool]:
+    """Parse a token, resolving spaces as decimal marks or as OCR noise.
+
+    A space can be a real decimal mark (`5,083,140,620 78`) or an inserted gap
+    inside a digit group (`6,04 1,499.40`). Both readings are tried; if they
+    disagree the token stays ambiguous instead of being guessed.
+    """
+    if " " not in token:
+        return _parse_variant(token, style)
+    with_spaces = _parse_variant(token, style)
+    without_spaces = _parse_variant(token.replace(" ", ""), style, forced_repair=True)
+    # Compare numerically: "0.00" and "000" are the same amount even though the
+    # raw candidate strings differ.
+    candidates: dict[Decimal | str, tuple[str, str, bool]] = {}
+    for candidate in (with_spaces, without_spaces):
+        value = candidate[0]
+        if not value:
+            continue
+        try:
+            key: Decimal | str = Decimal(value)
+        except InvalidOperation:
+            key = value
+        candidates.setdefault(key, candidate)
+    if len(candidates) > 1:
+        return "", "ambiguous_format", False
+    if candidates:
+        value, issue, repaired = next(iter(candidates.values()))
+        repaired = repaired or with_spaces[2] or without_spaces[2]
+        if repaired and not issue:
+            issue = "recovered_ocr_separator"
+        return value, issue, repaired
+    return "", with_spaces[1] or without_spaces[1] or "ambiguous_format", False
 
 
 def infer_number_format(values: Iterable[str]) -> dict[str, Any]:
@@ -757,6 +1339,9 @@ def infer_number_format(values: Iterable[str]) -> dict[str, Any]:
     evidence: list[dict[str, str]] = []
     for raw in values:
         token, _, clean_issue = _clean_amount_token(str(raw or ""))
+        # Spaces are never punctuation evidence: remove them here only, so a
+        # stray gap inside a number cannot change the page-level convention.
+        token = token.replace(" ", "")
         if not token or not any(ch in token for ch in ",."):
             continue
         last_pos = max(token.rfind("."), token.rfind(","))
@@ -871,7 +1456,9 @@ def normalize_chinese_label(raw: str, conversion: str = "s2hk") -> tuple[str, st
 def validate_rows(rows: list[dict[str, Any]], confidence_threshold: float,
                   number_format_override: str = "auto",
                   chinese_label_normalization: str = "s2hk",
-                  repair_ocr_separators: bool = True) -> list[dict[str, Any]]:
+                  repair_ocr_separators: bool = True,
+                  amount_verifier: bool = False,
+                  amount_second_pass: bool = False) -> list[dict[str, Any]]:
     profile = infer_number_format(
         [value for row in rows for value in (row.get("debit_raw", ""), row.get("credit_raw", ""))]
     )
@@ -894,10 +1481,78 @@ def validate_rows(rows: list[dict[str, Any]], confidence_threshold: float,
         row["debit_parse_status"] = debit_issue or ("parsed" if debit else "blank")
         row["credit_parse_status"] = credit_issue or ("parsed" if credit else "blank")
 
+        if amount_second_pass:
+            for column in ("debit", "credit"):
+                if f"{column}_second_pass_raw" not in row:
+                    continue
+                secondary_raw = (row.get(f"{column}_second_pass_raw") or "").strip()
+                secondary_value, _secondary_issue = (
+                    parse_amount(secondary_raw, page_format, repair_ocr_separators)
+                    if secondary_raw else ("", "")
+                )
+                primary_value = row.get(f"{column}_amount") or ""
+                primary_issue = row.get(f"{column}_parse_status") or ""
+                status = "empty"
+                if secondary_value:
+                    if not primary_value:
+                        row[f"{column}_amount"] = secondary_value
+                        row[f"{column}_parse_status"] = "recovered_second_pass"
+                        status = "used"
+                    else:
+                        same = False
+                        try:
+                            same = Decimal(primary_value) == Decimal(secondary_value)
+                        except InvalidOperation:
+                            same = primary_value == secondary_value
+                        if same:
+                            status = "agree"
+                        else:
+                            try:
+                                column_confidence = float(
+                                    row.get(f"{column}_confidence") or 1.0
+                                )
+                            except (TypeError, ValueError):
+                                column_confidence = 1.0
+                            if (primary_issue == "parsed"
+                                    and column_confidence < confidence_threshold):
+                                row[f"{column}_amount"] = secondary_value
+                                row[f"{column}_parse_status"] = "recovered_second_pass"
+                                status = "replaced_low_confidence"
+                            else:
+                                status = "differs"
+                elif primary_value:
+                    status = "secondary_unparsed"
+                row[f"{column}_second_pass_status"] = status
+
         issues: list[str] = []
         for col, issue in (("debit", debit_issue), ("credit", credit_issue)):
             if issue and issue != "dash_or_blank":
                 issues.append(f"{col}:{issue}")
+        if amount_second_pass:
+            for col in ("debit", "credit"):
+                status = row.get(f"{col}_second_pass_status", "")
+                if status in {"used", "replaced_low_confidence"}:
+                    issues.append(f"{col}:recovered_second_pass")
+                elif status == "differs":
+                    issues.append(f"{col}:second_pass_differs")
+        if amount_verifier:
+            for col in ("debit", "credit"):
+                status = amount_verifier_status(
+                    row.get(f"{col}_raw", ""), row.get(f"{col}_verifier_raw", "")
+                )
+                row[f"{col}_verifier_status"] = status
+                # Tesseract is the weaker reader here, so a disagreement is only
+                # escalated when Vision itself already failed to parse the amount
+                # cleanly. All readings stay in the evidence columns either way.
+                vision_unsure = row.get(f"{col}_parse_status") not in {
+                    "parsed", "dash_or_blank", "blank",
+                }
+                if status == "digit_mismatch":
+                    row[f"{col}_verifier_note"] = "digit_mismatch_vision_parsed" if not vision_unsure else "digit_mismatch_vision_unparsed"
+                    if vision_unsure:
+                        issues.append(f"{col}:verifier_digit_mismatch")
+                elif status == "verifier_only":
+                    issues.append(f"{col}:verifier_found_unread_amount")
         if page_format == "ambiguous" and (row.get("debit_raw") or row.get("credit_raw")):
             issues.append("page_number_format_ambiguous")
         if label_status.startswith("opencc_"):
@@ -1071,12 +1726,15 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
         if args.inspect_only:
             continue
 
-        b1, b2, boundary_source = detect_column_boundaries(image_path)
+        b1, b2, label_x0, boundary_source = detect_column_layout(image_path)
         vision_diagnostics: dict[str, Any] = {}
         if args.engine == "vision":
             all_boxes, vision_diagnostics = run_vision_ocr(
                 image_path, langs, (b1, b2), level=args.vision_level,
                 minimum_text_height=args.vision_minimum_text_height,
+                preprocess=args.vision_preprocess == "on",
+                language_correction=args.vision_language_correction,
+                label_x0=label_x0,
             )
         else:
             all_boxes = []
@@ -1120,18 +1778,82 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
                 "x1": round(box.x1, 2), "y1": round(box.y1, 2),
                 "image_path": str(image_path),
             })
-        rows = group_boxes_into_rows(table_boxes, table_image.width, table_image.height, (b1, b2))
+        row_bands: list[tuple[float, float]] = []
+        row_structure_source = "clustered"
+        row_structure_guard = ""
+        if args.row_structure != "clustered":
+            candidate_bands, candidate_source = detect_row_bands(image_path, (b1, b2))
+            if candidate_source == "projection" and candidate_bands:
+                heights = [b.height for b in table_boxes if b.height > 2]
+                median_box = statistics.median(heights) if heights else 0.0
+                clusters = _cluster_boxes(table_boxes, max(8.0, median_box * 0.58))
+                band_heights = [y1 - y0 for y0, y1 in candidate_bands]
+                band_count_ok = 0.6 * len(clusters) <= len(candidate_bands) <= 1.3 * len(clusters)
+                band_height_ok = not median_box or statistics.median(band_heights) <= 1.5 * median_box
+                # A band holding two reading clusters means the projection merged
+                # table rows; using it would silently drop a row.
+                per_band: list[int] = [0] * len(candidate_bands)
+                for cluster in clusters:
+                    for index, (y0, y1) in enumerate(candidate_bands):
+                        if y0 <= cluster["cy"] < y1:
+                            per_band[index] += 1
+                            break
+                single_row_bands = not per_band or max(per_band) <= 1
+                if not band_count_ok:
+                    row_structure_guard = "band_count_mismatch"
+                elif not band_height_ok:
+                    row_structure_guard = "band_height_mismatch"
+                elif not single_row_bands:
+                    row_structure_guard = "band_merged_rows"
+                if args.row_structure == "projection" or not row_structure_guard:
+                    row_bands = candidate_bands
+                    row_structure_source = "projection"
+        rows = group_boxes_into_rows(
+            table_boxes, table_image.width, table_image.height, (b1, b2),
+            row_bands=row_bands or None,
+        )
+        second_pass_diagnostics: dict[str, Any] = {
+            "amount_second_pass_status": "off",
+            "amount_second_pass_cells": 0,
+            "amount_second_pass_filled": 0,
+        }
+        if args.amount_second_pass == "ink" and args.engine == "vision":
+            page_profile = infer_number_format(
+                [value for row in rows
+                 for value in (row.get("debit_raw", ""), row.get("credit_raw", ""))]
+            )
+            page_format = (
+                args.number_format
+                if args.number_format in {"comma_dot", "dot_comma"}
+                else page_profile["number_format"]
+            )
+            second_pass_diagnostics = second_pass_amount_cells(
+                rows, image_path, table_image.width, table_image.height, (b1, b2),
+                page_format, args.confidence_threshold,
+            )
+        verifier_diagnostics = attach_amount_verifier(
+            rows, image_path, table_image.width, table_image.height, (b1, b2),
+            args.amount_verifier,
+        )
         rows = validate_rows(
             rows, args.confidence_threshold,
             number_format_override=args.number_format,
             chinese_label_normalization=args.chinese_label_normalization,
             repair_ocr_separators=args.repair_ocr_separators,
+            amount_verifier=verifier_diagnostics.get("amount_verifier_status") == "ran",
+            amount_second_pass=second_pass_diagnostics.get("amount_second_pass_status") == "ran",
         )
         if rows:
             document_rows[-1]["number_format_detected"] = rows[0].get("number_format", "")
             document_rows[-1]["number_format_confidence"] = rows[0].get("number_format_confidence", "")
             document_rows[-1]["number_format_evidence"] = rows[0].get("number_format_evidence", "")
         document_rows[-1].update(vision_diagnostics)
+        document_rows[-1].update(verifier_diagnostics)
+        document_rows[-1].update(second_pass_diagnostics)
+        document_rows[-1]["row_structure_source"] = row_structure_source
+        document_rows[-1]["row_structure_guard"] = row_structure_guard
+        document_rows[-1]["row_band_count"] = len(row_bands)
+        document_rows[-1]["label_column_x0"] = round(label_x0, 4)
         for row in rows:
             row["column_boundary_source"] = boundary_source
             if str(boundary_source).startswith("fallback"):
@@ -1162,6 +1884,11 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
         "ocr_engine": args.engine,
         "ocr_version": args.ocr_version,
         "vision_level": args.vision_level if args.engine == "vision" else "",
+        "vision_preprocess": args.vision_preprocess if args.engine == "vision" else "",
+        "vision_language_correction": args.vision_language_correction if args.engine == "vision" else "",
+        "row_structure": args.row_structure,
+        "amount_verifier": args.amount_verifier,
+        "amount_second_pass": args.amount_second_pass,
         "number_format_override": args.number_format,
         "chinese_label_normalization": args.chinese_label_normalization,
         "repair_ocr_separators": args.repair_ocr_separators,
@@ -1200,6 +1927,17 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Apple Vision 模式；accurate 較重視識別完整度，fast 較快")
     p.add_argument("--vision-minimum-text-height", type=float, default=0.004,
                    help="Vision 最小相對文字高度；降低可讀更細文字但可能較慢")
+    p.add_argument("--vision-preprocess", default="off", choices=["on", "off"],
+                   help="Vision 辨識前灰階／對比預處理（實驗性；預設 off，需先做人工標註比對）")
+    p.add_argument("--vision-language-correction", default="labels",
+                   choices=["off", "labels", "all"],
+                   help="Vision 語言修正：off、只套用於文字標籤（預設 labels）、或全部區域")
+    p.add_argument("--row-structure", default="clustered", choices=["auto", "projection", "clustered"],
+                   help="行分組：clustered（預設）或 experimental projection；auto 只在安全檢查通過時用投影")
+    p.add_argument("--amount-verifier", default="off", choices=["off", "tesseract"],
+                   help="experimental 金額交叉驗證（tesseract）；只加證據，唔會改 raw 或已解析金額")
+    p.add_argument("--amount-second-pass", default="ink", choices=["off", "ink"],
+                   help="對空白／低信心金額格以 3x 重讀（只加證據；採用時標 recovered_second_pass 並入覆核）")
     p.add_argument("--number-format", default="auto", choices=["auto", "comma_dot", "dot_comma"],
                    help="數字格式；auto 按每張 TB 證據推斷，不按中文／葡文猜測")
     p.add_argument("--chinese-label-normalization", default="s2hk", choices=["off", "s2t", "s2hk"],
