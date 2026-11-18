@@ -224,12 +224,53 @@ def _standard_key(parent_zh: str, child_zh: str = "") -> str:
     return f"user:{parent_zh}" + (f">{child_zh}" if child_zh else "")
 
 
+def apply_repairs(
+    conn: sqlite3.Connection, repairs_path: Path | None
+) -> Counter[str]:
+    stats: Counter[str] = Counter()
+    if not repairs_path or not repairs_path.exists():
+        return stats
+    with repairs_path.open(newline="", encoding="utf-8-sig") as handle:
+        for row in csv.DictReader(handle):
+            raw = normalize_text(row.get("raw_name"))
+            key = normalize_text(row.get("standard_key"))
+            language = normalize_text(row.get("language")) or _language_of(raw)
+            if not raw or not key:
+                continue
+            standard = conn.execute(
+                "SELECT standard_id FROM standard_labels WHERE standard_key = ?",
+                (key,),
+            ).fetchone()
+            if standard is None:
+                stats["missing_standard"] += 1
+                continue
+            normalized = _norm(raw, language)
+            conn.execute(
+                """
+                INSERT INTO standard_label_aliases (
+                    standard_id, raw_name, normalized_name, language,
+                    status, source, note
+                ) VALUES (?, ?, ?, ?, 'approved', 'ocr_repair', ?)
+                ON CONFLICT(standard_id, normalized_name, language)
+                DO UPDATE SET raw_name = excluded.raw_name,
+                              status = 'approved',
+                              source = 'ocr_repair',
+                              note = excluded.note
+                """,
+                (standard[0], raw, normalized, language,
+                 normalize_text(row.get("note")) or None),
+            )
+            stats["aliases"] += 1
+    return stats
+
+
 def import_standards(
     db_path: Path,
     csv_path: Path,
     *,
     cleaned_csv: Path | None = None,
     from_cleaned: bool = False,
+    repairs_path: Path | None = None,
 ) -> dict[str, Any]:
     if from_cleaned:
         rows = read_cleaned_csv(csv_path)
@@ -376,6 +417,7 @@ def import_standards(
                         "DO NOTHING",
                         (total[0], alias, _norm(alias, "zh-Hant")),
                     )
+            repairs = apply_repairs(conn, repairs_path)
             mapping = map_line_items(conn)
     finally:
         conn.close()
@@ -387,6 +429,7 @@ def import_standards(
         "rows": len(rows),
         "standards": len(parent_id) + len(child_rows),
         "mapping": dict(mapping),
+        "repairs": dict(repairs),
         "generated_at": _now(),
     }
 
@@ -569,6 +612,9 @@ def main(argv: list[str] | None = None) -> int:
                        help="read the edited cleaned CSV instead of the raw user CSV")
     build.add_argument("--overwrite-cleaned", action="store_true",
                        help="regenerate the cleaned CSV from the raw user CSV")
+    build.add_argument("--repairs", type=Path,
+                       default=Path("labels/user_standard_ocr_repairs.csv"),
+                       help="explicit OCR typo / merged-string alias repairs")
     build.add_argument("--report", type=Path,
                        default=Path("data/user_standard_mapping_report.csv"))
     report = sub.add_parser("report", help="write the current mapping report")
@@ -591,6 +637,7 @@ def main(argv: list[str] | None = None) -> int:
             result = import_standards(
                 args.db, args.csv, cleaned_csv=args.cleaned_csv,
                 from_cleaned=args.from_cleaned,
+                repairs_path=args.repairs,
             )
             result["report"] = write_report(args.db, args.report)
         else:

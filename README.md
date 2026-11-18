@@ -12,6 +12,12 @@
 
 ## 版本簡介
 
+### v0.6.2 — Map obvious OCR typos and merged strings
+
+- 新增 `labels/user_standard_ocr_repairs.csv`：32 條明確 OCR typo / 合併字串 alias，例如 `CAIXA現金`→現金、`EMPRESTIMOSEMMDEDASEXTERNAS外幣借款`→外幣借款、`足期存款`→定期存款。
+- 只 map 高信心個案；真正新科目或 context 不足的名稱仍然留 unmapped。
+- 未 map 由 89 行降至 50 行（38 distinct）。
+
 ### v0.6.1 — Use edited cleaned standard CSV
 
 - `import_user_standard.py build --from-cleaned` 直接讀你編輯過的 `labels/standard_label_by_user.cleaned.csv`，唔會再用 raw CSV 覆蓋。
@@ -269,6 +275,6 @@ python -m unittest discover -s tests -v
 
 **Project:** Macau Gazette Balancete OCR
 
-**Current prototype:** v0.6.1
+**Current prototype:** v0.6.2
 
 **Purpose:** Extract and normalize bank Balancete data from Macau Gazette PDFs.

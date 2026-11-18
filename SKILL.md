@@ -1,4 +1,4 @@
-# Agent Skill: Macau Gazette Balancete OCR v0.6.1
+# Agent Skill: Macau Gazette Balancete OCR v0.6.2
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Process Macau Government Gazette PDFs and extract bank / financial-institution B
 - `MACOS_VISION_OCR.md`: Apple Vision architecture, ROI and language constraints.
 - `NAME_STANDARDIZATION.md`: bank / line-item registry, review and approval workflow.
 
-## 2. Architecture (v0.6.1)
+## 2. Architecture (v0.6.2)
 
 ### Input and extraction
 
@@ -274,8 +274,9 @@ python tools/build_database.py output_v08_issue45_2026 output_v06_issue44_2026 \
   `*_total_approx` columns are REAL sums for quick checks only.
 - Read `DATABASE.md` before writing SQL. Do not change schema fields without a rebuild plan.
 
-## 7.2 Data-integrity workflow (v0.6.1)
+## 7.2 Data-integrity workflow (v0.6.2)
 
+- **OCR repair aliases:** `labels/user_standard_ocr_repairs.csv` maps only obvious merged strings/typos; ambiguous or genuinely new names stay unmapped.
 - **Cleaned user standard:** use `--from-cleaned` to import the edited `standard_label_by_user.cleaned.csv`; raw fallback maps blank `label_standard` through `label_raw`.
 - **User standard import:** `tools/import_user_standard.py` loads `labels/standard_label_by_user.csv` into `standard_labels` / `standard_label_aliases` and maps `line_items.user_standard_label_id`; unmatched labels stay visible in `v_user_standard_unmapped`.
 - **Standard master:** `tools/standard_line_items.py export` writes `labels/line_item_standard.csv`; `apply` only loads `status=approved` rows. Bilingual/combined OCR strings are aliases, not concepts.

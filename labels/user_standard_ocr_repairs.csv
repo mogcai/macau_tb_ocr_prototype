@@ -1,0 +1,33 @@
+raw_name,standard_key,language,note
+CAIXA現金,user:現金,zh-Hant,merged parent+child string
+DEPOSITOSNAAMCMAMCM存款,user:AMCM存款,zh-Hant,merged parent+child string
+DEVEDORESPORCREDITOSABERTOS信用狀（借方）,user:信用狀(借方),zh-Hant,merged parent+child string
+EMPRESTIMOSEMMDEDASEXTERNAS外幣借款,user:外幣借款,zh-Hant,merged parent+child string
+價權入,user:債權人,zh-Hant,OCR typo
+價権入,user:債權人,zh-Hant,OCR typo
+價輪入,user:債權人,zh-Hant,OCR typo
+價械人,user:債權人,zh-Hant,OCR typo
+足期存款,user:定期存款,zh-Hant,OCR typo
+保證及擔保付款（借力）,user:保證及擔保付款(借方),zh-Hant,OCR typo
+保證及擔保付款（偕方）,user:保證及擔保付款(借方),zh-Hant,OCR typo
+保證及擔保付款（億方）,user:保證及擔保付款(借方),zh-Hant,OCR typo
+保證及擔保付款（貸方）,user:保證及擔保付款,zh-Hant,credit side
+保證及擔保付款（货方）,user:保證及擔保付款,zh-Hant,credit side OCR typo
+代客保管帳（货方）,user:代客保管帳(貸方),zh-Hant,OCR typo
+代客保管股（貸力）,user:代客保管帳(貸方),zh-Hant,OCR typo
+本家成不動産,user:未完成不動產,zh-Hant,OCR typo
+禾元成不動産,user:未完成不動產,zh-Hant,OCR typo
+金、艱,user:金、銀,zh-Hant,OCR typo
+重佔儲備,user:重估儲備,zh-Hant,OCR typo
+重佶儲備,user:重估儲備,zh-Hant,OCR typo
+Outra Reserva,user:其他儲備,pt,singular variant of OUTRAS RESERVAS
+CAIXA - MOEDAS EXTERNAS,user:現金>外幣,pt,merged parent+child string
+CAIXA - PATACAS,user:現金>澳門元,pt,merged parent+child string
+DEPOSITOS NA AMCM - MOEDAS EXTERNAS,user:AMCM存款>外幣,pt,merged parent+child string
+DEPÓSITOS A ORDEM - MOEDAS EXTERNAS,user:活期存款>外幣,pt,merged parent+child string
+DEPÓSITOS A PRAZO - MOEDAS EXTERNAS,user:定期存款>外幣,pt,merged parent+child string
+DEPÓSITOS COM PRÉ - AVISO - MOEDAS EXTERNAS,user:通知存款>外幣,pt,merged parent+child string
+結欠總公司之款項,user:總公司之欠款,zh-Hant,synonym
+结欠總公司之款項,user:總公司之欠款,zh-Hant,synonym OCR variant
+結欠關連公司之款項,user:關連公司之欠款,zh-Hant,synonym
+DEVDORESPORCREDITOSABERTOS信用狀（借方）,user:信用狀(借方),zh-Hant,OCR typo (missing E)

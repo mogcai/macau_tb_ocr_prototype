@@ -1,12 +1,19 @@
 # Changelog
 
+## v0.6.2
+
+- **OCR repair aliases:** added `labels/user_standard_ocr_repairs.csv` with 32 high-confidence merged-string/typo mappings (e.g. `CAIXA現金`→現金, `EMPRESTIMOSEMMDEDASEXTERNAS外幣借款`→外幣借款, `足期存款`→定期存款, `重佔儲備`→重估儲備). Repairs create aliases only; no new standards.
+- **Coverage:** after repairs, mapped = 1875 parent_exact + 328 child_path_exact + 92 raw_parent_exact + 10 raw_child_path_exact + 6 raw_child_unique. Unmapped fell from 89 rows to 50 rows (38 distinct).
+- **Still unmapped by design:** blank labels, child labels without parent context, garbage OCR (`4/01円`, `變`), and genuinely new accounts (`NOTAS EM CIRCULAÇÃO`, `TESOURO PÚBLICO`, `CERTIFICADOS...`, `LUCROS/PERDAS...`, `資本公積`, `稅項`, `其他資產`, etc.).
+- **Tests:** 146 passing.
+
 ## v0.6.1
 
 - **Use the edited cleaned CSV:** `tools/import_user_standard.py build --from-cleaned` reads `labels/standard_label_by_user.cleaned.csv` directly, preserving the user's approved statuses and the 8 newly added standards (銀行貸款, 銀行結存, 銀行透支, 保留溢利/（損失）, 預付款項、按金及其他應收款項, 總公司之欠款, 關連公司之欠款, 儲備).
 - **Raw fallback mapping:** when `label_standard` is empty, matching now falls back to `label_raw`; this maps 66 raw parent rows and 8 raw child rows without inventing labels.
 - **Coverage:** all 74 standards are now `approved`; mapped rows = 1874 parent_exact + 324 child_path_exact + 66 raw_parent_exact + 8 raw_child_path_exact. Unmapped fell from 163 rows to 89 rows (70 distinct).
 - **Still unmapped:** blank labels, child labels without parent context, OCR variants/combined strings, and accounts not yet in the user file (e.g. NOTAS EM CIRCULAÇÃO, TESOURO PÚBLICO, LUCROS/PERDAS RELATIVAS A EXERCÍCIOS ANTERIORES).
-- **Tests:** 145 passing.
+- **Tests:** 146 passing.
 
 ## v0.6.0
 
@@ -14,7 +21,7 @@
 - **Validation/corrections:** the importer reports and corrects the shifted reserve block (股本/CAPITAL, 營運資金/FUNDO DE MANEIO, 法定儲備/RESERVA LEGAL, 自定儲備/RESERVA ESTATUTÁRIA, 其他儲備/OUTRAS RESERVAS, inserted 重估儲備/RESERVA DA REAVALIAÇÃO), AMCM child parent_pt, Greek Μ, 賬/帳 variants and 總收人→總收入. Corrected rows are `provisional`.
 - **Mapping:** existing rows are mapped by parent/child path; 2198 rows matched (1874 parent_exact + 324 child_path_exact) and 163 stayed unmapped. Report: `data/user_standard_mapping_report.csv`; unmapped view: `v_user_standard_unmapped`.
 - **Raw evidence untouched:** this mapping writes only `user_standard_label_id` / `user_standard_match_status`; `label_raw`, `label_standard` and the legacy concept registry are unchanged.
-- **Tests:** 145 passing.
+- **Tests:** 146 passing.
 
 ## v0.5.2
 

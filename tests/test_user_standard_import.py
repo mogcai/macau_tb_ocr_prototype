@@ -121,6 +121,40 @@ class UserStandardImportTests(unittest.TestCase):
         }
         self.assertEqual(statuses["銀行貸款"], "approved")
 
+    def test_repair_alias_is_added_without_new_standard(self):
+        imp.import_standards(self.db, self.csv)
+        repairs = self.root / "repairs.csv"
+        with repairs.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=[
+                "raw_name", "standard_key", "language", "note",
+            ])
+            writer.writeheader()
+            writer.writerow({
+                "raw_name": "CAIXA現金",
+                "standard_key": "user:現金",
+                "language": "zh-Hant",
+                "note": "merged string",
+            })
+        conn = sqlite3.connect(self.db)
+        conn.row_factory = sqlite3.Row
+        try:
+            stats = imp.apply_repairs(conn, repairs)
+            conn.commit()
+            self.assertEqual(stats["aliases"], 1)
+            alias = conn.execute(
+                "SELECT a.raw_name, s.standard_key "
+                "FROM standard_label_aliases a "
+                "JOIN standard_labels s ON s.standard_id = a.standard_id "
+                "WHERE a.raw_name = 'CAIXA現金'"
+            ).fetchone()
+            self.assertEqual(alias["standard_key"], "user:現金")
+            count = conn.execute(
+                "SELECT COUNT(*) FROM standard_labels"
+            ).fetchone()[0]
+            self.assertEqual(count, 2)
+        finally:
+            conn.close()
+
     def test_report_lists_unmapped_names(self):
         imp.import_standards(self.db, self.csv)
         out = self.root / "report.csv"
