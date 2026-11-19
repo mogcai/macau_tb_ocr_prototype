@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from workbench import service
 from workbench.permissions import (
-    DEFAULT_ROLE, ROLES, can_adopt, can_publish, can_review_statement, can_verify,
+    DEFAULT_ROLE, ROLES, can_adopt, can_map, can_publish, can_review_statement, can_verify,
 )
 
 
@@ -28,6 +28,11 @@ class RowVerificationPayload(BaseModel):
 class StatementReviewPayload(BaseModel):
     note: str = ""
     review_status: str = "reviewed"
+
+
+class StandardItemPayload(BaseModel):
+    standard_item_id: str
+    note: str = ""
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = Path(__file__).resolve().parent / "templates"
@@ -62,6 +67,7 @@ def template_context(request: Request, **extra: Any) -> dict[str, Any]:
         "can_adopt": can_adopt(role),
         "can_publish": can_publish(role),
         "can_review_statement": can_review_statement(role),
+        "can_map": can_map(role),
         **extra,
     }
 
@@ -140,6 +146,36 @@ def api_publish(
         return JSONResponse(service.publish_statement(statement_id, actor_from(request)))
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+
+
+@app.get("/api/standard-items")
+def api_standard_items() -> list[dict[str, Any]]:
+    return service.standard_items()
+
+
+@app.post("/api/review/{statement_id}/rows/{statement_row_id}/map")
+def api_map_row(
+    statement_id: str,
+    statement_row_id: str,
+    payload: StandardItemPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_map(role):
+        raise HTTPException(status_code=403, detail="map capability is required")
+    try:
+        return service.approve_mapping(
+            statement_id,
+            statement_row_id,
+            payload.standard_item_id,
+            actor_from(request),
+            payload.note,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/review/queue")
@@ -241,6 +277,7 @@ def review_detail_page(request: Request, statement_id: str) -> HTMLResponse:
             statement=detail,
             queue_row=queue_row,
             rows=service.review_rows(statement_id),
+            standard_items=service.standard_items(),
         ),
     )
 

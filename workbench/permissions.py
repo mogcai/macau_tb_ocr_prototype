@@ -7,10 +7,10 @@ from __future__ import annotations
 
 ROLES = {
     "viewer": {"read"},
-    "reviewer": {"read", "verify", "review"},
-    "adopter": {"read", "verify", "review", "adopt"},
+    "reviewer": {"read", "verify", "review", "map"},
+    "adopter": {"read", "verify", "review", "map", "adopt"},
     "publisher": {"read", "publish"},
-    "admin": {"read", "verify", "review", "adopt", "publish"},
+    "admin": {"read", "verify", "review", "map", "adopt", "publish"},
 }
 DEFAULT_ROLE = "viewer"
 
@@ -25,6 +25,10 @@ def can_verify(role: str) -> bool:
 
 def can_review_statement(role: str) -> bool:
     return "review" in capabilities(role)
+
+
+def can_map(role: str) -> bool:
+    return "map" in capabilities(role)
 
 
 def can_adopt(role: str) -> bool:

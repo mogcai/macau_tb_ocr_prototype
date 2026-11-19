@@ -61,6 +61,18 @@ Columns include:
   Portuguese/Chinese labels that still do not map after script splitting.
 - No unmatched row was forced onto a standard item.
 
+## Workbench integration
+
+Workbench Review detail now shows:
+
+- proposed standard item for `unique` rows;
+- candidate count and candidate keys for `conflict` rows;
+- `unmatched` status where there is no candidate;
+- a standard-item selector and **Approve** action for reviewers.
+
+`GET /api/review/{statement_id}/rows` includes `mapping_status`,
+`standard_item_key`, `standardised_label` and `mapping_candidates`.
+
 ## Important
 
 - `statement_row_mappings.mapping_status` is `proposed` only.

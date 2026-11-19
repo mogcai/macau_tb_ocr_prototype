@@ -10,7 +10,7 @@
     <thead>
       <tr>
         <th>Priority</th><th>Entity</th><th>Dates</th><th>Bucket</th>
-        <th>Rows</th><th>Missing</th><th>Issues</th>
+        <th>Rows</th><th>Mapped</th><th>Unmapped</th><th>Missing</th><th>Issues</th>
         <th>Debit / Credit</th><th>Difference</th><th>Field ver.</th><th></th>
       </tr>
     </thead>
@@ -22,6 +22,8 @@
         <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
         <td><span class="pill {{ item.statement_status }}">{{ item.review_bucket }}</span></td>
         <td>{{ item.row_count }}</td>
+        <td>{{ item.mapped_rows }}</td>
+        <td>{{ item.unmapped_rows }}</td>
         <td>{{ item.missing_labels }}</td>
         <td>{{ item.issue_rows }}</td>
         <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
@@ -34,7 +36,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="11" class="muted">No pending held statements.</td></tr>
+      <tr><td colspan="13" class="muted">No pending held statements.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -46,7 +48,7 @@
   <table class="data">
     <thead>
       <tr>
-        <th>Entity</th><th>Dates</th><th>Bucket</th><th>Rows</th>
+        <th>Entity</th><th>Dates</th><th>Bucket</th><th>Rows</th><th>Mapped</th><th>Unmapped</th>
         <th>Missing</th><th>Issues</th><th>Debit / Credit</th><th>Difference</th><th>Reviewed by</th><th></th>
       </tr>
     </thead>
@@ -57,6 +59,8 @@
         <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
         <td><span class="pill {{ item.statement_status }}">{{ item.review_bucket }}</span></td>
         <td>{{ item.row_count }}</td>
+        <td>{{ item.mapped_rows }}</td>
+        <td>{{ item.unmapped_rows }}</td>
         <td>{{ item.missing_labels }}</td>
         <td>{{ item.issue_rows }}</td>
         <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
@@ -69,7 +73,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="10" class="muted">No reviewed held statements.</td></tr>
+      <tr><td colspan="12" class="muted">No reviewed held statements.</td></tr>
       {% endfor %}
     </tbody>
   </table>

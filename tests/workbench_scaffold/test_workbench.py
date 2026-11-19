@@ -288,6 +288,46 @@ class ReviewWriteTests(unittest.TestCase):
         self.assertEqual(statement_row["effective_label"], "測試標籤")
         self.assertEqual(statement_row["effective_debit_minor"], 100)
 
+    def test_standard_item_mapping_is_visible_and_approvable(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        statement_id = queue[0]["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        row = next(item for item in rows if item["mapping_candidates"])
+        self.assertIn(row["mapping_status"], ("unique", "conflict"))
+        self.assertTrue(row["standard_item_key"])
+        item_id = row["mapping_candidates"][0]["standard_item_id"]
+
+        forbidden = self.client.post(
+            f"/api/review/{statement_id}/rows/{row['statement_row_id']}/map",
+            json={"standard_item_id": item_id, "note": "test mapping"},
+            headers={"X-Workbench-Role": "viewer"},
+        )
+        self.assertEqual(forbidden.status_code, 403)
+
+        approved = self.client.post(
+            f"/api/review/{statement_id}/rows/{row['statement_row_id']}/map",
+            json={"standard_item_id": item_id, "note": "test mapping"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(approved.status_code, 200)
+        self.assertEqual(approved.json()["mapping_status"], "approved")
+
+        refreshed = self.client.get(f"/api/review/{statement_id}/rows").json()
+        updated = next(item for item in refreshed if item["statement_row_id"] == row["statement_row_id"])
+        self.assertEqual(updated["mapping_status"], "approved")
+        self.assertEqual(updated["standard_item_id"], item_id)
+
+        conn = sqlite3.connect(self.db)
+        self.assertEqual(
+            conn.execute(
+                "SELECT COUNT(*) FROM statement_row_mappings "
+                "WHERE statement_row_id=? AND mapping_status='approved'",
+                (row["statement_row_id"],),
+            ).fetchone()[0],
+            1,
+        )
+        conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()

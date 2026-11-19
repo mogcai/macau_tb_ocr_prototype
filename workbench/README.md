@@ -18,13 +18,17 @@ Open <http://127.0.0.1:8000>.
 2. Review Queue (`/review`) for held statements
 3. Statement / page / row review
 4. Field verification (`field_verifications`) with inline row editing
-5. Adoption gate
-6. Audit trail
-7. Read-only MVP snapshot visibility
+5. Preliminary Standard Item display and mapping approval
+6. Adoption gate
+7. Audit trail
+8. Read-only MVP snapshot visibility
 
-**Out of scope:** Standard Item mapping and P1 catalogue reconciliation.  The
-`standard_items` and `statement_row_mappings` tables remain empty in this
-version.
+The 89-item user catalogue is seeded into `standard_items`; statement rows have
+`proposed` mappings from the first-pass auto-map.  Review Queue rows show
+mapped/unmapped counts, and the Review detail shows the proposed standard item
+or conflict candidates.  A reviewer can approve a standard item mapping with
+the `map` capability.  Mapping approval is separate from financial verification
+and from adoption.
 
 ## Roles (local scaffold)
 
@@ -35,8 +39,8 @@ For local browsing, use the role links in the top bar (they set a
 | Role | Capabilities |
 |---|---|
 | `viewer` | read |
-| `reviewer` | read, verify |
-| `adopter` | read, verify, adopt |
+| `reviewer` | read, verify, review, map |
+| `adopter` | read, verify, review, map, adopt |
 | `publisher` | read, publish |
 | `admin` | read, verify, adopt, publish |
 
@@ -61,7 +65,9 @@ GET  /api/statements/{statement_id}
 GET  /api/statements/{statement_id}/rows
 GET  /api/review/queue
 GET  /api/review/{statement_id}/rows
+GET  /api/standard-items
 POST /api/review/{statement_id}/rows/{row_id}/verify  # X-Workbench-Role: reviewer
+POST /api/review/{statement_id}/rows/{row_id}/map     # X-Workbench-Role: reviewer
 POST /api/review/{statement_id}/review                 # X-Workbench-Role: reviewer
 POST /api/statements/{statement_id}/adopt    # X-Workbench-Role: adopter
 POST /api/statements/{statement_id}/publish  # X-Workbench-Role: publisher, 501 in v1

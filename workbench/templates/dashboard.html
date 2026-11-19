@@ -35,6 +35,16 @@
     <div class="value">{{ summary.publications }}</div>
     <div class="hint">publish gate separate</div>
   </div>
+  <div class="card">
+    <div class="label">Standard items</div>
+    <div class="value">{{ summary.standard_items }}</div>
+    <div class="hint">seed catalogue</div>
+  </div>
+  <div class="card">
+    <div class="label">Approved mappings</div>
+    <div class="value">{{ summary.approved_mappings }}</div>
+    <div class="hint">proposed: {{ summary.proposed_mappings }}</div>
+  </div>
 </section>
 
 {% if summary.snapshot_manifest_exists %}

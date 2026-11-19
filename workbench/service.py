@@ -57,6 +57,14 @@ def summary() -> dict[str, Any]:
                 "WHERE s.statement_status='active'",
             ),
             "publications": _count(conn, "SELECT COUNT(*) FROM publication_records"),
+            "standard_items": _count(conn, "SELECT COUNT(*) FROM standard_items"),
+            "proposed_mappings": _count(conn, "SELECT COUNT(*) FROM statement_row_mappings WHERE mapping_status='proposed'"),
+            "approved_mappings": _count(conn, "SELECT COUNT(*) FROM statement_row_mappings WHERE mapping_status='approved'"),
+            "mapping_conflict_rows": _count(
+                conn,
+                "SELECT COUNT(DISTINCT statement_row_id) FROM statement_row_mappings "
+                "WHERE conflict_group_id IS NOT NULL",
+            ),
         }
     finally:
         conn.close()
@@ -369,6 +377,76 @@ JOIN document_pages dp ON dp.document_page_id=er.document_page_id
 """
 
 
+def standard_items() -> list[dict[str, Any]]:
+    conn = connect_v3()
+    try:
+        rows = [dict(row) for row in conn.execute(
+            "SELECT standard_item_id, item_key, canonical_zh, canonical_pt, "
+            "parent_standard_item_id, item_status FROM standard_items "
+            "ORDER BY item_key"
+        )]
+    finally:
+        conn.close()
+    by_id = {row["standard_item_id"]: row for row in rows}
+
+    def path_for(row: dict[str, Any]) -> str:
+        parts = []
+        current = row
+        seen = set()
+        while current and current["standard_item_id"] not in seen:
+            seen.add(current["standard_item_id"])
+            label = text(current.get("canonical_zh")) or text(current.get("canonical_pt")) or current["item_key"]
+            parts.append(label)
+            current = by_id.get(current.get("parent_standard_item_id"))
+        return " > ".join(reversed(parts))
+
+    for row in rows:
+        row["path"] = path_for(row)
+    return rows
+
+
+def _mapping_info(conn: sqlite3.Connection, statement_row_id: str) -> dict[str, Any]:
+    mappings = [dict(row) for row in conn.execute(
+        """
+        SELECT m.mapping_id, m.statement_row_id, m.standard_item_id,
+               m.mapping_status, m.conflict_group_id, m.match_method,
+               m.match_score, m.mapping_version,
+               si.item_key, si.canonical_zh, si.canonical_pt
+        FROM statement_row_mappings m
+        JOIN standard_items si ON si.standard_item_id=m.standard_item_id
+        WHERE m.statement_row_id=?
+          AND m.mapping_status IN ('proposed','approved')
+        ORDER BY CASE m.mapping_status WHEN 'approved' THEN 0 ELSE 1 END,
+                 m.match_score DESC, si.item_key
+        """,
+        (statement_row_id,),
+    )]
+    approved = next((item for item in mappings if item["mapping_status"] == "approved"), None)
+    proposed = [item for item in mappings if item["mapping_status"] == "proposed"]
+    if approved is not None:
+        status = "approved"
+        selected = approved
+    elif len(proposed) == 1:
+        status = "unique"
+        selected = proposed[0]
+    elif len(proposed) > 1:
+        status = "conflict"
+        selected = None
+    else:
+        status = "unmatched"
+        selected = None
+    return {
+        "mapping_status": status,
+        "standard_item_id": selected["standard_item_id"] if selected else "",
+        "standard_item_key": selected["item_key"] if selected else "",
+        "standardised_label": (
+            text(selected.get("canonical_zh")) or text(selected.get("canonical_pt"))
+            if selected else ""
+        ),
+        "mapping_candidates": mappings,
+    }
+
+
 def review_queue() -> list[dict[str, Any]]:
     conn = connect_v3()
     try:
@@ -396,7 +474,22 @@ def review_queue() -> list[dict[str, Any]]:
                 (SELECT rv.reviewed_by FROM statement_reviews rv
                   WHERE rv.statement_id=s.statement_id) AS reviewed_by,
                 (SELECT rv.reviewed_at FROM statement_reviews rv
-                  WHERE rv.statement_id=s.statement_id) AS reviewed_at
+                  WHERE rv.statement_id=s.statement_id) AS reviewed_at,
+                (SELECT COUNT(DISTINCT m.statement_row_id)
+                   FROM statement_row_mappings m
+                   JOIN statement_rows sr2 ON sr2.statement_row_id=m.statement_row_id
+                  WHERE sr2.statement_id=s.statement_id
+                    AND m.mapping_status IN ('proposed','approved')) AS mapped_rows,
+                (SELECT COUNT(DISTINCT m.statement_row_id)
+                   FROM statement_row_mappings m
+                   JOIN statement_rows sr2 ON sr2.statement_row_id=m.statement_row_id
+                  WHERE sr2.statement_id=s.statement_id
+                    AND m.mapping_status='approved') AS approved_mapping_rows,
+                (SELECT COUNT(DISTINCT m.statement_row_id)
+                   FROM statement_row_mappings m
+                   JOIN statement_rows sr2 ON sr2.statement_row_id=m.statement_row_id
+                  WHERE sr2.statement_id=s.statement_id
+                    AND m.conflict_group_id IS NOT NULL) AS mapping_conflict_rows
             FROM statements s
             JOIN reporting_entities e ON e.entity_id=s.reporting_entity_id
             LEFT JOIN effective er ON er.statement_id=s.statement_id
@@ -422,6 +515,7 @@ def review_queue() -> list[dict[str, Any]]:
                 bucket = "ready_for_adoption"
             data["review_bucket"] = bucket
             data["priority"] = {"unbalanced": 1, "no_rows": 1, "row_issues": 2}.get(bucket, 3)
+            data["unmapped_rows"] = max(0, int(data["row_count"] or 0) - int(data["mapped_rows"] or 0))
             data["debit_total_display"] = _money(data["debit_total_minor"], data["amount_decimal_places"])
             data["credit_total_display"] = _money(data["credit_total_minor"], data["amount_decimal_places"])
             result.append(data)
@@ -456,6 +550,7 @@ def review_rows(statement_id: str, limit: int = 1000) -> list[dict[str, Any]]:
             if data["effective_credit_state"] in ("ambiguous", "unreadable"):
                 issues.append("credit_" + data["effective_credit_state"])
             data["row_issues"] = ";".join(issues)
+            data.update(_mapping_info(conn, data["statement_row_id"]))
             result.append(data)
         return result
     finally:
@@ -555,3 +650,108 @@ def verify_row(
         if item["statement_row_id"] == statement_row_id:
             return item
     raise LookupError("statement row not found after verification")
+
+
+def approve_mapping(
+    statement_id: str,
+    statement_row_id: str,
+    standard_item_id: str,
+    actor: str,
+    note: str = "",
+) -> dict[str, Any]:
+    conn = connect_v3(write=True)
+    try:
+        row = conn.execute(
+            "SELECT statement_id FROM statement_rows WHERE statement_row_id=?",
+            (statement_row_id,),
+        ).fetchone()
+        if row is None or row["statement_id"] != statement_id:
+            raise LookupError("statement row not found")
+        item = conn.execute(
+            "SELECT standard_item_id, item_key FROM standard_items WHERE standard_item_id=?",
+            (standard_item_id,),
+        ).fetchone()
+        if item is None:
+            raise LookupError("standard item not found")
+
+        before = [
+            dict(mapping)
+            for mapping in conn.execute(
+                "SELECT mapping_id, standard_item_id, mapping_status FROM statement_row_mappings "
+                "WHERE statement_row_id=? AND mapping_status IN ('proposed','approved')",
+                (statement_row_id,),
+            )
+        ]
+        conn.execute(
+            "UPDATE statement_row_mappings SET mapping_status='rejected' "
+            "WHERE statement_row_id=? AND standard_item_id<>? "
+            "AND mapping_status IN ('proposed','approved')",
+            (statement_row_id, standard_item_id),
+        )
+        existing = conn.execute(
+            "SELECT mapping_id FROM statement_row_mappings "
+            "WHERE statement_row_id=? AND standard_item_id=?",
+            (statement_row_id, standard_item_id),
+        ).fetchone()
+        if existing:
+            mapping_id = existing["mapping_id"]
+            conn.execute(
+                """
+                UPDATE statement_row_mappings
+                SET mapping_status='approved', conflict_group_id=NULL,
+                    match_method='manual', match_score=1.0,
+                    mapping_version='p1-review-1',
+                    evidence_source='workbench_manual',
+                    reviewed_by=?, reviewed_at=?, notes=?
+                WHERE mapping_id=?
+                """,
+                (actor, now(), note, mapping_id),
+            )
+        else:
+            mapping_id = stable_id("workbench_mapping", statement_row_id, standard_item_id, VERSION)
+            conn.execute(
+                """
+                INSERT INTO statement_row_mappings(
+                    mapping_id, statement_row_id, standard_item_id,
+                    conflict_group_id, mapping_status, match_method, match_score,
+                    mapping_version, evidence_source, context_json,
+                    reviewed_by, reviewed_at, created_at, notes
+                ) VALUES (?, ?, ?, NULL, 'approved', 'manual', 1.0,
+                          'p1-review-1', 'workbench_manual', ?, ?, ?, ?)
+                """,
+                (
+                    mapping_id, statement_row_id, standard_item_id,
+                    json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
+                    actor, now(), now(), note,
+                ),
+            )
+        event_id = stable_id("workbench_mapping_event", mapping_id, VERSION, now())
+        conn.execute(
+            "INSERT INTO audit_events("
+            "audit_event_id, event_type, statement_id, statement_row_id, mapping_id, "
+            "actor_id, before_json, after_json, details_json, reason, created_at"
+            ") VALUES (?, 'workbench_mapping_approved', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                event_id, statement_id, statement_row_id, mapping_id, actor,
+                json.dumps(before, ensure_ascii=False, default=str),
+                json.dumps({
+                    "standard_item_id": standard_item_id,
+                    "standard_item_key": item["item_key"],
+                    "mapping_status": "approved",
+                }, ensure_ascii=False),
+                json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
+                note or "Standard item mapping approved in Workbench",
+                now(),
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    rows = review_rows(statement_id)
+    for item_row in rows:
+        if item_row["statement_row_id"] == statement_row_id:
+            return item_row
+    raise LookupError("statement row not found after mapping")

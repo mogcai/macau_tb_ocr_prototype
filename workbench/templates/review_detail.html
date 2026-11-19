@@ -46,7 +46,8 @@
     <thead>
       <tr>
         <th>#</th><th>Page</th><th>Raw label</th><th>Effective label</th>
-        <th>Raw debit / credit</th><th>Effective debit</th><th>State</th><th>Effective credit</th><th>State</th><th></th>
+        <th>Raw debit / credit</th><th>Effective debit</th><th>State</th><th>Effective credit</th><th>State</th>
+        <th>Standard item</th><th>Mapping</th><th></th>
       </tr>
     </thead>
     <tbody>
@@ -73,10 +74,38 @@
             {% endfor %}
           </select>
         </td>
+        <td class="standard-cell">
+          {% if row.mapping_status == 'approved' %}
+            <span class="pill active">approved</span> {{ row.standardised_label }}
+          {% elif row.mapping_status == 'unique' %}
+            <span class="pill proposed">proposed</span> {{ row.standardised_label }}
+          {% elif row.mapping_status == 'conflict' %}
+            <span class="pill proposed">conflict</span>
+            <span class="muted">{{ row.mapping_candidates|length }} candidates</span>
+          {% else %}
+            <span class="muted">unmatched</span>
+          {% endif %}
+          {% if row.mapping_candidates %}
+          <div class="muted candidates">{{ row.mapping_candidates | map(attribute='item_key') | join(' | ') }}</div>
+          {% endif %}
+        </td>
+        <td>
+          {% if can_map and not reviewed %}
+          <select class="cell standard-item">
+            <option value="">— select standard item —</option>
+            {% for item in standard_items %}
+            <option value="{{ item.standard_item_id }}" {% if row.standard_item_id == item.standard_item_id %}selected{% endif %}>{{ item.path }}</option>
+            {% endfor %}
+          </select>
+          <button class="map-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Approve</button>
+          {% else %}
+          <span class="muted">—</span>
+          {% endif %}
+        </td>
         <td>{% if not reviewed %}<button class="save-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Save</button>{% endif %}</td>
       </tr>
       {% else %}
-      <tr><td colspan="10" class="muted">No rows.</td></tr>
+      <tr><td colspan="12" class="muted">No rows.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -116,6 +145,33 @@ document.querySelectorAll(".save-row").forEach((button) => {
     } else {
       const body = await response.json().catch(() => ({}));
       alert(body.detail || "Verification failed");
+      button.disabled = false;
+    }
+  });
+});
+document.querySelectorAll(".map-row").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const tr = button.closest("tr");
+    const itemId = tr.querySelector(".standard-item").value;
+    if (!itemId) {
+      alert("Select a standard item first.");
+      return;
+    }
+    button.disabled = true;
+    const response = await fetch(`/api/review/${button.dataset.statement}/rows/${button.dataset.row}/map`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      },
+      body: JSON.stringify({standard_item_id: itemId, note: "Workbench mapping approval"})
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Mapping approval failed");
       button.disabled = false;
     }
   });
