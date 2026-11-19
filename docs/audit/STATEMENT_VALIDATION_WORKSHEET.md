@@ -12,8 +12,15 @@ It does **not** adopt, publish or financially verify anything.
 
 | Proposed validation | Statements |
 |---|---:|
-| `ready_for_adoption` | 71 |
-| `needs_review` | 42 |
+| `ready_for_adoption` | 76 |
+| `needs_review` | 37 |
+
+**Adoption rule (confirmed by project owner):**
+
+- `debit_total_minor == credit_total_minor` → suggest `adopt`
+- otherwise → `hold`
+- critical structural failures (no rows/pages, row-count mismatch, incomplete
+  extraction, unapproved entity, duplicate identity) still block adoption.
 
 All 113 statements have matching v3 / v5 row counts.
 
@@ -22,6 +29,7 @@ Common non-blocking warnings:
 | Flag | Statements |
 |---|---:|
 | `parent_context_unknown` | 105 |
+| `debit_credit_mismatch` | 37 |
 | `unreadable_amounts` | 21 |
 | `missing_labels` | 19 |
 | `ambiguous_amounts` | 18 |
@@ -32,8 +40,31 @@ Common non-blocking warnings:
 `tools/set_statement_currency_policy.py` and 113 audit events.
 
 `parent_context_unknown` remains a P1 mapping issue, not a statement identity
-blocker.  `unreadable_amounts`, `missing_labels` and `ambiguous_amounts` remain
-the reasons for the 42 `needs_review` statements.
+blocker.  The 37 `hold` statements are primarily those where debit and credit
+totals differ.  `unreadable_amounts`, `missing_labels` and `ambiguous_amounts`
+remain visible warnings even when totals balance.
+
+## What `parent_context_unknown` means
+
+The original report has a parent/child hierarchy, for example:
+
+```text
+現金
+  澳門元
+  外幣
+
+AMCM 存款
+  澳門元
+  外幣
+```
+
+`澳門元` / `PATACAS` and `外幣` / `MOEDAS EXTERNAS` repeat under different
+parents.  Without parent context, P1 cannot know whether a child row belongs to
+`CASH_MOP`, `AMCM_DEPOSITS_MOP`, `DEMAND_DEPOSITS_MOP`, etc.  Auto-mapping would
+risk assigning the right name to the wrong standard item.  The raw `label_path`
+and `parent_label_raw` evidence still exists in `extracted_rows`/v5; P2-C did
+not guess parent links.  This affects P1 mapping and dashboard grouping, not
+whether the statement's debit/credit totals balance.
 
 ## What to review
 
@@ -61,10 +92,11 @@ separate.
 
 ## Important interpretation
 
-- `ready_for_adoption` means the statement passed **structural** checks:
-  page exists, extraction is completed, row count matches legacy evidence, no
-  missing/ambiguous/unreadable amount, and identity is unique.
+- `ready_for_adoption` means debit and credit totals are equal and no critical
+  structural check failed (page/extraction/row-count/entity/identity).
 - It does **not** mean the statement is financially verified or published.
+  Missing labels, ambiguous/unreadable amounts and parent context remain
+  visible warnings.
 - `hold` / `needs_review` means at least one structural risk exists; inspect the
   flagged rows before adoption.
 - Adoption only selects the current `statement_extraction_id`; publication is a

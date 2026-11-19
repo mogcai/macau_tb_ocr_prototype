@@ -54,6 +54,31 @@ def money(minor: int | None, places: int | None) -> str:
     return format(value, ",.2f")
 
 
+def decide_validation(
+    debit_total_minor: int,
+    credit_total_minor: int,
+    flags: list[str],
+    row_count: int,
+    page_count: int,
+) -> tuple[str, str]:
+    """Return (validation_status, adoption_action).
+
+    Project rule: equal debit/credit totals suggest adoption; unequal totals
+    hold for review.  Critical structural failures still block adoption.
+    """
+    if row_count == 0 or page_count == 0:
+        return "reject", "reject"
+    critical = {
+        "row_count_mismatch", "extraction_not_completed",
+        "entity_not_approved", "duplicate_identity",
+    }
+    if set(flags) & critical:
+        return "needs_review", "hold"
+    if debit_total_minor == credit_total_minor:
+        return "ready_for_adoption", "adopt"
+    return "needs_review", "hold"
+
+
 def build(db: Path, v5_db: Path, plan_csv: Path) -> list[dict[str, Any]]:
     plan = {row["statement_id"]: row for row in read_csv(plan_csv)}
     v3 = connect_ro(db)
@@ -103,7 +128,14 @@ def build(db: Path, v5_db: Path, plan_csv: Path) -> list[dict[str, Any]]:
                 """,
                 (statement["statement_id"],),
             ).fetchone()
+            debit_total_minor = int(metrics["debit_total_minor"] or 0)
+            credit_total_minor = int(metrics["credit_total_minor"] or 0)
+            debit_credit_difference = debit_total_minor - credit_total_minor
+            debit_credit_equal = debit_credit_difference == 0
+
             flags: list[str] = []
+            if not debit_credit_equal:
+                flags.append("debit_credit_mismatch")
             if int(metrics["row_count"] or 0) == 0:
                 flags.append("no_statement_rows")
             if page_count == 0:
@@ -131,26 +163,18 @@ def build(db: Path, v5_db: Path, plan_csv: Path) -> list[dict[str, Any]]:
             if statement["adopted_statement_extraction_id"] is not None:
                 flags.append("already_adopted")
 
-            blocking = {
-                "no_statement_rows", "no_statement_pages", "row_count_mismatch",
-                "missing_labels", "ambiguous_amounts", "unreadable_amounts",
-                "extraction_not_completed", "entity_not_approved",
-                "duplicate_identity",
-            }
-            if not (set(flags) & blocking) and int(metrics["row_count"] or 0) > 0:
-                validation = "ready_for_adoption"
-                action = "adopt"
-            elif "no_statement_rows" in flags or "no_statement_pages" in flags:
-                validation = "reject"
-                action = "reject"
-            else:
-                validation = "needs_review"
-                action = "hold"
+            validation, action = decide_validation(
+                debit_total_minor,
+                credit_total_minor,
+                flags,
+                int(metrics["row_count"] or 0),
+                page_count,
+            )
 
             places = statement["amount_decimal_places"]
-            reason_parts = []
-            if validation == "ready_for_adoption":
-                reason_parts.append("structural_checks_passed")
+            reason_parts = [
+                "debit_credit_equal" if debit_credit_equal else "debit_credit_mismatch"
+            ]
             reason_parts.extend(flags)
             rows.append({
                 "statement_id": statement["statement_id"],
@@ -176,10 +200,12 @@ def build(db: Path, v5_db: Path, plan_csv: Path) -> list[dict[str, Any]]:
                 "parent_unknown_count": metrics["parent_unknown"] or 0,
                 "debit_amount_rows": metrics["debit_amount_rows"] or 0,
                 "credit_amount_rows": metrics["credit_amount_rows"] or 0,
-                "debit_total_minor": metrics["debit_total_minor"] or 0,
-                "credit_total_minor": metrics["credit_total_minor"] or 0,
-                "debit_total_display": money(metrics["debit_total_minor"], places),
-                "credit_total_display": money(metrics["credit_total_minor"], places),
+                "debit_total_minor": debit_total_minor,
+                "credit_total_minor": credit_total_minor,
+                "debit_credit_difference_minor": debit_credit_difference,
+                "debit_credit_equal": "yes" if debit_credit_equal else "no",
+                "debit_total_display": money(debit_total_minor, places),
+                "credit_total_display": money(credit_total_minor, places),
                 "currency": statement["currency"] or "",
                 "unit_scale": statement["unit_scale"] if statement["unit_scale"] is not None else "",
                 "amount_decimal_places": places if places is not None else "",
@@ -217,8 +243,9 @@ def main() -> int:
         "pdf_pages", "row_count", "legacy_row_count", "row_count_match",
         "label_missing_count", "ambiguous_count", "unreadable_count",
         "parent_unknown_count", "debit_amount_rows", "credit_amount_rows",
-        "debit_total_minor", "credit_total_minor", "debit_total_display",
-        "credit_total_display", "currency", "unit_scale",
+        "debit_total_minor", "credit_total_minor", "debit_credit_difference_minor",
+        "debit_credit_equal", "debit_total_display", "credit_total_display",
+        "currency", "unit_scale",
         "amount_decimal_places", "statement_status", "identity_status",
         "metadata_status", "extraction_status", "adopted_statement_extraction_id",
         "proposed_validation_status", "proposed_adoption_action",
