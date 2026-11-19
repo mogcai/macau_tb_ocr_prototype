@@ -5,8 +5,13 @@
 **Database:** `data/macau_balancete_v3.sqlite` (read-only for this worksheet)
 **Rows:** 118 document pages
 
-This worksheet is a proposal only. It does not update `document_pages` and does
-not approve any page. AI proposal and human decision are separate fields.
+**Status: reviewed and applied 2026-11-19.** The human-reviewed CSV was imported
+with `tools/apply_page_classification_decisions.py`; `document_pages` now has
+113 approved financial statements and 5 rejected pages, with 118 audit events.
+The original proposal columns are preserved. AI proposal and human decision
+remain separate fields.
+
+The reviewed/enriched copy is `docs/audit/page_classification_reviewed.csv`.
 
 ## Proposal summary
 
@@ -38,8 +43,11 @@ evidence is more nuanced:
 | 433 | `shareholder_list` | `Lista de detentores...`, `Accionistas Qualificados` |
 | 491 | `audit_report` | `Relatorio do Auditor Independente...` |
 
-**Do not exclude page 373 merely because its header is contaminated.** It is
-likely a Hua Nan balance sheet and needs entity/header review.
+The reviewer decided that all five issue-17 pages are bank annual-report
+content outside the target trial-balance scope. Page 373 was therefore rejected
+(`page_role = other`), even though its content resembles a Hua Nan balance
+sheet. If the product scope later expands to annual reports, revisit page 373
+from the original evidence.
 
 ## How to review
 
@@ -53,8 +61,8 @@ likely a Hua Nan balance sheet and needs entity/header review.
 3. Add a short reason in `reviewer_note`.
 4. Do not edit `proposed_page_role` or `proposed_entity_name`; keep the AI
    proposal intact for audit.
-5. Only after review should an importer write `document_pages.page_role` and
-   `document_pages.classification_status`.
+5. The reviewed decisions have now been applied. Future re-imports must remain
+   idempotent and must write an audit event for every changed page.
 
 ## Rebuild the worksheet
 
