@@ -205,7 +205,11 @@ def mark_statement_reviewed(
         if statement["statement_status"] == "active":
             raise ValueError("active statements are already adopted; review state is not applicable")
         readiness = next((item for item in review_queue() if item["statement_id"] == statement_id), None)
-        if readiness is not None and not readiness["mapping_ready"]:
+        if (
+            review_status == "reviewed"
+            and readiness is not None
+            and not readiness["mapping_ready"]
+        ):
             raise ValueError(
                 "resolve mapping conflict/unmatched before marking reviewed: "
                 f"{readiness['mapping_blockers']}"

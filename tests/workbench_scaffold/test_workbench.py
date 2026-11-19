@@ -134,6 +134,12 @@ class ReviewWriteTests(unittest.TestCase):
         self.patcher.stop()
         self.tempdir.cleanup()
 
+    def _pending_queue(self) -> list[dict]:
+        return [
+            item for item in self.client.get("/api/review/queue").json()
+            if item["review_status"] != "reviewed"
+        ]
+
     def test_verify_requires_reviewer_role(self) -> None:
         queue = self.client.get("/api/review/queue").json()
         statement_id = queue[0]["statement_id"]
@@ -153,7 +159,9 @@ class ReviewWriteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_verify_writes_field_verification_and_audit(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
+        queue = self._pending_queue()
+        if not queue:
+            self.skipTest("no pending statement")
         statement_id = queue[0]["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
         row = rows[0]
@@ -271,7 +279,9 @@ class ReviewWriteTests(unittest.TestCase):
         conn.close()
 
     def test_saved_values_are_returned_by_detail_rows(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
+        queue = self._pending_queue()
+        if not queue:
+            self.skipTest("no pending statement")
         statement_id = queue[0]["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
         row = rows[0]
@@ -300,7 +310,9 @@ class ReviewWriteTests(unittest.TestCase):
         self.assertEqual(statement_row["effective_debit_minor"], 100)
 
     def test_standard_item_mapping_is_visible_and_approvable(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
+        queue = self._pending_queue()
+        if not queue:
+            self.skipTest("no pending statement")
         statement_id = queue[0]["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
         row = next(item for item in rows if item["mapping_candidates"])
@@ -340,7 +352,7 @@ class ReviewWriteTests(unittest.TestCase):
         conn.close()
 
     def test_mapping_conflict_or_unmatched_blocks_review(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
+        queue = self._pending_queue()
         blocked = next((item for item in queue if not item["mapping_ready"]), None)
         if blocked is None:
             self.skipTest("no mapping-blocked statement")
@@ -361,7 +373,7 @@ class ReviewWriteTests(unittest.TestCase):
         conn.close()
 
     def test_approving_a_conflict_clears_conflict_state(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
+        queue = self._pending_queue()
         blocked = next(
             (item for item in queue if item["mapping_conflict_rows"]), None
         )
@@ -545,7 +557,7 @@ class ReviewWriteTests(unittest.TestCase):
         self.assertEqual(exclude.status_code, 409)
 
     def test_unmatched_row_can_be_mapped(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
+        queue = self._pending_queue()
         blocked = next((item for item in queue if item["unmapped_rows"]), None)
         if blocked is None:
             self.skipTest("no unmatched row")
@@ -653,6 +665,35 @@ class ReviewWriteTests(unittest.TestCase):
             1,
         )
         conn.close()
+
+    def test_reviewed_statement_with_unresolved_mapping_can_be_reopened(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        candidate = next(
+            (
+                item for item in queue
+                if item["review_status"] == "reviewed" and not item["mapping_ready"]
+            ),
+            None,
+        )
+        if candidate is None:
+            self.skipTest("no reviewed statement with unresolved mappings")
+        statement_id = candidate["statement_id"]
+
+        reopened = self.client.post(
+            f"/api/review/{statement_id}/review",
+            json={"review_status": "needs_rework", "note": "reopen for editing"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(reopened.status_code, 200, reopened.text)
+        detail = self.client.get(f"/api/statements/{statement_id}").json()
+        self.assertEqual(detail["review_status"], "needs_rework")
+
+        blocked = self.client.post(
+            f"/api/review/{statement_id}/review",
+            json={"review_status": "reviewed"},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(blocked.status_code, 409)
 
 
 if __name__ == "__main__":
