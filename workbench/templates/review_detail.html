@@ -169,7 +169,7 @@
           {% elif row.mapping_status == 'unique' %}
             <span class="pill proposed">proposed</span> {{ row.standardised_label }}
           {% elif row.mapping_status == 'conflict' %}
-            <span class="pill proposed">conflict</span>
+            <span class="pill conflict">conflict</span>
             <span class="muted">{{ row.mapping_candidates|length }} candidates</span>
           {% else %}
             <span class="pill blocked">unmatched</span>

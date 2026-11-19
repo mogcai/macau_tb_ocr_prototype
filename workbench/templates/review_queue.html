@@ -10,29 +10,32 @@
   <table class="data">
     <thead>
       <tr>
-        <th>Priority</th><th>Entity</th><th>Dates</th><th>Bucket</th>
-        <th>Rows</th><th>Mapping</th><th>Row issues</th>
-        <th>Debit / Credit</th><th>Difference</th><th>Field ver.</th><th></th>
+        <th>Entity / dates</th><th>Bucket</th><th>Rows</th><th>Mapping</th>
+        <th>Row issues</th><th>Debit / credit</th><th>Field ver.</th><th></th>
       </tr>
     </thead>
     <tbody>
       {% for item in pending_review %}
       <tr>
-        <td>{{ item.priority }}</td>
-        <td><a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a></td>
-        <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
-        <td><span class="pill {{ item.statement_status }}">{{ item.review_bucket }}</span></td>
+        <td class="entity-cell">
+          <a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a>
+          <div class="sub">{{ item.statement_date }}{% if item.publication_date %} · pub {{ item.publication_date }}{% endif %}</div>
+        </td>
+        <td><span class="pill bucket-{{ item.review_bucket }}">{{ item.review_bucket }}</span></td>
         <td>{{ item.row_count }}</td>
-        <td>
-          {{ item.mapped_rows }}/{{ item.row_count }}
-          {% if item.mapping_conflict_rows %}<span class="pill blocked">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
+        <td class="mapping-cell">
+          <strong>{{ item.mapped_rows }}/{{ item.row_count }}</strong>
+          {% if item.mapping_conflict_rows %}<span class="pill conflict">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
           {% if item.unmapped_rows %}<span class="pill blocked">{{ item.unmapped_rows }} unmatched</span>{% endif %}
         </td>
-        <td>missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
-        <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
-        <td>{% if item.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</td>
+        <td class="sub">missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
+        <td class="amount-cell">
+          <div>D {{ item.debit_total_display or "—" }}</div>
+          <div>C {{ item.credit_total_display or "—" }}</div>
+          <div class="{% if item.debit_credit_equal %}ok{% else %}bad{% endif %}">Δ {% if item.debit_credit_equal %}0{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</div>
+        </td>
         <td>{{ item.field_verifications }}</td>
-        <td>
+        <td class="actions-cell">
           {% if can_review_statement and item.mapping_ready %}
           <button class="review-button" data-statement="{{ item.statement_id }}" data-role="{{ role }}" data-status="reviewed">Mark reviewed</button>
           {% elif can_review_statement %}
@@ -41,7 +44,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="11" class="muted">No pending held statements.</td></tr>
+      <tr><td colspan="8" class="muted">No pending held statements.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -55,34 +58,39 @@
   <table class="data">
     <thead>
       <tr>
-        <th>Entity</th><th>Dates</th><th>Bucket</th><th>Rows</th><th>Mapping</th>
-        <th>Row issues</th><th>Debit / Credit</th><th>Difference</th><th>Reviewed by</th><th></th>
+        <th>Entity / dates</th><th>Bucket</th><th>Rows</th><th>Mapping</th>
+        <th>Row issues</th><th>Debit / credit</th><th>Reviewed by</th><th></th>
       </tr>
     </thead>
     <tbody>
       {% for item in reviewed_held %}
       <tr>
-        <td><a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a></td>
-        <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
-        <td><span class="pill {{ item.statement_status }}">{{ item.review_bucket }}</span></td>
+        <td class="entity-cell">
+          <a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a>
+          <div class="sub">{{ item.statement_date }}{% if item.publication_date %} · pub {{ item.publication_date }}{% endif %}</div>
+        </td>
+        <td><span class="pill bucket-{{ item.review_bucket }}">{{ item.review_bucket }}</span></td>
         <td>{{ item.row_count }}</td>
-        <td>
-          {{ item.mapped_rows }}/{{ item.row_count }}
-          {% if item.mapping_conflict_rows %}<span class="pill blocked">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
+        <td class="mapping-cell">
+          <strong>{{ item.mapped_rows }}/{{ item.row_count }}</strong>
+          {% if item.mapping_conflict_rows %}<span class="pill conflict">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
           {% if item.unmapped_rows %}<span class="pill blocked">{{ item.unmapped_rows }} unmatched</span>{% endif %}
         </td>
-        <td>missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
-        <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
-        <td>{% if item.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</td>
+        <td class="sub">missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
+        <td class="amount-cell">
+          <div>D {{ item.debit_total_display or "—" }}</div>
+          <div>C {{ item.credit_total_display or "—" }}</div>
+          <div class="{% if item.debit_credit_equal %}ok{% else %}bad{% endif %}">Δ {% if item.debit_credit_equal %}0{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</div>
+        </td>
         <td>{{ item.reviewed_by or "—" }}</td>
-        <td>
+        <td class="actions-cell">
           {% if can_review_statement %}
           <button class="review-button" data-statement="{{ item.statement_id }}" data-role="{{ role }}" data-status="needs_rework">Reopen</button>
           {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="10" class="muted">No reviewed held statements.</td></tr>
+      <tr><td colspan="8" class="muted">No reviewed held statements.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -96,33 +104,38 @@
   <table class="data">
     <thead>
       <tr>
-        <th>Entity</th><th>Dates</th><th>Rows</th><th>Mapping</th>
-        <th>Row issues</th><th>Debit / Credit</th><th>Difference</th><th>Reviewer</th><th></th>
+        <th>Entity / dates</th><th>Rows</th><th>Mapping</th><th>Row issues</th>
+        <th>Debit / credit</th><th>Reviewer</th><th></th>
       </tr>
     </thead>
     <tbody>
       {% for item in adopted %}
       <tr>
-        <td><a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a></td>
-        <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
+        <td class="entity-cell">
+          <a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a>
+          <div class="sub">{{ item.statement_date }}{% if item.publication_date %} · pub {{ item.publication_date }}{% endif %}</div>
+        </td>
         <td>{{ item.row_count }}</td>
-        <td>
-          {{ item.mapped_rows }}/{{ item.row_count }}
-          {% if item.mapping_conflict_rows %}<span class="pill blocked">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
+        <td class="mapping-cell">
+          <strong>{{ item.mapped_rows }}/{{ item.row_count }}</strong>
+          {% if item.mapping_conflict_rows %}<span class="pill conflict">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
           {% if item.unmapped_rows %}<span class="pill blocked">{{ item.unmapped_rows }} unmatched</span>{% endif %}
         </td>
-        <td>missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
-        <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
-        <td>{% if item.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</td>
+        <td class="sub">missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
+        <td class="amount-cell">
+          <div>D {{ item.debit_total_display or "—" }}</div>
+          <div>C {{ item.credit_total_display or "—" }}</div>
+          <div class="{% if item.debit_credit_equal %}ok{% else %}bad{% endif %}">Δ {% if item.debit_credit_equal %}0{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</div>
+        </td>
         <td>{{ item.review_status }}{% if item.reviewed_by %} · {{ item.reviewed_by }}{% endif %}</td>
-        <td>
+        <td class="actions-cell">
           {% if can_adopt %}
           <button class="return-review-button secondary" data-statement="{{ item.statement_id }}" data-role="{{ role }}">Return to reviewed</button>
           {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="9" class="muted">No adopted statements.</td></tr>
+      <tr><td colspan="7" class="muted">No adopted statements.</td></tr>
       {% endfor %}
     </tbody>
   </table>

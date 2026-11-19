@@ -8,45 +8,47 @@
   <a class="{% if status == 'held' %}active{% endif %}" href="/statements?status=held">Held</a>
 </div>
 
+<div class="table-scroll">
 <table class="data">
   <thead>
     <tr>
       <th>Entity</th>
-      <th>Issue / dates</th>
-      <th>Scope</th>
+      <th>Dates</th>
       <th>Status</th>
-      <th>Review</th>
       <th>Bucket</th>
       <th>Mapping</th>
       <th>Rows</th>
-      <th>Pages</th>
       <th>Adopted</th>
     </tr>
   </thead>
   <tbody>
     {% for statement in statements %}
+    {% set metric = metrics.get(statement.statement_id) %}
     <tr>
-      <td><a href="/statements/{{ statement.statement_id }}">{{ statement.entity_name }}</a></td>
-      <td>{{ statement.statement_date }}{% if statement.publication_date %} · pub {{ statement.publication_date }}{% endif %}</td>
-      <td>{{ statement.reporting_scope }}</td>
-      <td><span class="pill {{ statement.statement_status }}">{{ statement.statement_status }}</span></td>
-      <td><span class="pill">{{ statement.review_status }}</span></td>
-      {% set metric = metrics.get(statement.statement_id) %}
-      <td>{% if metric %}<span class="pill {{ statement.statement_status }}">{{ metric.review_bucket }}</span>{% else %}—{% endif %}</td>
+      <td class="entity-cell">
+        <a href="/statements/{{ statement.statement_id }}">{{ statement.entity_name }}</a>
+        <div class="sub">{{ statement.reporting_scope }}</div>
+      </td>
+      <td>{{ statement.statement_date }}{% if statement.publication_date %}<div class="sub">pub {{ statement.publication_date }}</div>{% endif %}</td>
       <td>
+        <span class="pill {{ statement.statement_status }}">{{ statement.statement_status }}</span>
+        <div class="sub">{{ statement.review_status }}</div>
+      </td>
+      <td>{% if metric %}<span class="pill bucket-{{ metric.review_bucket }}">{{ metric.review_bucket }}</span>{% else %}—{% endif %}</td>
+      <td class="mapping-cell">
         {% if metric %}
-          {{ metric.mapped_rows }}/{{ metric.row_count }}
-          {% if metric.mapping_conflict_rows %}<span class="pill blocked">{{ metric.mapping_conflict_rows }} conflict</span>{% endif %}
+          <strong>{{ metric.mapped_rows }}/{{ metric.row_count }}</strong>
+          {% if metric.mapping_conflict_rows %}<span class="pill conflict">{{ metric.mapping_conflict_rows }} conflict</span>{% endif %}
           {% if metric.unmapped_rows %}<span class="pill blocked">{{ metric.unmapped_rows }} unmatched</span>{% endif %}
         {% else %}—{% endif %}
       </td>
-      <td>{{ statement.row_count }}</td>
-      <td>{{ statement.page_count }}</td>
+      <td>{{ statement.row_count }}<div class="sub">{{ statement.page_count }} page(s)</div></td>
       <td>{% if statement.adopted_statement_extraction_id %}<span class="ok">yes</span>{% else %}<span class="muted">no</span>{% endif %}</td>
     </tr>
     {% else %}
-    <tr><td colspan="10" class="muted">No statements.</td></tr>
+    <tr><td colspan="7" class="muted">No statements.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}
