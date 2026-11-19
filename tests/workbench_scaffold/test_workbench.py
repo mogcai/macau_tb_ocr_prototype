@@ -209,7 +209,7 @@ class ReviewWriteTests(unittest.TestCase):
         )
         conn.close()
 
-    def test_row_verification_reopens_review(self) -> None:
+    def test_reviewed_statement_is_read_only_until_reopened(self) -> None:
         queue = self.client.get("/api/review/queue").json()
         statement_id = queue[0]["statement_id"]
         reviewed = self.client.post(
@@ -219,25 +219,69 @@ class ReviewWriteTests(unittest.TestCase):
         )
         self.assertEqual(reviewed.status_code, 200)
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
-        verified = self.client.post(
+        payload = {
+            "label": rows[0]["effective_label"],
+            "debit": "1.00",
+            "credit": "",
+            "debit_state": "amount",
+            "credit_state": "blank",
+            "note": "correction",
+        }
+        blocked = self.client.post(
             f"/api/review/{statement_id}/rows/{rows[0]['statement_row_id']}/verify",
-            json={
-                "label": rows[0]["effective_label"],
-                "debit": "1.00",
-                "credit": "",
-                "debit_state": "amount",
-                "credit_state": "blank",
-                "note": "correction",
-            },
+            json=payload,
             headers={"X-Workbench-Role": "reviewer"},
         )
-        self.assertEqual(verified.status_code, 200)
+        self.assertEqual(blocked.status_code, 409)
+        conn = sqlite3.connect(self.db)
+        self.assertEqual(
+            conn.execute("SELECT review_status FROM statement_reviews WHERE statement_id=?", (statement_id,)).fetchone()[0],
+            "reviewed",
+        )
+        conn.close()
+
+        reopened = self.client.post(
+            f"/api/review/{statement_id}/review",
+            json={"review_status": "needs_rework", "note": "reopen"},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(reopened.status_code, 200)
+        allowed = self.client.post(
+            f"/api/review/{statement_id}/rows/{rows[0]['statement_row_id']}/verify",
+            json=payload,
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(allowed.status_code, 200)
         conn = sqlite3.connect(self.db)
         self.assertEqual(
             conn.execute("SELECT review_status FROM statement_reviews WHERE statement_id=?", (statement_id,)).fetchone()[0],
             "needs_rework",
         )
         conn.close()
+
+    def test_saved_values_are_returned_by_detail_rows(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        statement_id = queue[0]["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        row = rows[0]
+        saved = self.client.post(
+            f"/api/review/{statement_id}/rows/{row['statement_row_id']}/verify",
+            json={
+                "label": "測試標籤",
+                "debit": "1.00",
+                "credit": "",
+                "debit_state": "amount",
+                "credit_state": "blank",
+                "note": "fresh value test",
+            },
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(saved.status_code, 200)
+        refreshed = self.client.get(f"/api/review/{statement_id}/rows").json()
+        updated = next(item for item in refreshed if item["statement_row_id"] == row["statement_row_id"])
+        self.assertEqual(updated["effective_label"], "測試標籤")
+        self.assertEqual(updated["effective_debit_minor"], 100)
+        self.assertEqual(updated["effective_debit_state"], "amount")
 
 
 if __name__ == "__main__":

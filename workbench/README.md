@@ -76,6 +76,9 @@ POST /api/statements/{statement_id}/publish  # X-Workbench-Role: publisher, 501 
    statement review state (`needs_rework`).
 3. Reviewer marks the statement **reviewed**; it moves from “Pending review” to
    “Reviewed — still held”. It is **not** adopted.
+   Reviewed statements are read-only: Save returns `409` and the UI disables
+   row editing until **Reopen for editing** is used. Save never changes the
+   review status.
 4. An adopter can adopt only a reviewed statement whose queue bucket is
    `ready_for_adoption`.
 5. Publication remains a separate, not-yet-implemented gate.

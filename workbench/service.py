@@ -15,6 +15,10 @@ NAMESPACE = uuid.UUID("f2a3b4c5-d6e7-5f80-9a1b-2c3d4e5f6a77")
 VERSION = "workbench-v1"
 
 
+class StatementReviewedError(ValueError):
+    """Raised when a reviewed statement is edited without reopening."""
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -506,6 +510,12 @@ def verify_row(
         ).fetchone()
         if row is None or row["statement_id"] != statement_id:
             raise LookupError("statement row not found")
+        review = conn.execute(
+            "SELECT review_status FROM statement_reviews WHERE statement_id=?",
+            (statement_id,),
+        ).fetchone()
+        if review is not None and review["review_status"] == "reviewed":
+            raise StatementReviewedError("statement is reviewed; reopen it before editing")
         before = dict(row)
         fields = [
             ("label_normalized", before["label_normalized"], "" if label is None else label),
@@ -537,22 +547,6 @@ def verify_row(
                     proposed, actor, now(), note or "Workbench row verification", now(),
                 ),
             )
-        # A correction invalidates a previous statement review until the
-        # reviewer marks the statement reviewed again.
-        conn.execute(
-            """
-            INSERT INTO statement_reviews(
-                statement_id, review_status, reviewed_by, reviewed_at, note, updated_at
-            ) VALUES (?, 'needs_rework', ?, ?, ?, ?)
-            ON CONFLICT(statement_id) DO UPDATE SET
-                review_status='needs_rework',
-                reviewed_by=excluded.reviewed_by,
-                reviewed_at=excluded.reviewed_at,
-                note=excluded.note,
-                updated_at=excluded.updated_at
-            """,
-            (statement_id, actor, now(), note or "Row correction requires re-review", now()),
-        )
         event_id = stable_id("workbench_verify_event", statement_row_id, VERSION, now())
         conn.execute(
             "INSERT INTO audit_events("

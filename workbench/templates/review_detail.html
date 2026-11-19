@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Review · {{ statement.entity_name }}{% endblock %}
 {% block content %}
+{% set reviewed = queue_row and queue_row.review_status == 'reviewed' %}
 <p><a href="/review">← Review queue</a></p>
 <h1>{{ statement.entity_name }}</h1>
 
@@ -25,15 +26,22 @@
 {% if queue_row and can_review_statement %}
 <section class="panel">
   <h2>Reviewer sign-off</h2>
-  <p class="muted">Marking reviewed keeps the statement held; adoption is separate.</p>
+  <p class="muted">Marking reviewed keeps the statement held; adoption is separate. Reviewed records are read-only until reopened.</p>
+  {% if reviewed %}
+  <button class="review-button secondary" data-statement="{{ statement.statement_id }}" data-role="{{ role }}" data-status="needs_rework">Reopen for editing</button>
+  {% else %}
   <button class="review-button" data-statement="{{ statement.statement_id }}" data-role="{{ role }}" data-status="reviewed">Mark reviewed</button>
-  <button class="review-button secondary" data-statement="{{ statement.statement_id }}" data-role="{{ role }}" data-status="needs_rework">Reopen</button>
+  {% endif %}
 </section>
 {% endif %}
 
 <section class="panel">
   <h2>Rows</h2>
+  {% if reviewed %}
+  <p class="muted">This statement is <strong>reviewed</strong>. Rows are read-only; use Reopen for editing.</p>
+  {% else %}
   <p class="muted">Raw OCR is read-only. Saving writes a field verification, not an OCR change.</p>
+  {% endif %}
   <table class="data compact">
     <thead>
       <tr>
@@ -47,25 +55,25 @@
         <td>{{ row.statement_order }}</td>
         <td>{{ row.pdf_page }}</td>
         <td><code>{{ row.label_raw or "—" }}</code></td>
-        <td><input class="cell label" value="{{ row.effective_label or '' }}" placeholder="corrected label"></td>
+        <td><input class="cell label" value="{{ row.effective_label or '' }}" placeholder="corrected label" {% if reviewed %}disabled{% endif %}></td>
         <td class="muted"><code>{{ row.debit_raw or "—" }} / {{ row.credit_raw or "—" }}</code></td>
-        <td><input class="cell debit" value="{{ row.effective_debit_display if row.effective_debit_state == 'amount' else '' }}" placeholder="0.00"></td>
+        <td><input class="cell debit" value="{{ row.effective_debit_display if row.effective_debit_state == 'amount' else '' }}" placeholder="0.00" {% if reviewed %}disabled{% endif %}></td>
         <td>
-          <select class="cell debit-state">
+          <select class="cell debit-state" {% if reviewed %}disabled{% endif %}>
             {% for state in ["amount", "blank", "dash", "unreadable", "not_applicable", "ambiguous"] %}
             <option value="{{ state }}" {% if row.effective_debit_state == state %}selected{% endif %}>{{ state }}</option>
             {% endfor %}
           </select>
         </td>
-        <td><input class="cell credit" value="{{ row.effective_credit_display if row.effective_credit_state == 'amount' else '' }}" placeholder="0.00"></td>
+        <td><input class="cell credit" value="{{ row.effective_credit_display if row.effective_credit_state == 'amount' else '' }}" placeholder="0.00" {% if reviewed %}disabled{% endif %}></td>
         <td>
-          <select class="cell credit-state">
+          <select class="cell credit-state" {% if reviewed %}disabled{% endif %}>
             {% for state in ["amount", "blank", "dash", "unreadable", "not_applicable", "ambiguous"] %}
             <option value="{{ state }}" {% if row.effective_credit_state == state %}selected{% endif %}>{{ state }}</option>
             {% endfor %}
           </select>
         </td>
-        <td><button class="save-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Save</button></td>
+        <td>{% if not reviewed %}<button class="save-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Save</button>{% endif %}</td>
       </tr>
       {% else %}
       <tr><td colspan="10" class="muted">No rows.</td></tr>
@@ -75,6 +83,13 @@
 </section>
 
 <script>
+let dirty = false;
+document.querySelectorAll(".cell").forEach((input) => {
+  if (!input.disabled) {
+    input.addEventListener("input", () => { dirty = true; });
+    input.addEventListener("change", () => { dirty = true; });
+  }
+});
 document.querySelectorAll(".save-row").forEach((button) => {
   button.addEventListener("click", async () => {
     const tr = button.closest("tr");
@@ -107,6 +122,10 @@ document.querySelectorAll(".save-row").forEach((button) => {
 });
 document.querySelectorAll(".review-button").forEach((button) => {
   button.addEventListener("click", async () => {
+    if (button.dataset.status === "reviewed" && dirty) {
+      alert("Save the changed rows before marking the statement reviewed.");
+      return;
+    }
     button.disabled = true;
     const response = await fetch(`/api/review/${button.dataset.statement}/review`, {
       method: "POST",
