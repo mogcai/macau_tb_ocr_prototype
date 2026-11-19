@@ -72,6 +72,11 @@ class ApiTests(unittest.TestCase):
             headers={"X-Workbench-Role": "viewer"},
         )
         self.assertEqual(response.status_code, 403)
+        not_ready = self.client.post(
+            f"/api/statements/{statement_id}/adopt",
+            headers={"X-Workbench-Role": "adopter"},
+        )
+        self.assertIn(not_ready.status_code, (409, 404))
 
     def test_publish_is_separate_and_not_implemented(self) -> None:
         held = self.client.get("/api/statements?status=held&limit=1")

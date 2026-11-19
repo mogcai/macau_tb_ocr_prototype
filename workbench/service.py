@@ -182,6 +182,9 @@ def statement_rows(statement_id: str, limit: int = 1000) -> list[dict[str, Any]]
 
 
 def adopt_statement(statement_id: str, actor: str) -> dict[str, Any]:
+    readiness = next((item for item in review_queue() if item["statement_id"] == statement_id), None)
+    if readiness is not None and readiness["review_bucket"] != "ready_for_adoption":
+        raise ValueError(f"statement is not adoption-ready: {readiness['review_bucket']}")
     conn = connect_v3(write=True)
     try:
         statement = conn.execute(
