@@ -91,7 +91,9 @@ def list_statements(status: str = "all", limit: int = 200) -> list[dict[str, Any
                    s.adopted_statement_extraction_id,
                    e.canonical_zh AS entity_name, e.entity_key,
                    (SELECT COUNT(*) FROM statement_rows sr WHERE sr.statement_id=s.statement_id) AS row_count,
-                   (SELECT COUNT(*) FROM statement_pages sp WHERE sp.statement_id=s.statement_id) AS page_count
+                   (SELECT COUNT(*) FROM statement_pages sp WHERE sp.statement_id=s.statement_id) AS page_count,
+                   COALESCE((SELECT rv.review_status FROM statement_reviews rv
+                     WHERE rv.statement_id=s.statement_id), 'pending') AS review_status
             FROM statements s
             JOIN reporting_entities e ON e.entity_id=s.reporting_entity_id
             {where}
@@ -111,7 +113,13 @@ def statement_detail(statement_id: str) -> dict[str, Any] | None:
         row = conn.execute(
             """
             SELECT s.*, e.canonical_zh AS entity_name, e.entity_key,
-                   se.extraction_status, se.statement_extraction_id
+                   se.extraction_status, se.statement_extraction_id,
+                   COALESCE((SELECT rv.review_status FROM statement_reviews rv
+                     WHERE rv.statement_id=s.statement_id), 'pending') AS review_status,
+                   (SELECT rv.reviewed_by FROM statement_reviews rv
+                     WHERE rv.statement_id=s.statement_id) AS reviewed_by,
+                   (SELECT rv.reviewed_at FROM statement_reviews rv
+                     WHERE rv.statement_id=s.statement_id) AS reviewed_at
             FROM statements s
             JOIN reporting_entities e ON e.entity_id=s.reporting_entity_id
             LEFT JOIN statement_extractions se ON se.statement_id=s.statement_id

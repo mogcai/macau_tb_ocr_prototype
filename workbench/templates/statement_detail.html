@@ -10,6 +10,7 @@
       <tr><th>Statement ID</th><td><code>{{ statement.statement_id }}</code></td></tr>
       <tr><th>Status</th><td><span class="pill {{ statement.statement_status }}">{{ statement.statement_status }}</span></td></tr>
       <tr><th>Identity</th><td>{{ statement.identity_status }} · {{ statement.metadata_status }}</td></tr>
+      <tr><th>Reviewer status</th><td>{{ statement.review_status }}{% if statement.reviewed_by %} · {{ statement.reviewed_by }}{% endif %}</td></tr>
       <tr><th>Statement date</th><td>{{ statement.statement_date or "—" }}</td></tr>
       <tr><th>Publication date</th><td>{{ statement.publication_date or "—" }}</td></tr>
       <tr><th>Scope</th><td>{{ statement.reporting_scope }}</td></tr>
