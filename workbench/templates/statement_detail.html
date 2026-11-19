@@ -59,7 +59,8 @@
   <table class="data compact">
     <thead>
       <tr>
-        <th>#</th><th>Page</th><th>Label</th><th>Debit</th><th>Credit</th><th>State</th><th>Parent context</th>
+        <th>#</th><th>Page</th><th>Raw label</th><th>Effective label</th>
+        <th>Raw debit / credit</th><th>Effective debit</th><th>Effective credit</th><th>State</th><th>Parent context</th>
       </tr>
     </thead>
     <tbody>
@@ -67,18 +68,20 @@
       <tr>
         <td>{{ row.statement_order }}</td>
         <td>{{ row.pdf_page }}</td>
-        <td>{{ row.label_normalized or "(missing label)" }}</td>
-        <td>{{ row.debit_minor if row.debit_minor is not none else "—" }}</td>
-        <td>{{ row.credit_minor if row.credit_minor is not none else "—" }}</td>
-        <td>{{ row.debit_value_state }} / {{ row.credit_value_state }}</td>
+        <td><code>{{ row.label_raw or "—" }}</code></td>
+        <td>{{ row.effective_label or "(missing label)" }}</td>
+        <td class="muted"><code>{{ row.debit_raw or "—" }} / {{ row.credit_raw or "—" }}</code></td>
+        <td>{{ row.effective_debit_display or "—" }}</td>
+        <td>{{ row.effective_credit_display or "—" }}</td>
+        <td>{{ row.effective_debit_state }} / {{ row.effective_credit_state }}</td>
         <td>{{ row.parent_context_status }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="7" class="muted">No rows.</td></tr>
+      <tr><td colspan="9" class="muted">No rows.</td></tr>
       {% endfor %}
     </tbody>
   </table>
-  <p class="muted">Amounts are shown in minor units in this scaffold.  A display formatter is a Workbench v1 UI follow-up.</p>
+  <p class="muted">Effective values include saved field verifications. Raw OCR is unchanged.</p>
 </section>
 
 {% if statement.findings %}

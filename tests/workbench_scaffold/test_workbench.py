@@ -282,6 +282,11 @@ class ReviewWriteTests(unittest.TestCase):
         self.assertEqual(updated["effective_label"], "測試標籤")
         self.assertEqual(updated["effective_debit_minor"], 100)
         self.assertEqual(updated["effective_debit_state"], "amount")
+        # The held/statement view must use the same effective values.
+        statement_rows = self.client.get(f"/api/statements/{statement_id}/rows").json()
+        statement_row = next(item for item in statement_rows if item["statement_row_id"] == row["statement_row_id"])
+        self.assertEqual(statement_row["effective_label"], "測試標籤")
+        self.assertEqual(statement_row["effective_debit_minor"], 100)
 
 
 if __name__ == "__main__":

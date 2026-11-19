@@ -35,11 +35,14 @@ tests/workbench_scaffold/test_workbench.py::ReviewWriteTests::test_reviewed_stat
 
 ## WB-002 — list/detail shows old values after save/review
 
-**Status: Verified fixed for the persisted/API path.**
+**Status: Fixed for both review and held-statement views.**
 
 - Save writes `field_verifications`, not `statement_rows`.
 - `review_rows` and `review_queue` both read effective values with
   `COALESCE(field_verifications..., base value)`.
+- The held-statement detail endpoint (`/api/statements/{id}/rows`) was still
+  reading base `statement_rows`; it now delegates to the same effective-row
+  query.  This was the cause of “changes in Review have no effect in Held”.
 - The UI reloads after Save and after Mark Reviewed; it does not keep a stale
   client object as the authoritative record.
 - Regression test asserts that a saved label/debit/amount is returned by the

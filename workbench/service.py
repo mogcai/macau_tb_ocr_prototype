@@ -168,29 +168,8 @@ def statement_detail(statement_id: str) -> dict[str, Any] | None:
 
 
 def statement_rows(statement_id: str, limit: int = 1000) -> list[dict[str, Any]]:
-    conn = connect_v3()
-    try:
-        rows = conn.execute(
-            """
-            SELECT sr.statement_row_id, sr.statement_order, sr.row_type,
-                   er.label_raw, sr.label_normalized, sr.label_language,
-                   er.debit_raw, er.credit_raw,
-                   sr.debit_minor, sr.debit_value_state,
-                   sr.credit_minor, sr.credit_value_state,
-                   sr.parent_context_status, sr.row_fingerprint,
-                   dp.pdf_page
-            FROM statement_rows sr
-            JOIN extracted_rows er ON er.extracted_row_id=sr.extracted_row_id
-            JOIN document_pages dp ON dp.document_page_id=er.document_page_id
-            WHERE sr.statement_id=?
-            ORDER BY sr.statement_order, sr.statement_row_id
-            LIMIT ?
-            """,
-            (statement_id, limit),
-        ).fetchall()
-        return [dict(row) for row in rows]
-    finally:
-        conn.close()
+    """Return rows with effective (verified) values for the statement view."""
+    return review_rows(statement_id, limit=limit)
 
 
 def mark_statement_reviewed(
