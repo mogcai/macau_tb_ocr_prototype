@@ -2,40 +2,100 @@
 {% block title %}Review queue · Macau Banking Workbench{% endblock %}
 {% block content %}
 <h1>Review queue</h1>
-<p class="muted">Held statements and their current effective totals. Adoption remains a separate action.</p>
+<p class="muted">Marking a statement reviewed keeps it held; adoption is a separate action.</p>
 
-<table class="data">
-  <thead>
-    <tr>
-      <th>Priority</th>
-      <th>Entity</th>
-      <th>Dates</th>
-      <th>Bucket</th>
-      <th>Rows</th>
-      <th>Missing</th>
-      <th>Issues</th>
-      <th>Debit / Credit</th>
-      <th>Difference</th>
-      <th>Field ver.</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for item in queue %}
-    <tr>
-      <td>{{ item.priority }}</td>
-      <td><a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a></td>
-      <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
-      <td><span class="pill {{ item.statement_status }}">{{ item.review_bucket }}</span></td>
-      <td>{{ item.row_count }}</td>
-      <td>{{ item.missing_labels }}</td>
-      <td>{{ item.issue_rows }}</td>
-      <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
-      <td>{% if item.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</td>
-      <td>{{ item.field_verifications }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="10" class="muted">No held statements.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<section class="panel">
+  <h2>Pending review</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Priority</th><th>Entity</th><th>Dates</th><th>Bucket</th>
+        <th>Rows</th><th>Missing</th><th>Issues</th>
+        <th>Debit / Credit</th><th>Difference</th><th>Field ver.</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in pending_review %}
+      <tr>
+        <td>{{ item.priority }}</td>
+        <td><a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a></td>
+        <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
+        <td><span class="pill {{ item.statement_status }}">{{ item.review_bucket }}</span></td>
+        <td>{{ item.row_count }}</td>
+        <td>{{ item.missing_labels }}</td>
+        <td>{{ item.issue_rows }}</td>
+        <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
+        <td>{% if item.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</td>
+        <td>{{ item.field_verifications }}</td>
+        <td>
+          {% if can_review_statement %}
+          <button class="review-button" data-statement="{{ item.statement_id }}" data-role="{{ role }}" data-status="reviewed">Mark reviewed</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="11" class="muted">No pending held statements.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>Reviewed — still held</h2>
+  <p class="muted">These have reviewer sign-off but are not adopted. Adoption remains a separate capability.</p>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Entity</th><th>Dates</th><th>Bucket</th><th>Rows</th>
+        <th>Missing</th><th>Issues</th><th>Debit / Credit</th><th>Difference</th><th>Reviewed by</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in reviewed_held %}
+      <tr>
+        <td><a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a></td>
+        <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
+        <td><span class="pill {{ item.statement_status }}">{{ item.review_bucket }}</span></td>
+        <td>{{ item.row_count }}</td>
+        <td>{{ item.missing_labels }}</td>
+        <td>{{ item.issue_rows }}</td>
+        <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
+        <td>{% if item.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</td>
+        <td>{{ item.reviewed_by or "—" }}</td>
+        <td>
+          {% if can_review_statement %}
+          <button class="review-button" data-statement="{{ item.statement_id }}" data-role="{{ role }}" data-status="needs_rework">Reopen</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10" class="muted">No reviewed held statements.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<script>
+document.querySelectorAll(".review-button").forEach((button) => {
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    const response = await fetch(`/api/review/${button.dataset.statement}/review`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      },
+      body: JSON.stringify({review_status: button.dataset.status, note: ""})
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Review update failed");
+      button.disabled = false;
+    }
+  });
+});
+</script>
 {% endblock %}

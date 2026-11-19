@@ -62,13 +62,24 @@ GET  /api/statements/{statement_id}/rows
 GET  /api/review/queue
 GET  /api/review/{statement_id}/rows
 POST /api/review/{statement_id}/rows/{row_id}/verify  # X-Workbench-Role: reviewer
+POST /api/review/{statement_id}/review                 # X-Workbench-Role: reviewer
 POST /api/statements/{statement_id}/adopt    # X-Workbench-Role: adopter
 POST /api/statements/{statement_id}/publish  # X-Workbench-Role: publisher, 501 in v1
 ```
 
 ## Important
 
+### Review workflow
+
+1. Reviewer opens `/review`.
+2. Row corrections are saved as `field_verifications`; any correction reopens the
+   statement review state (`needs_rework`).
+3. Reviewer marks the statement **reviewed**; it moves from “Pending review” to
+   “Reviewed — still held”. It is **not** adopted.
+4. An adopter can adopt only a reviewed statement whose queue bucket is
+   `ready_for_adoption`.
+5. Publication remains a separate, not-yet-implemented gate.
+
 This is a scaffold, not production authentication.  It does not yet implement
 login, real user accounts, PDF rendering, import-batch upload, or publish
-quality gates.  Inline field verification forms are available for held
-statements.  Those remaining pieces are the next Workbench slices.
+quality gates.  Those remaining pieces are the next Workbench slices.

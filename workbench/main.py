@@ -11,7 +11,9 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from workbench import service
-from workbench.permissions import DEFAULT_ROLE, ROLES, can_adopt, can_publish, can_verify
+from workbench.permissions import (
+    DEFAULT_ROLE, ROLES, can_adopt, can_publish, can_review_statement, can_verify,
+)
 
 
 class RowVerificationPayload(BaseModel):
@@ -21,6 +23,11 @@ class RowVerificationPayload(BaseModel):
     debit_state: str = "blank"
     credit_state: str = "blank"
     note: str = ""
+
+
+class StatementReviewPayload(BaseModel):
+    note: str = ""
+    review_status: str = "reviewed"
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = Path(__file__).resolve().parent / "templates"
@@ -54,6 +61,7 @@ def template_context(request: Request, **extra: Any) -> dict[str, Any]:
         "can_verify": can_verify(role),
         "can_adopt": can_adopt(role),
         "can_publish": can_publish(role),
+        "can_review_statement": can_review_statement(role),
         **extra,
     }
 
@@ -176,12 +184,41 @@ def api_verify_row(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.post("/api/review/{statement_id}/review")
+def api_review_statement(
+    statement_id: str,
+    payload: StatementReviewPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_review_statement(role):
+        raise HTTPException(status_code=403, detail="review capability is required")
+    try:
+        return service.mark_statement_reviewed(
+            statement_id,
+            actor_from(request),
+            note=payload.note,
+            review_status=payload.review_status,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @app.get("/review", response_class=HTMLResponse)
 def review_page(request: Request) -> HTMLResponse:
+    queue = service.review_queue()
     return templates.TemplateResponse(
         request,
         "review_queue.html",
-        template_context(request, queue=service.review_queue()),
+        template_context(
+            request,
+            queue=queue,
+            pending_review=[item for item in queue if item["review_status"] != "reviewed"],
+            reviewed_held=[item for item in queue if item["review_status"] == "reviewed"],
+        ),
     )
 
 

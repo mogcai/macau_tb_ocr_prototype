@@ -181,10 +181,68 @@ def statement_rows(statement_id: str, limit: int = 1000) -> list[dict[str, Any]]
         conn.close()
 
 
+def mark_statement_reviewed(
+    statement_id: str,
+    actor: str,
+    *,
+    note: str,
+    review_status: str = "reviewed",
+) -> dict[str, Any]:
+    if review_status not in {"reviewed", "needs_rework", "pending"}:
+        raise ValueError("invalid review status")
+    conn = connect_v3(write=True)
+    try:
+        statement = conn.execute(
+            "SELECT statement_id, statement_status FROM statements WHERE statement_id=?",
+            (statement_id,),
+        ).fetchone()
+        if statement is None:
+            raise LookupError("statement not found")
+        if statement["statement_status"] == "active":
+            raise ValueError("active statements are already adopted; review state is not applicable")
+        conn.execute(
+            """
+            INSERT INTO statement_reviews(
+                statement_id, review_status, reviewed_by, reviewed_at, note, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(statement_id) DO UPDATE SET
+                review_status=excluded.review_status,
+                reviewed_by=excluded.reviewed_by,
+                reviewed_at=excluded.reviewed_at,
+                note=excluded.note,
+                updated_at=excluded.updated_at
+            """,
+            (statement_id, review_status, actor, now(), note, now()),
+        )
+        event_id = stable_id("workbench_statement_review", statement_id, review_status, now())
+        conn.execute(
+            "INSERT INTO audit_events("
+            "audit_event_id, event_type, statement_id, actor_id, after_json, "
+            "details_json, reason, created_at"
+            ") VALUES (?, 'workbench_statement_reviewed', ?, ?, ?, ?, ?, ?)",
+            (
+                event_id, statement_id, actor,
+                json.dumps({"review_status": review_status, "note": note}, ensure_ascii=False),
+                json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
+                note or "Statement reviewed in Workbench",
+                now(),
+            ),
+        )
+        conn.commit()
+        return {"statement_id": statement_id, "review_status": review_status, "reviewed_by": actor}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def adopt_statement(statement_id: str, actor: str) -> dict[str, Any]:
     readiness = next((item for item in review_queue() if item["statement_id"] == statement_id), None)
     if readiness is not None and readiness["review_bucket"] != "ready_for_adoption":
         raise ValueError(f"statement is not adoption-ready: {readiness['review_bucket']}")
+    if readiness is not None and readiness.get("review_status") != "reviewed":
+        raise ValueError("statement must be marked reviewed before adoption")
     conn = connect_v3(write=True)
     try:
         statement = conn.execute(
@@ -341,7 +399,13 @@ def review_queue() -> list[dict[str, Any]]:
                 SUM(CASE WHEN er.effective_credit_state='amount' THEN er.effective_credit_minor ELSE 0 END) AS credit_total_minor,
                 (SELECT COUNT(*) FROM field_verifications fv
                   JOIN statement_rows sr2 ON sr2.statement_row_id=fv.statement_row_id
-                  WHERE sr2.statement_id=s.statement_id) AS field_verifications
+                  WHERE sr2.statement_id=s.statement_id) AS field_verifications,
+                COALESCE((SELECT rv.review_status FROM statement_reviews rv
+                  WHERE rv.statement_id=s.statement_id), 'pending') AS review_status,
+                (SELECT rv.reviewed_by FROM statement_reviews rv
+                  WHERE rv.statement_id=s.statement_id) AS reviewed_by,
+                (SELECT rv.reviewed_at FROM statement_reviews rv
+                  WHERE rv.statement_id=s.statement_id) AS reviewed_at
             FROM statements s
             JOIN reporting_entities e ON e.entity_id=s.reporting_entity_id
             LEFT JOIN effective er ON er.statement_id=s.statement_id
@@ -465,6 +529,22 @@ def verify_row(
                     proposed, actor, now(), note or "Workbench row verification", now(),
                 ),
             )
+        # A correction invalidates a previous statement review until the
+        # reviewer marks the statement reviewed again.
+        conn.execute(
+            """
+            INSERT INTO statement_reviews(
+                statement_id, review_status, reviewed_by, reviewed_at, note, updated_at
+            ) VALUES (?, 'needs_rework', ?, ?, ?, ?)
+            ON CONFLICT(statement_id) DO UPDATE SET
+                review_status='needs_rework',
+                reviewed_by=excluded.reviewed_by,
+                reviewed_at=excluded.reviewed_at,
+                note=excluded.note,
+                updated_at=excluded.updated_at
+            """,
+            (statement_id, actor, now(), note or "Row correction requires re-review", now()),
+        )
         event_id = stable_id("workbench_verify_event", statement_row_id, VERSION, now())
         conn.execute(
             "INSERT INTO audit_events("
