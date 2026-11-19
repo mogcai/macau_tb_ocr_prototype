@@ -21,17 +21,19 @@ Common non-blocking warnings:
 
 | Flag | Statements |
 |---|---:|
-| `currency_unconfirmed` | 113 |
-| `unit_scale_unconfirmed` | 113 |
 | `parent_context_unknown` | 105 |
 | `unreadable_amounts` | 21 |
 | `missing_labels` | 19 |
 | `ambiguous_amounts` | 18 |
 
-`currency` and `unit_scale` are intentionally unconfirmed.  They must be
-resolved before publication quality checks, but they do not prevent adopting a
-row extraction.  `parent_context_unknown` is a P1 mapping issue, not a
-statement identity blocker.
+**Currency / unit policy confirmed:** all 113 statements now use
+`currency = MOP`, `unit_scale = 1`, with `currency_source = manual` and
+`unit_scale_source = manual`.  This was applied with
+`tools/set_statement_currency_policy.py` and 113 audit events.
+
+`parent_context_unknown` remains a P1 mapping issue, not a statement identity
+blocker.  `unreadable_amounts`, `missing_labels` and `ambiguous_amounts` remain
+the reasons for the 42 `needs_review` statements.
 
 ## What to review
 
