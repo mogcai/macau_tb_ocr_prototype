@@ -428,6 +428,7 @@ def review_detail_page(request: Request, statement_id: str) -> HTMLResponse:
             rows=service.review_rows(statement_id),
             adjustments=service.statement_adjustments(statement_id),
             standard_items=service.standard_items(),
+            used_standard_item_ids=service.statement_used_standard_items(statement_id),
         ),
     )
 

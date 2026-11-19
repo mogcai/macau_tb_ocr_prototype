@@ -544,6 +544,17 @@ def review_queue() -> list[dict[str, Any]]:
             f"""
             WITH effective AS (
                 {EFFECTIVE_ROW_SQL}
+            ),
+            approved_items AS (
+                SELECT er.statement_id, er.statement_row_id,
+                       COALESCE(
+                           er.standard_item_id,
+                           (SELECT m.standard_item_id FROM statement_row_mappings m
+                             WHERE m.statement_row_id=er.statement_row_id
+                               AND m.mapping_status='approved'
+                             LIMIT 1)
+                       ) AS standard_item_id
+                FROM effective er
             )
             SELECT
                 s.statement_id, s.statement_date, s.publication_date,
@@ -582,7 +593,15 @@ def review_queue() -> list[dict[str, Any]]:
                     AND EXISTS (SELECT 1 FROM statement_row_mappings m
                                  WHERE m.statement_row_id=er2.statement_row_id
                                    AND m.conflict_group_id IS NOT NULL
-                                   AND m.mapping_status IN ('proposed','approved'))) AS mapping_conflict_rows
+                                   AND m.mapping_status IN ('proposed','approved'))) AS mapping_conflict_rows,
+                (SELECT COUNT(*) FROM (
+                    SELECT ai2.standard_item_id
+                    FROM approved_items ai2
+                    WHERE ai2.statement_id=s.statement_id
+                      AND ai2.standard_item_id IS NOT NULL
+                    GROUP BY ai2.standard_item_id
+                    HAVING COUNT(*) > 1
+                )) AS duplicate_mapping_items
             FROM statements s
             JOIN reporting_entities e ON e.entity_id=s.reporting_entity_id
             LEFT JOIN effective er ON er.statement_id=s.statement_id
@@ -602,12 +621,14 @@ def review_queue() -> list[dict[str, Any]]:
             data["mapping_ready"] = (
                 int(data["row_count"] or 0) > 0
                 and int(data["mapping_conflict_rows"] or 0) == 0
+                and int(data["duplicate_mapping_items"] or 0) == 0
                 and data["unmapped_rows"] == 0
             )
             data["mapping_blockers"] = ";".join(
                 part for part in (
                     f"mapping_conflict={data['mapping_conflict_rows']}" if data["mapping_conflict_rows"] else "",
                     f"mapping_unmatched={data['unmapped_rows']}" if data["unmapped_rows"] else "",
+                    f"duplicate_standard_item={data['duplicate_mapping_items']}" if data["duplicate_mapping_items"] else "",
                 ) if part
             )
             if not data["row_count"]:
@@ -807,6 +828,66 @@ def verify_row(
     raise LookupError("statement row not found after verification")
 
 
+def _standard_item_conflict(
+    conn: sqlite3.Connection,
+    statement_id: str,
+    standard_item_id: str,
+    *,
+    exclude_row_id: str | None = None,
+    exclude_adjustment_id: str | None = None,
+) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT sr.statement_order, sr.label_normalized AS label
+        FROM statement_row_mappings m
+        JOIN statement_rows sr ON sr.statement_row_id=m.statement_row_id
+        WHERE sr.statement_id=?
+          AND m.standard_item_id=?
+          AND m.mapping_status='approved'
+          AND (? IS NULL OR m.statement_row_id<>?)
+        UNION ALL
+        SELECT a.display_order AS statement_order, a.label_normalized AS label
+        FROM statement_row_adjustments a
+        WHERE a.statement_id=?
+          AND a.adjustment_type='insert'
+          AND a.adjustment_status='active'
+          AND a.standard_item_id=?
+          AND (? IS NULL OR a.adjustment_id<>?)
+        LIMIT 1
+        """,
+        (
+            statement_id, standard_item_id, exclude_row_id, exclude_row_id,
+            statement_id, standard_item_id, exclude_adjustment_id, exclude_adjustment_id,
+        ),
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def statement_used_standard_items(statement_id: str) -> list[str]:
+    """Approved standard items already used in one statement."""
+    conn = connect_v3()
+    try:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT m.standard_item_id
+            FROM statement_row_mappings m
+            JOIN statement_rows sr ON sr.statement_row_id=m.statement_row_id
+            WHERE sr.statement_id=? AND m.mapping_status='approved'
+            UNION
+            SELECT DISTINCT a.standard_item_id
+            FROM statement_row_adjustments a
+            WHERE a.statement_id=?
+              AND a.adjustment_type='insert'
+              AND a.adjustment_status='active'
+              AND a.standard_item_id IS NOT NULL
+            """,
+            (statement_id, statement_id),
+        ).fetchall()
+        return [row["standard_item_id"] for row in rows]
+    finally:
+        conn.close()
+
+
 def approve_mapping(
     statement_id: str,
     statement_row_id: str,
@@ -829,6 +910,16 @@ def approve_mapping(
         if item is None:
             raise LookupError("standard item not found")
         _check_editable(conn, statement_id)
+        conflict = _standard_item_conflict(
+            conn, statement_id, standard_item_id,
+            exclude_row_id=statement_row_id,
+            exclude_adjustment_id=statement_row_id,
+        )
+        if conflict is not None:
+            raise ValueError(
+                "standard item is already mapped in this statement "
+                f"(row {conflict.get('statement_order')}: {conflict.get('label') or ''})"
+            )
 
         adjustment = conn.execute(
             "SELECT * FROM statement_row_adjustments "
@@ -1102,6 +1193,12 @@ def insert_row(
                 (standard_item_id,),
             ).fetchone() is None:
                 raise LookupError("standard item not found")
+            conflict = _standard_item_conflict(conn, statement_id, standard_item_id)
+            if conflict is not None:
+                raise ValueError(
+                    "standard item is already mapped in this statement "
+                    f"(row {conflict.get('statement_order')}: {conflict.get('label') or ''})"
+                )
 
         orders = _effective_orders(conn, statement_id)
         page = pdf_page
@@ -1374,6 +1471,23 @@ def adopted_statements() -> list[dict[str, Any]]:
                                     WHERE m.statement_row_id=sr.statement_row_id
                                       AND m.conflict_group_id IS NOT NULL
                                       AND m.mapping_status IN ('proposed','approved'))) AS mapping_conflict_rows,
+                   (SELECT COUNT(*) FROM (
+                       SELECT item FROM (
+                           SELECT m.standard_item_id AS item
+                           FROM statement_row_mappings m
+                           JOIN statement_rows sr ON sr.statement_row_id=m.statement_row_id
+                           WHERE sr.statement_id=s.statement_id
+                             AND m.mapping_status='approved'
+                           UNION ALL
+                           SELECT a.standard_item_id AS item
+                           FROM statement_row_adjustments a
+                           WHERE a.statement_id=s.statement_id
+                             AND a.adjustment_type='insert'
+                             AND a.adjustment_status='active'
+                             AND a.standard_item_id IS NOT NULL
+                       ) WHERE item IS NOT NULL
+                       GROUP BY item HAVING COUNT(*) > 1
+                   )) AS duplicate_mapping_items,
                    (SELECT COUNT(*) FROM v_effective_statement_rows er
                      WHERE er.statement_id=s.statement_id
                        AND (er.effective_label_normalized IS NULL
@@ -1408,7 +1522,15 @@ def adopted_statements() -> list[dict[str, Any]]:
             data["mapping_ready"] = (
                 int(data["row_count"] or 0) > 0
                 and int(data["mapping_conflict_rows"] or 0) == 0
+                and int(data["duplicate_mapping_items"] or 0) == 0
                 and data["unmapped_rows"] == 0
+            )
+            data["mapping_blockers"] = ";".join(
+                part for part in (
+                    f"mapping_conflict={data['mapping_conflict_rows']}" if data["mapping_conflict_rows"] else "",
+                    f"mapping_unmatched={data['unmapped_rows']}" if data["unmapped_rows"] else "",
+                    f"duplicate_standard_item={data['duplicate_mapping_items']}" if data["duplicate_mapping_items"] else "",
+                ) if part
             )
             data["review_bucket"] = "adopted"
             data["debit_total_display"] = _money(

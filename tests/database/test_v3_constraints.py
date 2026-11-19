@@ -287,6 +287,55 @@ class V3ConstraintTests(unittest.TestCase):
             "statement_status='proposed' WHERE statement_id='S1'"
         )
 
+    def test_standard_item_can_only_be_approved_once_per_statement(self) -> None:
+        self.conn.execute(
+            "UPDATE statement_row_mappings SET mapping_status='approved', "
+            "reviewed_by='tester', reviewed_at=? WHERE mapping_id='M1'",
+            (NOW,),
+        )
+        self.conn.execute(
+            "INSERT INTO extracted_rows("
+            "extracted_row_id, page_extraction_id, document_page_id, run_id, row_disposition, "
+            "statement_id, statement_extraction_id, page_row_order, label_raw, label_language, "
+            "debit_value_state, credit_raw, credit_parsed_minor, credit_value_state, "
+            "row_type_proposed, parent_context_status, row_confidence, created_at"
+            ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "ER2", "PE1", "P1", "R1", "included", "S1", "SE1", 2,
+                "其他", "zh-Hant", "blank", "1.00", 100, "amount",
+                "item", "root", 0.9, NOW,
+            ),
+        )
+        self.conn.execute(
+            "INSERT INTO statement_rows("
+            "statement_row_id, statement_id, statement_extraction_id, extracted_row_id, "
+            "row_type, parent_context_status, label_normalized, label_language, "
+            "debit_value_state, credit_minor, credit_value_state, "
+            "row_fingerprint, fingerprint_version, carry_forward_status, created_at"
+            ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "SR2", "S1", "SE1", "ER2", "item", "root", "其他", "zh-Hant",
+                "blank", 100, "amount", FINGERPRINT, 1, "none", NOW,
+            ),
+        )
+        self.conn.commit()
+        self.assert_sqlite_error(
+            "INSERT INTO statement_row_mappings("
+            "mapping_id, statement_row_id, standard_item_id, mapping_status, "
+            "reviewed_by, reviewed_at, created_at"
+            ") VALUES('M2','SR2','SI1','approved','tester',?,?)",
+            (NOW, NOW),
+        )
+        self.assert_sqlite_error(
+            "INSERT INTO statement_row_adjustments("
+            "adjustment_id, statement_id, adjustment_type, display_order, row_type, "
+            "label_normalized, label_language, debit_value_state, credit_value_state, "
+            "standard_item_id, adjusted_by, adjusted_at, created_at"
+            ") VALUES('A1','S1','insert',99,'item','其他','zh-Hant',"
+            "'blank','blank','SI1','tester',?,?)",
+            (NOW, NOW),
+        )
+
     def test_publication_requires_adopted_extraction(self) -> None:
         self.adopt()
         self.assert_sqlite_error(

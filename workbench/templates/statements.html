@@ -39,6 +39,7 @@
         {% if metric %}
           <strong>{{ metric.mapped_rows }}/{{ metric.row_count }}</strong>
           {% if metric.mapping_conflict_rows %}<span class="pill conflict">{{ metric.mapping_conflict_rows }} conflict</span>{% endif %}
+          {% if metric.duplicate_mapping_items %}<span class="pill conflict">{{ metric.duplicate_mapping_items }} duplicate</span>{% endif %}
           {% if metric.unmapped_rows %}<span class="pill blocked">{{ metric.unmapped_rows }} unmatched</span>{% endif %}
         {% else %}—{% endif %}
       </td>

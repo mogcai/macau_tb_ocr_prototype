@@ -427,7 +427,20 @@ class ReviewWriteTests(unittest.TestCase):
         ready = next(item for item in queue if item["mapping_ready"])
         statement_id = ready["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
-        item = self.client.get("/api/standard-items").json()[0]
+        used = {
+            candidate["standard_item_id"]
+            for row in rows
+            for candidate in row["mapping_candidates"]
+        }
+        item = next(
+            (
+                candidate for candidate in self.client.get("/api/standard-items").json()
+                if candidate["standard_item_id"] not in used
+            ),
+            None,
+        )
+        if item is None:
+            self.skipTest("no unused standard item in this statement")
 
         inserted = self._insert_row(
             statement_id, after_row_id=rows[0]["statement_row_id"],
@@ -694,6 +707,61 @@ class ReviewWriteTests(unittest.TestCase):
             headers={"X-Workbench-Role": "reviewer"},
         )
         self.assertEqual(blocked.status_code, 409)
+
+    def test_standard_item_can_only_be_used_once_per_statement(self) -> None:
+        queue = self._pending_queue()
+        candidate = next((item for item in queue if item["row_count"] > 2), None)
+        if candidate is None:
+            self.skipTest("no pending statement with multiple rows")
+        statement_id = candidate["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        used = {
+            option["standard_item_id"]
+            for row in rows
+            for option in row["mapping_candidates"]
+        }
+        item = next(
+            (
+                option for option in self.client.get("/api/standard-items").json()
+                if option["standard_item_id"] not in used
+            ),
+            None,
+        )
+        if item is None:
+            self.skipTest("no unused standard item in this statement")
+        first = self.client.post(
+            f"/api/review/{statement_id}/rows/{rows[0]['statement_row_id']}/map",
+            json={"standard_item_id": item["standard_item_id"]},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(first.status_code, 200)
+        second = self.client.post(
+            f"/api/review/{statement_id}/rows/{rows[1]['statement_row_id']}/map",
+            json={"standard_item_id": item["standard_item_id"]},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(second.status_code, 400)
+        self.assertIn("already mapped", second.json()["detail"].lower())
+
+        self.client.cookies.set("workbench_role", "reviewer")
+        page = self.client.get(f"/review/{statement_id}")
+        self.assertEqual(page.status_code, 200)
+        # The approved item is only offered to its own row; other row selects
+        # and the insert form exclude it.
+        self.assertEqual(
+            page.text.count(f'value="{item["standard_item_id"]}"'),
+            1,
+        )
+
+    def test_duplicate_approved_item_blocks_review(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        duplicate = next(
+            (item for item in queue if item["duplicate_mapping_items"]), None
+        )
+        if duplicate is None:
+            self.skipTest("no duplicate standard item")
+        self.assertFalse(duplicate["mapping_ready"])
+        self.assertIn("duplicate_standard_item", duplicate["mapping_blockers"])
 
 
 if __name__ == "__main__":

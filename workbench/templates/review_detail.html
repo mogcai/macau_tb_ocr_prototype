@@ -21,7 +21,7 @@
       <tr><th>Difference</th><td>{% if summary.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ summary.debit_credit_difference_minor }} minor units{% endif %}</td></tr>
       <tr><th>Issues</th><td>missing {{ summary.missing_labels }} · ambiguous/unreadable {{ summary.issue_rows }}</td></tr>
       <tr><th>Field verifications</th><td>{{ summary.field_verifications }}</td></tr>
-      <tr><th>Mapping coverage</th><td>{{ summary.mapped_rows }} mapped · {{ summary.unmapped_rows }} unmatched · {{ summary.mapping_conflict_rows }} conflict{% if summary.mapping_ready %} · <span class="ok">ready</span>{% else %} · <span class="bad">resolve mapping first</span>{% endif %}</td></tr>
+      <tr><th>Mapping coverage</th><td>{{ summary.mapped_rows }} mapped · {{ summary.unmapped_rows }} unmatched · {{ summary.mapping_conflict_rows }} conflict · {{ summary.duplicate_mapping_items }} duplicate{% if summary.mapping_ready %} · <span class="ok">ready</span>{% else %} · <span class="bad">resolve mapping first</span>{% endif %}</td></tr>
       <tr><th>Row adjustments</th><td>{{ adjustments|length }} active{% if excluded_adjustments %} · {{ excluded_adjustments|length }} excluded row(s){% endif %}</td></tr>
       <tr><th>Reviewer status</th><td>{{ summary.review_status }}{% if summary.reviewed_by %} · {{ summary.reviewed_by }}{% endif %}</td></tr>
     </tbody>
@@ -107,7 +107,9 @@
       <select class="insert-standard-item">
         <option value="">— select later —</option>
         {% for item in standard_items %}
+        {% if item.standard_item_id not in used_standard_item_ids %}
         <option value="{{ item.standard_item_id }}">{{ item.path }}</option>
+        {% endif %}
         {% endfor %}
       </select>
     </label>
@@ -184,7 +186,9 @@
             <select class="cell standard-item">
               <option value="">— select standard item —</option>
               {% for item in standard_items %}
+              {% if item.standard_item_id not in used_standard_item_ids or item.standard_item_id == row.standard_item_id %}
               <option value="{{ item.standard_item_id }}" {% if row.standard_item_id == item.standard_item_id %}selected{% endif %}>{{ item.path }}</option>
+              {% endif %}
               {% endfor %}
             </select>
             <button class="map-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Approve</button>

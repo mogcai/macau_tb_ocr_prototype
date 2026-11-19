@@ -26,6 +26,7 @@
         <td class="mapping-cell">
           <strong>{{ item.mapped_rows }}/{{ item.row_count }}</strong>
           {% if item.mapping_conflict_rows %}<span class="pill conflict">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
+          {% if item.duplicate_mapping_items %}<span class="pill conflict">{{ item.duplicate_mapping_items }} duplicate</span>{% endif %}
           {% if item.unmapped_rows %}<span class="pill blocked">{{ item.unmapped_rows }} unmatched</span>{% endif %}
         </td>
         <td class="sub">missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
@@ -74,6 +75,7 @@
         <td class="mapping-cell">
           <strong>{{ item.mapped_rows }}/{{ item.row_count }}</strong>
           {% if item.mapping_conflict_rows %}<span class="pill conflict">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
+          {% if item.duplicate_mapping_items %}<span class="pill conflict">{{ item.duplicate_mapping_items }} duplicate</span>{% endif %}
           {% if item.unmapped_rows %}<span class="pill blocked">{{ item.unmapped_rows }} unmatched</span>{% endif %}
         </td>
         <td class="sub">missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
@@ -119,6 +121,7 @@
         <td class="mapping-cell">
           <strong>{{ item.mapped_rows }}/{{ item.row_count }}</strong>
           {% if item.mapping_conflict_rows %}<span class="pill conflict">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
+          {% if item.duplicate_mapping_items %}<span class="pill conflict">{{ item.duplicate_mapping_items }} duplicate</span>{% endif %}
           {% if item.unmapped_rows %}<span class="pill blocked">{{ item.unmapped_rows }} unmatched</span>{% endif %}
         </td>
         <td class="sub">missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>

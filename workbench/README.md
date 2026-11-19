@@ -109,18 +109,22 @@ selected.
    appear in the `mapping_conflict` / `mapping_unmatched` buckets with the
    counts shown in the queue.  Proposed mappings do not need to be approved
    first — they are trusted enough to pass the review gate.
-4. Reviewer marks the statement **reviewed**; it moves from “Pending review” to
+4. A standard item may be approved for only one row in a statement.  The
+   dropdown hides items already approved on other rows, and the API/schema
+   reject a duplicate approval.  Duplicate approved items also block review
+   and appear as a `duplicate` badge.
+5. Reviewer marks the statement **reviewed**; it moves from “Pending review” to
    “Reviewed — still held”. It is **not** adopted.
    Reviewed statements are read-only: Save returns `409` and the UI disables
    row editing until **Reopen for editing** is used. Save never changes the
    review status.
-5. An adopter can adopt only a reviewed statement whose queue bucket is
+6. An adopter can adopt only a reviewed statement whose queue bucket is
    `ready_for_adoption`.
-6. Adopted statements are read-only and listed under **Adopted — current
+7. Adopted statements are read-only and listed under **Adopted — current
    dataset** with the same mapping coverage. An adopter can **Return to
    reviewed**, which clears the adopted extraction and puts the statement back
    into the reviewed/held queue. A current publication must be revoked first.
-7. Publication remains a separate, not-yet-implemented gate.
+8. Publication remains a separate, not-yet-implemented gate.
 
 This is a scaffold, not production authentication.  It does not yet implement
 login, real user accounts, PDF rendering, import-batch upload, or publish
