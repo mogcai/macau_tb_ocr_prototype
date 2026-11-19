@@ -15,11 +15,12 @@ Open <http://127.0.0.1:8000>.
 ## Scope (Workbench v1)
 
 1. Statement list (active / held / all)
-2. Statement / page / row review
-3. Field verification storage (`field_verifications`) — API/UI scaffold
-4. Adoption gate
-5. Audit trail
-6. Read-only MVP snapshot visibility
+2. Review Queue (`/review`) for held statements
+3. Statement / page / row review
+4. Field verification (`field_verifications`) with inline row editing
+5. Adoption gate
+6. Audit trail
+7. Read-only MVP snapshot visibility
 
 **Out of scope:** Standard Item mapping and P1 catalogue reconciliation.  The
 `standard_items` and `statement_row_mappings` tables remain empty in this
@@ -56,6 +57,9 @@ GET  /api/summary
 GET  /api/statements?status=all|active|held
 GET  /api/statements/{statement_id}
 GET  /api/statements/{statement_id}/rows
+GET  /api/review/queue
+GET  /api/review/{statement_id}/rows
+POST /api/review/{statement_id}/rows/{row_id}/verify  # X-Workbench-Role: reviewer
 POST /api/statements/{statement_id}/adopt    # X-Workbench-Role: adopter
 POST /api/statements/{statement_id}/publish  # X-Workbench-Role: publisher, 501 in v1
 ```
@@ -63,5 +67,6 @@ POST /api/statements/{statement_id}/publish  # X-Workbench-Role: publisher, 501 
 ## Important
 
 This is a scaffold, not production authentication.  It does not yet implement
-login, real user accounts, field-verification forms, PDF rendering, or publish
-quality gates.  Those are the next Workbench slices.
+login, real user accounts, PDF rendering, import-batch upload, or publish
+quality gates.  Inline field verification forms are available for held
+statements.  Those remaining pieces are the next Workbench slices.

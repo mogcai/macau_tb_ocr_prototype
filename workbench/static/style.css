@@ -47,3 +47,6 @@ button.secondary, .button.secondary { background: #e5e7eb; color: var(--ink); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 footer { padding: 24px 28px; color: var(--muted); font-size: 12px; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.cell { width: 100%; min-width: 90px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 5px; font-size: 12px; }
+select.cell { min-width: 110px; }
+.save-row { padding: 5px 9px; font-size: 12px; }

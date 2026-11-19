@@ -8,9 +8,19 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from workbench import service
 from workbench.permissions import DEFAULT_ROLE, can_adopt, can_publish, can_verify
+
+
+class RowVerificationPayload(BaseModel):
+    label: str | None = None
+    debit: str | None = None
+    credit: str | None = None
+    debit_state: str = "blank"
+    credit_state: str = "blank"
+    note: str = ""
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = Path(__file__).resolve().parent / "templates"
@@ -105,6 +115,78 @@ def api_publish(
         return JSONResponse(service.publish_statement(statement_id, actor_from(request)))
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+
+
+@app.get("/api/review/queue")
+def api_review_queue() -> list[dict[str, Any]]:
+    return service.review_queue()
+
+
+@app.get("/api/review/{statement_id}/rows")
+def api_review_rows(
+    statement_id: str,
+    limit: int = Query(1000, ge=1, le=5000),
+) -> list[dict[str, Any]]:
+    return service.review_rows(statement_id, limit=limit)
+
+
+@app.post("/api/review/{statement_id}/rows/{statement_row_id}/verify")
+def api_verify_row(
+    statement_id: str,
+    statement_row_id: str,
+    payload: RowVerificationPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_verify(role):
+        raise HTTPException(status_code=403, detail="verify capability is required")
+    try:
+        return service.verify_row(
+            statement_id,
+            statement_row_id,
+            label=payload.label,
+            debit=payload.debit,
+            credit=payload.credit,
+            debit_state=payload.debit_state,
+            credit_state=payload.credit_state,
+            note=payload.note,
+            actor=actor_from(request),
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/review", response_class=HTMLResponse)
+def review_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "review_queue.html",
+        template_context(request, queue=service.review_queue()),
+    )
+
+
+@app.get("/review/{statement_id}", response_class=HTMLResponse)
+def review_detail_page(request: Request, statement_id: str) -> HTMLResponse:
+    detail = service.statement_detail(statement_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="statement not found")
+    queue_row = next(
+        (item for item in service.review_queue() if item["statement_id"] == statement_id),
+        None,
+    )
+    return templates.TemplateResponse(
+        request,
+        "review_detail.html",
+        template_context(
+            request,
+            statement=detail,
+            queue_row=queue_row,
+            rows=service.review_rows(statement_id),
+        ),
+    )
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Review queue · Macau Banking Workbench{% endblock %}
+{% block content %}
+<h1>Review queue</h1>
+<p class="muted">Held statements and their current effective totals. Adoption remains a separate action.</p>
+
+<table class="data">
+  <thead>
+    <tr>
+      <th>Priority</th>
+      <th>Entity</th>
+      <th>Dates</th>
+      <th>Bucket</th>
+      <th>Rows</th>
+      <th>Missing</th>
+      <th>Issues</th>
+      <th>Debit / Credit</th>
+      <th>Difference</th>
+      <th>Field ver.</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in queue %}
+    <tr>
+      <td>{{ item.priority }}</td>
+      <td><a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a></td>
+      <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
+      <td><span class="pill {{ item.statement_status }}">{{ item.review_bucket }}</span></td>
+      <td>{{ item.row_count }}</td>
+      <td>{{ item.missing_labels }}</td>
+      <td>{{ item.issue_rows }}</td>
+      <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
+      <td>{% if item.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</td>
+      <td>{{ item.field_verifications }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="10" class="muted">No held statements.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

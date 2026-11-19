@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Review · {{ statement.entity_name }}{% endblock %}
+{% block content %}
+<p><a href="/review">← Review queue</a></p>
+<h1>{{ statement.entity_name }}</h1>
+
+{% if queue_row %}
+<section class="panel">
+  <table class="kv">
+    <tbody>
+      <tr><th>Status</th><td><span class="pill {{ statement.statement_status }}">{{ statement.statement_status }}</span></td></tr>
+      <tr><th>Review bucket</th><td>{{ queue_row.review_bucket }}</td></tr>
+      <tr><th>Statement date</th><td>{{ statement.statement_date or "—" }}</td></tr>
+      <tr><th>Publication date</th><td>{{ statement.publication_date or "—" }}</td></tr>
+      <tr><th>Debit / Credit</th><td>{{ queue_row.debit_total_display }} / {{ queue_row.credit_total_display }} {{ statement.currency or "" }}</td></tr>
+      <tr><th>Difference</th><td>{% if queue_row.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ queue_row.debit_credit_difference_minor }} minor units{% endif %}</td></tr>
+      <tr><th>Issues</th><td>missing {{ queue_row.missing_labels }} · ambiguous/unreadable {{ queue_row.issue_rows }}</td></tr>
+      <tr><th>Field verifications</th><td>{{ queue_row.field_verifications }}</td></tr>
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Rows</h2>
+  <p class="muted">Raw OCR is read-only. Saving writes a field verification, not an OCR change.</p>
+  <table class="data compact">
+    <thead>
+      <tr>
+        <th>#</th><th>Page</th><th>Raw label</th><th>Effective label</th>
+        <th>Raw debit / credit</th><th>Effective debit</th><th>State</th><th>Effective credit</th><th>State</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr data-row="{{ row.statement_row_id }}">
+        <td>{{ row.statement_order }}</td>
+        <td>{{ row.pdf_page }}</td>
+        <td><code>{{ row.label_raw or "—" }}</code></td>
+        <td><input class="cell label" value="{{ row.effective_label or '' }}" placeholder="corrected label"></td>
+        <td class="muted"><code>{{ row.debit_raw or "—" }} / {{ row.credit_raw or "—" }}</code></td>
+        <td><input class="cell debit" value="{{ row.effective_debit_display if row.effective_debit_state == 'amount' else '' }}" placeholder="0.00"></td>
+        <td>
+          <select class="cell debit-state">
+            {% for state in ["amount", "blank", "dash", "unreadable", "not_applicable", "ambiguous"] %}
+            <option value="{{ state }}" {% if row.effective_debit_state == state %}selected{% endif %}>{{ state }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td><input class="cell credit" value="{{ row.effective_credit_display if row.effective_credit_state == 'amount' else '' }}" placeholder="0.00"></td>
+        <td>
+          <select class="cell credit-state">
+            {% for state in ["amount", "blank", "dash", "unreadable", "not_applicable", "ambiguous"] %}
+            <option value="{{ state }}" {% if row.effective_credit_state == state %}selected{% endif %}>{{ state }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td><button class="save-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Save</button></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10" class="muted">No rows.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<script>
+document.querySelectorAll(".save-row").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const tr = button.closest("tr");
+    const payload = {
+      label: tr.querySelector(".label").value,
+      debit: tr.querySelector(".debit").value,
+      credit: tr.querySelector(".credit").value,
+      debit_state: tr.querySelector(".debit-state").value,
+      credit_state: tr.querySelector(".credit-state").value,
+      note: "Workbench UI verification"
+    };
+    button.disabled = true;
+    const response = await fetch(`/api/review/${button.dataset.statement}/rows/${button.dataset.row}/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      },
+      body: JSON.stringify(payload)
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Verification failed");
+      button.disabled = false;
+    }
+  });
+});
+</script>
+{% endblock %}

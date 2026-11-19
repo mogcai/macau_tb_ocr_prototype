@@ -1,6 +1,8 @@
 """Tests for the Workbench scaffold permissions and DB guard."""
 from __future__ import annotations
 
+import shutil
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -12,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from fastapi.testclient import TestClient  # noqa: E402
 
 from workbench.config import SNAPSHOT_DB, V3_DB  # noqa: E402
+import workbench.db as wdb  # noqa: E402
 from workbench.db import connect_v3, is_snapshot  # noqa: E402
 from workbench.main import app  # noqa: E402
 from workbench.permissions import can_adopt, can_publish, can_verify  # noqa: E402
@@ -85,6 +88,79 @@ class ApiTests(unittest.TestCase):
             headers={"X-Workbench-Role": "publisher"},
         )
         self.assertEqual(not_implemented.status_code, 501)
+
+    def test_review_queue_and_rows(self) -> None:
+        queue = self.client.get("/api/review/queue")
+        self.assertEqual(queue.status_code, 200)
+        self.assertGreater(len(queue.json()), 0)
+        statement_id = queue.json()[0]["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows")
+        self.assertEqual(rows.status_code, 200)
+        self.assertGreater(len(rows.json()), 0)
+        detail = self.client.get(f"/review/{statement_id}")
+        self.assertEqual(detail.status_code, 200)
+
+
+@unittest.skipUnless(V3_DB.is_file(), "operational v3 DB not available")
+class ReviewWriteTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.db = Path(self.tempdir.name) / "v3.sqlite"
+        shutil.copyfile(V3_DB, self.db)
+        self.patcher = mock.patch.object(wdb, "V3_DB", self.db)
+        self.patcher.start()
+        self.client = TestClient(app)
+
+    def tearDown(self) -> None:
+        self.patcher.stop()
+        self.tempdir.cleanup()
+
+    def test_verify_requires_reviewer_role(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        statement_id = queue[0]["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        response = self.client.post(
+            f"/api/review/{statement_id}/rows/{rows[0]['statement_row_id']}/verify",
+            json={
+                "label": rows[0]["effective_label"],
+                "debit": "1.00",
+                "credit": "",
+                "debit_state": "amount",
+                "credit_state": "blank",
+                "note": "test",
+            },
+            headers={"X-Workbench-Role": "viewer"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_verify_writes_field_verification_and_audit(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        statement_id = queue[0]["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        row = rows[0]
+        response = self.client.post(
+            f"/api/review/{statement_id}/rows/{row['statement_row_id']}/verify",
+            json={
+                "label": row["effective_label"],
+                "debit": "1.00",
+                "credit": "",
+                "debit_state": "amount",
+                "credit_state": "blank",
+                "note": "test correction",
+            },
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(response.status_code, 200)
+        conn = sqlite3.connect(self.db)
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM field_verifications WHERE verified_by='tester'").fetchone()[0],
+            5,
+        )
+        self.assertEqual(
+            conn.execute("SELECT COUNT(*) FROM audit_events WHERE event_type='workbench_row_verified'").fetchone()[0],
+            1,
+        )
+        conn.close()
 
 
 if __name__ == "__main__":

@@ -19,6 +19,10 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def text(value: Any) -> str:
+    return str(value if value is not None else "").strip()
+
+
 def stable_id(*parts: Any) -> str:
     return str(uuid.uuid5(NAMESPACE, "|".join(str(part) for part in parts)))
 
@@ -247,3 +251,243 @@ def publish_statement(statement_id: str, actor: str) -> dict[str, Any]:
     raise NotImplementedError(
         "Publish gate is not implemented in Workbench v1; adoption is available separately"
     )
+
+
+def _money(minor: int | None, places: int | None) -> str:
+    if minor is None:
+        return ""
+    from decimal import Decimal
+    scale = places if places is not None else 2
+    value = Decimal(minor) / (Decimal(10) ** scale)
+    return format(value, ",.2f")
+
+
+def _parse_money(value: str | None) -> int:
+    if value is None or str(value).strip() == "":
+        return 0
+    raw = str(value).strip().replace(",", "")
+    if raw in {"-", "–", "—", "−"}:
+        return 0
+    try:
+        from decimal import Decimal
+        amount = Decimal(raw)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"invalid amount: {value!r}") from exc
+    scaled = amount * 100
+    integral = scaled.to_integral_value()
+    if scaled != integral:
+        raise ValueError(f"amount has more than two decimal places: {value!r}")
+    return int(integral)
+
+
+EFFECTIVE_ROW_SQL = """
+SELECT
+    sr.statement_id,
+    sr.statement_row_id,
+    sr.statement_order,
+    sr.row_type,
+    sr.parent_context_status,
+    er.label_raw,
+    er.debit_raw,
+    er.credit_raw,
+    dp.pdf_page,
+    sr.label_normalized AS base_label,
+    sr.debit_minor AS base_debit_minor,
+    sr.debit_value_state AS base_debit_state,
+    sr.credit_minor AS base_credit_minor,
+    sr.credit_value_state AS base_credit_state,
+    COALESCE((SELECT fv.verified_value_text FROM field_verifications fv
+      WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='label_normalized'
+        AND fv.verification_status='verified'), sr.label_normalized) AS effective_label,
+    COALESCE((SELECT CAST(fv.verified_value_text AS INTEGER) FROM field_verifications fv
+      WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='debit_minor'
+        AND fv.verification_status='verified'), sr.debit_minor) AS effective_debit_minor,
+    COALESCE((SELECT fv.verified_value_text FROM field_verifications fv
+      WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='debit_value_state'
+        AND fv.verification_status='verified'), sr.debit_value_state) AS effective_debit_state,
+    COALESCE((SELECT CAST(fv.verified_value_text AS INTEGER) FROM field_verifications fv
+      WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='credit_minor'
+        AND fv.verification_status='verified'), sr.credit_minor) AS effective_credit_minor,
+    COALESCE((SELECT fv.verified_value_text FROM field_verifications fv
+      WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='credit_value_state'
+        AND fv.verification_status='verified'), sr.credit_value_state) AS effective_credit_state
+FROM statement_rows sr
+JOIN extracted_rows er ON er.extracted_row_id=sr.extracted_row_id
+JOIN document_pages dp ON dp.document_page_id=er.document_page_id
+"""
+
+
+def review_queue() -> list[dict[str, Any]]:
+    conn = connect_v3()
+    try:
+        rows = conn.execute(
+            f"""
+            WITH effective AS (
+                {EFFECTIVE_ROW_SQL}
+            )
+            SELECT
+                s.statement_id, s.statement_date, s.publication_date,
+                s.reporting_scope, s.statement_status,
+                e.canonical_zh AS entity_name, e.entity_key,
+                s.currency, s.unit_scale, s.amount_decimal_places,
+                COUNT(er.statement_row_id) AS row_count,
+                SUM(CASE WHEN er.effective_label IS NULL OR er.effective_label = '' THEN 1 ELSE 0 END) AS missing_labels,
+                SUM(CASE WHEN er.effective_debit_state IN ('ambiguous','unreadable')
+                          OR er.effective_credit_state IN ('ambiguous','unreadable') THEN 1 ELSE 0 END) AS issue_rows,
+                SUM(CASE WHEN er.effective_debit_state='amount' THEN er.effective_debit_minor ELSE 0 END) AS debit_total_minor,
+                SUM(CASE WHEN er.effective_credit_state='amount' THEN er.effective_credit_minor ELSE 0 END) AS credit_total_minor,
+                (SELECT COUNT(*) FROM field_verifications fv
+                  JOIN statement_rows sr2 ON sr2.statement_row_id=fv.statement_row_id
+                  WHERE sr2.statement_id=s.statement_id) AS field_verifications
+            FROM statements s
+            JOIN reporting_entities e ON e.entity_id=s.reporting_entity_id
+            LEFT JOIN effective er ON er.statement_id=s.statement_id
+            WHERE s.statement_status <> 'active'
+            GROUP BY s.statement_id, s.statement_date, s.publication_date,
+                     s.reporting_scope, s.statement_status, e.canonical_zh,
+                     e.entity_key, s.currency, s.unit_scale, s.amount_decimal_places
+            """,
+        ).fetchall()
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            data = dict(row)
+            difference = int(data["debit_total_minor"] or 0) - int(data["credit_total_minor"] or 0)
+            data["debit_credit_difference_minor"] = difference
+            data["debit_credit_equal"] = difference == 0
+            if not data["row_count"]:
+                bucket = "no_rows"
+            elif difference != 0:
+                bucket = "unbalanced"
+            elif data["missing_labels"] or data["issue_rows"]:
+                bucket = "row_issues"
+            else:
+                bucket = "ready_for_adoption"
+            data["review_bucket"] = bucket
+            data["priority"] = {"unbalanced": 1, "no_rows": 1, "row_issues": 2}.get(bucket, 3)
+            data["debit_total_display"] = _money(data["debit_total_minor"], data["amount_decimal_places"])
+            data["credit_total_display"] = _money(data["credit_total_minor"], data["amount_decimal_places"])
+            result.append(data)
+        return sorted(result, key=lambda item: (item["priority"], -int(item["issue_rows"] or 0), item["entity_name"]))
+    finally:
+        conn.close()
+
+
+def review_rows(statement_id: str, limit: int = 1000) -> list[dict[str, Any]]:
+    conn = connect_v3()
+    try:
+        statement = conn.execute(
+            "SELECT amount_decimal_places FROM statements WHERE statement_id=?", (statement_id,)
+        ).fetchone()
+        if statement is None:
+            raise LookupError("statement not found")
+        places = statement["amount_decimal_places"]
+        rows = conn.execute(
+            f"{EFFECTIVE_ROW_SQL} WHERE sr.statement_id=? ORDER BY sr.statement_order, sr.statement_row_id LIMIT ?",
+            (statement_id, limit),
+        ).fetchall()
+        result = []
+        for row in rows:
+            data = dict(row)
+            data["effective_debit_display"] = _money(data["effective_debit_minor"], places)
+            data["effective_credit_display"] = _money(data["effective_credit_minor"], places)
+            issues = []
+            if not text(data["effective_label"]):
+                issues.append("missing_label")
+            if data["effective_debit_state"] in ("ambiguous", "unreadable"):
+                issues.append("debit_" + data["effective_debit_state"])
+            if data["effective_credit_state"] in ("ambiguous", "unreadable"):
+                issues.append("credit_" + data["effective_credit_state"])
+            data["row_issues"] = ";".join(issues)
+            result.append(data)
+        return result
+    finally:
+        conn.close()
+
+
+def verify_row(
+    statement_id: str,
+    statement_row_id: str,
+    *,
+    label: str | None,
+    debit: str | None,
+    credit: str | None,
+    debit_state: str,
+    credit_state: str,
+    note: str,
+    actor: str,
+) -> dict[str, Any]:
+    if debit_state not in {"amount", "dash", "blank", "unreadable", "not_applicable", "ambiguous"}:
+        raise ValueError("invalid debit state")
+    if credit_state not in {"amount", "dash", "blank", "unreadable", "not_applicable", "ambiguous"}:
+        raise ValueError("invalid credit state")
+    debit_minor = _parse_money(debit) if debit_state == "amount" else 0
+    credit_minor = _parse_money(credit) if credit_state == "amount" else 0
+    conn = connect_v3(write=True)
+    try:
+        row = conn.execute(
+            "SELECT statement_id, label_normalized, debit_minor, debit_value_state, "
+            "credit_minor, credit_value_state FROM statement_rows WHERE statement_row_id=?",
+            (statement_row_id,),
+        ).fetchone()
+        if row is None or row["statement_id"] != statement_id:
+            raise LookupError("statement row not found")
+        before = dict(row)
+        fields = [
+            ("label_normalized", before["label_normalized"], "" if label is None else label),
+            ("debit_minor", before["debit_minor"], str(debit_minor)),
+            ("debit_value_state", before["debit_value_state"], debit_state),
+            ("credit_minor", before["credit_minor"], str(credit_minor)),
+            ("credit_value_state", before["credit_value_state"], credit_state),
+        ]
+        for field_name, original, proposed in fields:
+            verification_id = stable_id("workbench_verification", statement_row_id, field_name, VERSION)
+            conn.execute(
+                """
+                INSERT INTO field_verifications(
+                    field_verification_id, statement_row_id, field_name,
+                    original_value_text, verified_value_text, verification_status,
+                    verified_by, verified_at, reason, created_at
+                ) VALUES (?, ?, ?, ?, ?, 'verified', ?, ?, ?, ?)
+                ON CONFLICT(statement_row_id, field_name) DO UPDATE SET
+                    original_value_text=excluded.original_value_text,
+                    verified_value_text=excluded.verified_value_text,
+                    verification_status=excluded.verification_status,
+                    verified_by=excluded.verified_by,
+                    verified_at=excluded.verified_at,
+                    reason=excluded.reason
+                """,
+                (
+                    verification_id, statement_row_id, field_name,
+                    str(original) if original is not None else None,
+                    proposed, actor, now(), note or "Workbench row verification", now(),
+                ),
+            )
+        event_id = stable_id("workbench_verify_event", statement_row_id, VERSION, now())
+        conn.execute(
+            "INSERT INTO audit_events("
+            "audit_event_id, event_type, statement_id, statement_row_id, actor_id, "
+            "before_json, after_json, details_json, reason, created_at"
+            ") VALUES (?, 'workbench_row_verified', ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                event_id, statement_id, statement_row_id, actor,
+                json.dumps(before, ensure_ascii=False, default=str),
+                json.dumps({
+                    "label": label, "debit_minor": debit_minor, "debit_state": debit_state,
+                    "credit_minor": credit_minor, "credit_state": credit_state,
+                }, ensure_ascii=False),
+                json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
+                note or "Workbench row verification",
+                now(),
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    rows = review_rows(statement_id)
+    for item in rows:
+        if item["statement_row_id"] == statement_row_id:
+            return item
+    raise LookupError("statement row not found after verification")
