@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "data" / "macau_balancete_v3.sqlite"
 DEFAULT_V5 = ROOT / "data" / "baseline" / "baseline_v5_20261118.sqlite"
 DEFAULT_PLAN = ROOT / "docs" / "audit" / "statement_segmentation_plan.csv"
+DEFAULT_MANUAL = ROOT / "docs" / "audit" / "statement_manual_review.csv"
 DEFAULT_OUT = ROOT / "docs" / "audit" / "statement_validation_decisions.csv"
 
 
@@ -79,8 +80,20 @@ def decide_validation(
     return "needs_review", "hold"
 
 
-def build(db: Path, v5_db: Path, plan_csv: Path) -> list[dict[str, Any]]:
+def build(
+    db: Path,
+    v5_db: Path,
+    plan_csv: Path,
+    manual_csv: Path | None = None,
+    previous_csv: Path | None = None,
+) -> list[dict[str, Any]]:
     plan = {row["statement_id"]: row for row in read_csv(plan_csv)}
+    manual = {}
+    if manual_csv is not None and manual_csv.is_file():
+        manual = {row["statement_id"]: row for row in read_csv(manual_csv)}
+    previous = {}
+    if previous_csv is not None and previous_csv.is_file():
+        previous = {row["statement_id"]: row for row in read_csv(previous_csv)}
     v3 = connect_ro(db)
     v5 = connect_ro(v5_db)
     try:
@@ -115,6 +128,43 @@ def build(db: Path, v5_db: Path, plan_csv: Path) -> list[dict[str, Any]]:
             ).fetchone()[0]
             metrics = v3.execute(
                 """
+                WITH effective AS (
+                    SELECT
+                        sr.statement_id,
+                        sr.parent_context_status,
+                        COALESCE((
+                            SELECT fv.verified_value_text FROM field_verifications fv
+                            WHERE fv.statement_row_id = sr.statement_row_id
+                              AND fv.field_name = 'label_normalized'
+                              AND fv.verification_status = 'verified'
+                        ), sr.label_normalized) AS label_normalized,
+                        COALESCE((
+                            SELECT fv.verified_value_text FROM field_verifications fv
+                            WHERE fv.statement_row_id = sr.statement_row_id
+                              AND fv.field_name = 'debit_value_state'
+                              AND fv.verification_status = 'verified'
+                        ), sr.debit_value_state) AS debit_value_state,
+                        COALESCE((
+                            SELECT CAST(fv.verified_value_text AS INTEGER) FROM field_verifications fv
+                            WHERE fv.statement_row_id = sr.statement_row_id
+                              AND fv.field_name = 'debit_minor'
+                              AND fv.verification_status = 'verified'
+                        ), sr.debit_minor) AS debit_minor,
+                        COALESCE((
+                            SELECT fv.verified_value_text FROM field_verifications fv
+                            WHERE fv.statement_row_id = sr.statement_row_id
+                              AND fv.field_name = 'credit_value_state'
+                              AND fv.verification_status = 'verified'
+                        ), sr.credit_value_state) AS credit_value_state,
+                        COALESCE((
+                            SELECT CAST(fv.verified_value_text AS INTEGER) FROM field_verifications fv
+                            WHERE fv.statement_row_id = sr.statement_row_id
+                              AND fv.field_name = 'credit_minor'
+                              AND fv.verification_status = 'verified'
+                        ), sr.credit_minor) AS credit_minor
+                    FROM statement_rows sr
+                    WHERE sr.statement_id = ?
+                )
                 SELECT COUNT(*) AS row_count,
                        SUM(CASE WHEN label_normalized IS NULL OR label_normalized = '' THEN 1 ELSE 0 END) AS missing_labels,
                        SUM(CASE WHEN debit_value_state = 'ambiguous' OR credit_value_state = 'ambiguous' THEN 1 ELSE 0 END) AS ambiguous,
@@ -124,7 +174,7 @@ def build(db: Path, v5_db: Path, plan_csv: Path) -> list[dict[str, Any]]:
                        SUM(CASE WHEN credit_value_state = 'amount' THEN credit_minor ELSE 0 END) AS credit_total_minor,
                        SUM(CASE WHEN debit_value_state = 'amount' THEN 1 ELSE 0 END) AS debit_amount_rows,
                        SUM(CASE WHEN credit_value_state = 'amount' THEN 1 ELSE 0 END) AS credit_amount_rows
-                FROM statement_rows WHERE statement_id = ?
+                FROM effective
                 """,
                 (statement["statement_id"],),
             ).fetchone()
@@ -170,6 +220,24 @@ def build(db: Path, v5_db: Path, plan_csv: Path) -> list[dict[str, Any]]:
                 int(metrics["row_count"] or 0),
                 page_count,
             )
+            manual_row = manual.get(statement["statement_id"], {})
+            manual_action = text(manual_row.get("review_action"))
+            if manual_action == "rerun_ocr":
+                validation = "needs_review"
+                action = "hold"
+                flags.append("manual_rerun_ocr")
+            elif manual_action == "reject":
+                validation = "reject"
+                action = "reject"
+                flags.append("manual_reject")
+            elif manual_action in ("accept_hold", "needs_more_info"):
+                validation = "needs_review"
+                action = "hold"
+                flags.append("manual_hold")
+            if statement["adopted_statement_extraction_id"] is not None:
+                validation = "adopted"
+                action = "already_adopted"
+                flags.append("already_adopted")
 
             places = statement["amount_decimal_places"]
             reason_parts = [
@@ -218,6 +286,10 @@ def build(db: Path, v5_db: Path, plan_csv: Path) -> list[dict[str, Any]]:
                 "proposed_adoption_action": action,
                 "validation_flags": ";".join(flags),
                 "validation_reason": ";".join(reason_parts),
+                "manual_review_action": manual_action,
+                "manual_review_note": text(manual_row.get("manual_note")),
+                "previous_reviewer_decision": text(previous.get(statement["statement_id"], {}).get("reviewer_decision")),
+                "previous_reviewer_note": text(previous.get(statement["statement_id"], {}).get("reviewer_note")),
                 "reviewer_decision": "",
                 "reviewer_note": "",
             })
@@ -232,10 +304,12 @@ def main() -> int:
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--v5-db", type=Path, default=DEFAULT_V5)
     parser.add_argument("--plan", type=Path, default=DEFAULT_PLAN)
+    parser.add_argument("--manual-review", type=Path, default=DEFAULT_MANUAL)
+    parser.add_argument("--previous", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args()
 
-    rows = build(args.db, args.v5_db, args.plan)
+    rows = build(args.db, args.v5_db, args.plan, args.manual_review, args.previous)
     fields = [
         "statement_id", "issue_number", "entity_name", "entity_key",
         "statement_date", "publication_date", "reporting_scope",
@@ -249,8 +323,9 @@ def main() -> int:
         "amount_decimal_places", "statement_status", "identity_status",
         "metadata_status", "extraction_status", "adopted_statement_extraction_id",
         "proposed_validation_status", "proposed_adoption_action",
-        "validation_flags", "validation_reason", "reviewer_decision",
-        "reviewer_note",
+        "validation_flags", "validation_reason", "manual_review_action",
+        "manual_review_note", "previous_reviewer_decision",
+        "previous_reviewer_note", "reviewer_decision", "reviewer_note",
     ]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", newline="", encoding="utf-8-sig") as handle:

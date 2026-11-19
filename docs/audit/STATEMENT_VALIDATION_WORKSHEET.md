@@ -16,6 +16,10 @@
 The 41 held statements are covered by
 `docs/audit/MANUAL_ADJUSTMENT_WORKFLOW.md`.
 
+After the first manual adjustment round, 15 of those 41 became balanced.
+See `docs/audit/MANUAL_ADJUSTMENT_ROUND2.md` and
+`docs/audit/statement_validation_round2.csv`.
+
 ## Proposal summary
 
 | Proposed validation | Statements |
