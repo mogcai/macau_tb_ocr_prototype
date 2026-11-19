@@ -1,59 +1,62 @@
 {
   "database": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/macau_balancete.sqlite",
-  "app_version": "0.6.4",
+  "app_version": "0.7.0",
   "schema_version": 5,
-  "generated_at": "2026-11-18T13:38:27+00:00",
+  "generated_at": "2026-11-18T14:12:32+00:00",
   "run_dirs": [
-    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue33_2026"
+    "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue16_2026"
   ],
   "runs": [
     {
-      "run_id": "run_eadbb15344cd15f416d01c6e45af3d7537f30a3832995884193104b77045ab1b",
-      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue33_2026",
+      "run_id": "run_1a0ee38c6dba8cca3d2740376f7dcfb1e867dcafbb920969de3b9cf272abcd73",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue16_2026",
       "status": "imported",
-      "tb_pages": 1,
-      "line_items": 64,
-      "review_rows": 32,
+      "tb_pages": 2,
+      "line_items": 130,
+      "review_rows": 125,
       "published": false,
       "verification_restored": 0
     }
   ],
   "totals": {
-    "runs": 7,
+    "runs": 14,
     "published_runs": 5,
-    "banks": 39,
-    "pages": 50,
-    "statements": 50,
-    "line_items": 3138,
-    "review_rows": 1964,
+    "banks": 48,
+    "pages": 118,
+    "statements": 118,
+    "line_items": 7156,
+    "review_rows": 4279,
     "statements_with_missing_identity": 0
   },
   "business_key_quality": {
-    "rows": 3138,
-    "unique_complete_rows": 2949,
-    "duplicate_extra_rows": 15,
-    "duplicate_groups": 15,
-    "rows_in_duplicate_groups": 31,
-    "missing_label_rows": 174
+    "rows": 7156,
+    "unique_complete_rows": 6483,
+    "duplicate_extra_rows": 31,
+    "duplicate_groups": 31,
+    "rows_in_duplicate_groups": 63,
+    "missing_label_rows": 642
   },
   "natural_key_status": {
-    "complete": 2949,
-    "duplicate": 15,
-    "missing_label": 174
+    "complete": 6483,
+    "duplicate": 31,
+    "missing_label": 642
   },
   "publication_date_sources": {
-    "derived_from_run": 24,
-    "documents.csv": 26
+    "derived_from_run": 55,
+    "documents.csv": 63
   },
   "statement_date_sources": {
-    "documents.csv": 50
+    "documents.csv": 118
   },
   "identity_status": {
-    "complete": 50
+    "complete": 118
   },
   "natural_key_duplicates": {
-    "groups": 15,
-    "rows": 31
+    "groups": 31,
+    "rows": 63
   },
-  "warnings": []
+  "warnings": [
+    "run_1a0ee38c6dba8cca3d2740376f7dcfb1e867dcafbb920969de3b9cf272abcd73:2026-04-22|2026-03-31|bank:海通銀行澳門分行: 2 rows have no standard label",
+    "run_1a0ee38c6dba8cca3d2740376f7dcfb1e867dcafbb920969de3b9cf272abcd73:2026-04-22|2026-03-31|bank:葡萄牙商業銀行有限公司澳門分行bancocomercialportuguessasucursaldemacau: 63 rows have no standard label"
+  ]
 }

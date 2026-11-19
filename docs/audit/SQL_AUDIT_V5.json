@@ -1,0 +1,130 @@
+{
+  "generated_at": "2026-11-19T04:46:23+00:00",
+  "database": {
+    "path": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/baseline/baseline_v5_20261118.sqlite",
+    "size": 12156928,
+    "sha256": "a08ca1e24a5ae7cbf50067093124e7d42e5b7a2cbef36d56c6f6424586c598b6",
+    "schema_meta": {
+      "schema_version": "5",
+      "app_version": "0.7.0",
+      "name_registry_version": "2"
+    }
+  },
+  "counts": {
+    "runs": 14,
+    "runs_published": 5,
+    "statements": 118,
+    "pages": 118,
+    "line_items": 7156,
+    "banks": 48,
+    "bank_aliases": 3,
+    "bank_name_aliases": 78,
+    "standard_labels": 89,
+    "standard_label_aliases": 218,
+    "line_item_concepts": 216,
+    "line_item_aliases": 219,
+    "name_mapping_review": 154,
+    "row_verification": 0,
+    "name_mapping_audit": 0
+  },
+  "registries": {
+    "standard_labels": {
+      "total": 89,
+      "both": 72,
+      "zh_only": 15,
+      "pt_only": 2,
+      "neither": 0,
+      "used_rows": 6802
+    },
+    "concepts": {
+      "total": 120,
+      "both": 0,
+      "zh_only": 59,
+      "pt_only": 61,
+      "neither": 0,
+      "used_rows": 2215,
+      "auto_total": 96,
+      "auto_used_rows": 0
+    },
+    "draft": {
+      "total": 65,
+      "both": 55,
+      "zh_only": 4,
+      "pt_only": 6,
+      "neither": 0
+    },
+    "label_lexicon": {
+      "total": 120
+    }
+  },
+  "reconciliation": {
+    "rows": 370,
+    "exclude_archive": 96,
+    "merge_candidate": 112,
+    "needs_review": 140,
+    "needs_review_unmatched": 22
+  },
+  "conflicts": {
+    "three_way_agree_rows": 2173,
+    "raw_concept_user_name_mismatch_rows": 544,
+    "conflict_rows": 85,
+    "three_way_rows": 30,
+    "legacy_vs_user": 85,
+    "concept_vs_user": 30,
+    "partial_rows": 15,
+    "legacy_vs_user_partial": 15,
+    "concept_vs_user_partial": 5,
+    "legacy_user_agree_rows": 4217,
+    "partial_overlap_rows": 15,
+    "review_rows": 100
+  },
+  "entities": {
+    "banks": 48,
+    "flagged_banks": 41,
+    "serious_banks": 13,
+    "duplicate_groups": 4,
+    "junk_or_non_bank": 5,
+    "provisional": 40
+  },
+  "statements": {
+    "total": 118,
+    "flagged": 104,
+    "serious": 16,
+    "legacy_published": 38
+  },
+  "pages": {
+    "total": 118,
+    "flagged": 104,
+    "serious": 5
+  },
+  "amounts": {
+    "number_format": {
+      "comma_dot": 7046,
+      "ambiguous": 70,
+      "dot_comma": 40
+    },
+    "rows_with_amount_mismatch": 0
+  },
+  "provenance": {
+    "pdfs": 14,
+    "runs": 14,
+    "hash_mismatches": 0
+  },
+  "output_files": [
+    "SQL_AUDIT_V5.json",
+    "SQL_AUDIT_V5.md",
+    "amount_mismatches.csv",
+    "amount_quality.csv",
+    "artifact_manifest.json",
+    "entity_anomalies.csv",
+    "legacy_id_crosswalk.csv",
+    "mapping_conflicts.csv",
+    "mapping_coverage_by_language.csv",
+    "mapping_coverage_by_run.csv",
+    "mapping_partial_overlaps.csv",
+    "page_anomalies.csv",
+    "registry_inventory.csv",
+    "standard_item_reconciliation.csv",
+    "statement_anomalies.csv"
+  ]
+}

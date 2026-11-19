@@ -1,0 +1,646 @@
+{
+  "generated_at": "2026-11-19T04:46:23+00:00",
+  "database": {
+    "path": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/baseline/baseline_v5_20261118.sqlite",
+    "size": 12156928,
+    "sha256": "a08ca1e24a5ae7cbf50067093124e7d42e5b7a2cbef36d56c6f6424586c598b6"
+  },
+  "baseline_copy": {
+    "path": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/baseline/baseline_v5_20261118.sqlite",
+    "sha256_file": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/baseline/baseline_v5_20261118.sha256",
+    "exists": true
+  },
+  "pdfs": [
+    {
+      "name": "anotariais-16-2026.pdf",
+      "size": 5955807,
+      "sha256": "9fa0eafd24c167786c65363ff57113acb7fb43ca4f17f6db4846b858d169ddb5"
+    },
+    {
+      "name": "anotariais-17-2026.pdf",
+      "size": 65050215,
+      "sha256": "231f8b203501c54f3b5187b3559c1357ad2580fa41a84960fd4b66e8c180099f"
+    },
+    {
+      "name": "anotariais-18-2026.pdf",
+      "size": 7406168,
+      "sha256": "c239b16ecf774c86e5dd4e5dbb8307555acac5b333ba0e8cc068c5f014e159a1"
+    },
+    {
+      "name": "anotariais-19-2026.pdf",
+      "size": 22612506,
+      "sha256": "5c92cef36ad4ada85b370617b5a431ec5401670a1b9618583b740b722eb2011f"
+    },
+    {
+      "name": "anotariais-29-2026.pdf",
+      "size": 3369157,
+      "sha256": "9cdf5d92f2c5520af6c059fcb813a7dacb1e6c9347107a9b6fcc306a8baf1f8f"
+    },
+    {
+      "name": "anotariais-30-2026.pdf",
+      "size": 4010733,
+      "sha256": "5a77c6f0447eb642fa9fff27c6e1a46cf6450f88d7051f29dfb0dcfb1aece4ba"
+    },
+    {
+      "name": "anotariais-31-2026.pdf",
+      "size": 7665345,
+      "sha256": "b126343b47f1323187fc6bc80ecca0d40f306e1f491d5e62449bf85cd2b38d29"
+    },
+    {
+      "name": "anotariais-32-2026.pdf",
+      "size": 17602636,
+      "sha256": "2839865ee47916bb20927b6b390873ce2386ffe4253ef04f3ba54d5dfb1f4491"
+    },
+    {
+      "name": "anotariais-33-2026.pdf",
+      "size": 3232716,
+      "sha256": "2d51dd30a19e8383f63a836dbe6a57efc8becb1b49378bd229e4be44f6d1c627"
+    },
+    {
+      "name": "anotariais-42-2026.pdf",
+      "size": 3377195,
+      "sha256": "e4f03c9426e1c737241e70df3d27fe1b502c3df1af06726e08883fddda7434ae"
+    },
+    {
+      "name": "anotariais-43-2026.pdf",
+      "size": 4328522,
+      "sha256": "2273eb85d62b64df6667c9a18dbc525422058acd48fe0208c685dfa9bbc06384"
+    },
+    {
+      "name": "anotariais-44-2026.pdf",
+      "size": 4461693,
+      "sha256": "e93df9f0d5d1f16107850be72ae3eab11e7ee4a2c5a6c7a542e6ca7b074b34e3"
+    },
+    {
+      "name": "anotariais-45-2026.pdf",
+      "size": 17960690,
+      "sha256": "636ef81c874da3dc3c98f63bf3502b9b489825b06c8d3f7da6ac8897dac3f71f"
+    },
+    {
+      "name": "anotariais-46-2026.pdf",
+      "size": 2754718,
+      "sha256": "62e3c2555acb19cec9e10871b4a73ce433d4bfd245e3cc352db6e505a92084b3"
+    }
+  ],
+  "labels": [
+    {
+      "name": "bank_aliases.csv",
+      "size": 417,
+      "sha256": "e3f771cb066d0576eb2200911aa5461a5c9ae107301dd094dce7f65462b3d6b2"
+    },
+    {
+      "name": "bank_name_translations.csv",
+      "size": 1757,
+      "sha256": "bc16eb18c2fba696b79204e50b550565fdeadfbd692445b072993f87addacd96"
+    },
+    {
+      "name": "label_lexicon.csv",
+      "size": 7411,
+      "sha256": "7a3161d9cec3fedbbdac17c4714300b04b92e39876f7f01f1d2b313c4ae31107"
+    },
+    {
+      "name": "line_item_pt_zh_map.csv",
+      "size": 2470,
+      "sha256": "06b9d9ee6a6d76463c93442e1ea79ccc9f5c9905c0c0847384cc063f9153e67f"
+    },
+    {
+      "name": "line_item_standard.csv",
+      "size": 10096,
+      "sha256": "edaf4e32cb600e323a89ac77f8a53f4f75687c080287217f003ca7a22f36a728"
+    },
+    {
+      "name": "standard_label_by_user.cleaned.csv",
+      "size": 7420,
+      "sha256": "7227ef61a38d285181c18dc35b8ea6555b3b626ddaf1124c750078734c7f7868"
+    },
+    {
+      "name": "standard_label_by_user.csv",
+      "size": 3288,
+      "sha256": "c04b509be8336d62179f7f49840db61b593ee59edff803b8a88a398f483b20d1"
+    },
+    {
+      "name": "user_standard_ocr_repairs.csv",
+      "size": 3482,
+      "sha256": "dcc3b348e9ee49b1c883ea2f9f87ac00d735e09e78d2a0c1e7d64d963c9d558f"
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "run_8b735dd8b309e9ac06a417db4d0f18ad251c0360dd9b98e51e1b3da779397034",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue46_2026",
+      "app_version": "0.4.2",
+      "is_published": 1,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-46-2026.pdf",
+      "source_pdf_sha256_expected": "62e3c2555acb19cec9e10871b4a73ce433d4bfd245e3cc352db6e505a92084b3",
+      "source_pdf_sha256_actual": "62e3c2555acb19cec9e10871b4a73ce433d4bfd245e3cc352db6e505a92084b3",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 926,
+          "sha256": "19e738364cce5acb35d30d8e19c1ead03a3dbf1539bb578eccf37aa7e39b1f74"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 196812,
+          "sha256": "f79bcbefa961fdffe2c7f6cb3e9c07d7663d2da1d1826ac783ad36d114f3ebd9"
+        },
+        {
+          "name": "documents.csv",
+          "size": 4015,
+          "sha256": "9fd13169273e003a60350366a77c8a516b6395b88d5e8120c1a243c6a422359f"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 196812,
+          "sha256": "f79bcbefa961fdffe2c7f6cb3e9c07d7663d2da1d1826ac783ad36d114f3ebd9"
+        }
+      ],
+      "image_count": 1,
+      "image_bytes": 357065
+    },
+    {
+      "run_id": "run_a7602c753e1ea47ef16bc2bb0fdefb595e41abb5b5d5ae80873f4618c5308e2a",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue43_2026",
+      "app_version": "0.4.2",
+      "is_published": 1,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-43-2026.pdf",
+      "source_pdf_sha256_expected": "2273eb85d62b64df6667c9a18dbc525422058acd48fe0208c685dfa9bbc06384",
+      "source_pdf_sha256_actual": "2273eb85d62b64df6667c9a18dbc525422058acd48fe0208c685dfa9bbc06384",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 929,
+          "sha256": "81bf162c3b2346ae8b4e503e09bc7d6c1466b9af3214d316109141618e4df6dd"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 1147050,
+          "sha256": "d63f911a0ebf45e905fbc4db464930f9ef365bf0cbc6d11e61575e551a812a5e"
+        },
+        {
+          "name": "documents.csv",
+          "size": 19082,
+          "sha256": "7bd8250ac0e5d602ce021a38a3938ec19fbf7af84288db9b171ebb8c0865254f"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 962522,
+          "sha256": "ffe10068ed38c9d326e88ed5c07ba8b363d9feca38f055030316d56a973a8454"
+        }
+      ],
+      "image_count": 4,
+      "image_bytes": 1685726
+    },
+    {
+      "run_id": "run_d605172cdcbc2303d4bb39cdb7b690a43d1e35778b0965c6792c38c129cd8982",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue44_2026",
+      "app_version": "0.4.2",
+      "is_published": 1,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-44-2026.pdf",
+      "source_pdf_sha256_expected": "e93df9f0d5d1f16107850be72ae3eab11e7ee4a2c5a6c7a542e6ca7b074b34e3",
+      "source_pdf_sha256_actual": "e93df9f0d5d1f16107850be72ae3eab11e7ee4a2c5a6c7a542e6ca7b074b34e3",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 929,
+          "sha256": "e227f91108c793338f590dd53ba241ceed6553de774e3dee57a0ce70c1c713a7"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 986155,
+          "sha256": "a735f86190ed38af75fc297ad031438aa5eb3bd348129f33602cdde2b9b82d5b"
+        },
+        {
+          "name": "documents.csv",
+          "size": 16694,
+          "sha256": "8503890803951f32594dfea8ace6ef0e90d7a34fe167cee8dd9a1bab84693ebf"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 653149,
+          "sha256": "70a16a18613f276ca2cdcef8f43011e99c0e392941c471c23e6027bde71c6833"
+        }
+      ],
+      "image_count": 5,
+      "image_bytes": 1889646
+    },
+    {
+      "run_id": "run_e0f06167ebf350f5ce6c1fb101d24ae1a2aa23fba45074dd5cbfa65c21d949d8",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue42_2026",
+      "app_version": "0.4.2",
+      "is_published": 1,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-42-2026.pdf",
+      "source_pdf_sha256_expected": "e4f03c9426e1c737241e70df3d27fe1b502c3df1af06726e08883fddda7434ae",
+      "source_pdf_sha256_actual": "e4f03c9426e1c737241e70df3d27fe1b502c3df1af06726e08883fddda7434ae",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 929,
+          "sha256": "f3f43ea83cb4c6e3b9ac93a4eeac4f700f2ac473b080a3627f7f87a224ae9e69"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 328390,
+          "sha256": "b4cce3b147bb02cbc426b1332f740da2f235f4663622a7a9cfd2a4f7928dc3e9"
+        },
+        {
+          "name": "documents.csv",
+          "size": 6200,
+          "sha256": "73964c82b4151eb473b6f5b507d038a42157abfa418f9f2d04f4dacf220c2e8f"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 260782,
+          "sha256": "1544fac04245e4286f3ff8cb8d718b695c40744195f588ae26e8152c7c64939c"
+        }
+      ],
+      "image_count": 2,
+      "image_bytes": 855696
+    },
+    {
+      "run_id": "run_f1053163b8a35d300de82fc8d1f5e6945247660f4eac0435f86820870d8dc9f0",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue45_2026",
+      "app_version": "0.4.2",
+      "is_published": 1,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-45-2026.pdf",
+      "source_pdf_sha256_expected": "636ef81c874da3dc3c98f63bf3502b9b489825b06c8d3f7da6ac8897dac3f71f",
+      "source_pdf_sha256_actual": "636ef81c874da3dc3c98f63bf3502b9b489825b06c8d3f7da6ac8897dac3f71f",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 932,
+          "sha256": "dc40c4daa56925532f33f3f33e0fd037a46115186d8e12bac7c429dac32b5268"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 6184428,
+          "sha256": "4a89aade0edf1067f9398896e8dfcc98175b439450f635a4e043838385eea922"
+        },
+        {
+          "name": "documents.csv",
+          "size": 102728,
+          "sha256": "039f0e2307506a0b51c004a80ee097e2512340f27f076b83ab52b072e4208b84"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 3064122,
+          "sha256": "fe77f2ef62c69dcf3de711037f1d610348e41fe1316e91b697bd5b8d42862834"
+        }
+      ],
+      "image_count": 27,
+      "image_bytes": 13920331
+    },
+    {
+      "run_id": "run_15489a6b74ffc1573d0b2b25d6a03f590b514f92ca831e4ba453f5257df834c9",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue31_2026",
+      "app_version": "0.6.3",
+      "is_published": 0,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-31-2026.pdf",
+      "source_pdf_sha256_expected": "b126343b47f1323187fc6bc80ecca0d40f306e1f491d5e62449bf85cd2b38d29",
+      "source_pdf_sha256_actual": "b126343b47f1323187fc6bc80ecca0d40f306e1f491d5e62449bf85cd2b38d29",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 930,
+          "sha256": "b1983bea67dc9803498c2592ab175f4419a6f11924300491496e36b1ae94333a"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 2593666,
+          "sha256": "cba1b58634621f4be09eaae02e63f9b6bd6f6a703d193025e0542001e10e2112"
+        },
+        {
+          "name": "documents.csv",
+          "size": 41799,
+          "sha256": "46be414be0c8a7b9c8d0fc24effe54182444285fd65b57d9684ce7a0c85a81d7"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 1870646,
+          "sha256": "b9d230609d0366bf7bbe2f89c1b5e01b63be8046826072721d643246efd9459f"
+        }
+      ],
+      "image_count": 11,
+      "image_bytes": 4748517
+    },
+    {
+      "run_id": "run_eadbb15344cd15f416d01c6e45af3d7537f30a3832995884193104b77045ab1b",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue33_2026",
+      "app_version": "0.6.4",
+      "is_published": 0,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-33-2026.pdf",
+      "source_pdf_sha256_expected": "2d51dd30a19e8383f63a836dbe6a57efc8becb1b49378bd229e4be44f6d1c627",
+      "source_pdf_sha256_actual": "2d51dd30a19e8383f63a836dbe6a57efc8becb1b49378bd229e4be44f6d1c627",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 927,
+          "sha256": "5a839da0bd65c1f0e0b918a608e0b914304f340271a157141057e6387c9147f2"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 238774,
+          "sha256": "319e7d5cc83722e41360ee6398fdd3c950081e62fcf0c6467f378e6b8803ff5c"
+        },
+        {
+          "name": "documents.csv",
+          "size": 4750,
+          "sha256": "989244eb9741b46e98ab1341b10701ad16c1fc5c65a161c2f393300717c58eea"
+        },
+        {
+          "name": "import_manifest.json",
+          "size": 2333,
+          "sha256": "b47133efad122078984cb2c178ba871dec250c8802d4767471ac0e9d2cbb62a7"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 120248,
+          "sha256": "b0111a1e2b1f406c00375f3dfe91c0d4d8c47a4be2e3e1b82e9480795cdfb0a2"
+        }
+      ],
+      "image_count": 1,
+      "image_bytes": 699638
+    },
+    {
+      "run_id": "run_e8b648b9d7799c111a014db290fb6fe3ebbfcd7464627110cfbaeeb46991b995",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue32_2026",
+      "app_version": "0.7.0",
+      "is_published": 0,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-32-2026.pdf",
+      "source_pdf_sha256_expected": "2839865ee47916bb20927b6b390873ce2386ffe4253ef04f3ba54d5dfb1f4491",
+      "source_pdf_sha256_actual": "2839865ee47916bb20927b6b390873ce2386ffe4253ef04f3ba54d5dfb1f4491",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 932,
+          "sha256": "ff6155f2183f9e19b1cad5107e238ec9677dba74655140fac09caa9f96f7f136"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 4547706,
+          "sha256": "86d26e20e8c5d02e5362eccafae66accf027e4557a7cf396d2daa07fc9169525"
+        },
+        {
+          "name": "documents.csv",
+          "size": 75848,
+          "sha256": "89d3d73742715fb38003d29dfacb4b44d07d2ff0c686b1d9230681db0a3324ea"
+        },
+        {
+          "name": "import_manifest.json",
+          "size": 2338,
+          "sha256": "bbd70ed0d4d9fc6db7c2bb560a5f6bf5ebf61f85f962d42e619233e085b3cc34"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 1898437,
+          "sha256": "73ec3fee6b415ff3e7292b638349baedff043afd5c3719482e14e0bfa79fb5d1"
+        }
+      ],
+      "image_count": 20,
+      "image_bytes": 13714017
+    },
+    {
+      "run_id": "run_4d7d7c5203969e5a8f171b80c70f36c3ef8bf65575b1e666c741d5b12f80cd2a",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue30_2026",
+      "app_version": "0.7.0",
+      "is_published": 0,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-30-2026.pdf",
+      "source_pdf_sha256_expected": "5a77c6f0447eb642fa9fff27c6e1a46cf6450f88d7051f29dfb0dcfb1aece4ba",
+      "source_pdf_sha256_actual": "5a77c6f0447eb642fa9fff27c6e1a46cf6450f88d7051f29dfb0dcfb1aece4ba",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 929,
+          "sha256": "9af8da51a9ecc2632ede9a4a0049d6ec7749243abe08d08a8ed73e724a5c734e"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 1211545,
+          "sha256": "278f55f86e608f17444c6a7f6d7469bfe2546fa31efa7d1402a5305df52bf115"
+        },
+        {
+          "name": "documents.csv",
+          "size": 20875,
+          "sha256": "15a584c73a07276bb2f9db36cc19744d40975c1c77ddeb0327ab97e328f2b535"
+        },
+        {
+          "name": "import_manifest.json",
+          "size": 2337,
+          "sha256": "ee1f5d1e8032709495191fa5a45bfce0ef638b6617d3f99b8da5e4d137cce3ed"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 849154,
+          "sha256": "162403a3749ac62837ee299278601e58d69ae4981a346e6a67e0749dd23d7a12"
+        }
+      ],
+      "image_count": 4,
+      "image_bytes": 1360842
+    },
+    {
+      "run_id": "run_4a691bccd0b65f495feaad3ee71b1d60bc03af4ca42372b71578492a8a8693ae",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue29_2026",
+      "app_version": "0.7.0",
+      "is_published": 0,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-29-2026.pdf",
+      "source_pdf_sha256_expected": "9cdf5d92f2c5520af6c059fcb813a7dacb1e6c9347107a9b6fcc306a8baf1f8f",
+      "source_pdf_sha256_actual": "9cdf5d92f2c5520af6c059fcb813a7dacb1e6c9347107a9b6fcc306a8baf1f8f",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 929,
+          "sha256": "c507b1d8073ec14f545b91447176ab7af1e0a60489941ee21ac8869bb50fd514"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 315014,
+          "sha256": "8dc212351e21e1c99f65f32543c300374fa1ddfe3e462141f2bb28075f31ef01"
+        },
+        {
+          "name": "documents.csv",
+          "size": 5988,
+          "sha256": "d6b564ad95974f9b4fe57da4a86e044af3d06be1f12a6dc7bf8fc31bb14a63b1"
+        },
+        {
+          "name": "import_manifest.json",
+          "size": 2337,
+          "sha256": "e835b924206bc8d93425e9e49e58b5fbeb2c78c9575c49aeee32b29743ca3fb6"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 247184,
+          "sha256": "9273cdba3b1dc707c297dc464fde06e960f17768920650fa3ddf43b68393174e"
+        }
+      ],
+      "image_count": 2,
+      "image_bytes": 751330
+    },
+    {
+      "run_id": "run_abf559738cde877a16c38b1a59498b05d34c13818ded7d91259e2b1cf79cc16e",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue19_2026",
+      "app_version": "0.7.0",
+      "is_published": 0,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-19-2026.pdf",
+      "source_pdf_sha256_expected": "5c92cef36ad4ada85b370617b5a431ec5401670a1b9618583b740b722eb2011f",
+      "source_pdf_sha256_actual": "5c92cef36ad4ada85b370617b5a431ec5401670a1b9618583b740b722eb2011f",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 932,
+          "sha256": "15d0de865be395582e4168340b691c888014a4f2a821b0613b6ec95a2a4964af"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 5250156,
+          "sha256": "43136a3656e53493eaf337494bea15a9b2e1b9a2f5d66d97669b3ca8acfec280"
+        },
+        {
+          "name": "documents.csv",
+          "size": 87285,
+          "sha256": "7249baf5e70ce5fd93859f6c1fa1a52f53406cfbdfbd0acf912cb0545f0e3691"
+        },
+        {
+          "name": "import_manifest.json",
+          "size": 2338,
+          "sha256": "421c33f0db35fbb81e1beb66b4a18861522014d15712412210580dc9cf4b3b42"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 2350457,
+          "sha256": "74da778e821353f269019c2d0f6b196a25cd5ce69a8e4060b793d194cc4ad753"
+        }
+      ],
+      "image_count": 23,
+      "image_bytes": 13081618
+    },
+    {
+      "run_id": "run_d585d2517d77f8e16ff3ecfe43688367c7964ab6ab60e1ae7b291a64f749b5af",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue18_2026",
+      "app_version": "0.7.0",
+      "is_published": 0,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-18-2026.pdf",
+      "source_pdf_sha256_expected": "c239b16ecf774c86e5dd4e5dbb8307555acac5b333ba0e8cc068c5f014e159a1",
+      "source_pdf_sha256_actual": "c239b16ecf774c86e5dd4e5dbb8307555acac5b333ba0e8cc068c5f014e159a1",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 929,
+          "sha256": "1678639556fb519aa33c22a1a7c7d84291fc00f599fcddc6d9c8fedcb995df6d"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 1739657,
+          "sha256": "aac07856342c0c6fb4b90ac2b32749a48329ee33bce43d8757a1592b521930ad"
+        },
+        {
+          "name": "documents.csv",
+          "size": 28467,
+          "sha256": "d888a4cf2db27f31f09fdd2b01dc198eed87ecc1d7ec6d7b88dd5f8e630fff9f"
+        },
+        {
+          "name": "import_manifest.json",
+          "size": 2337,
+          "sha256": "d9c6b083625309f210459e0214ccf0592aa949bc2e07380ce5e5f09bb17c6d16"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 1190915,
+          "sha256": "ebfe479db09d85c26c0737f65941975df274195bf62e395dd3ffb6a28cf16d9b"
+        }
+      ],
+      "image_count": 8,
+      "image_bytes": 3865568
+    },
+    {
+      "run_id": "run_b8f7417b2f62c49f58461274dfdbfed796a9d43eca5d37cb0124d5fcc2292922",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue17_2026",
+      "app_version": "0.7.0",
+      "is_published": 0,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-17-2026.pdf",
+      "source_pdf_sha256_expected": "231f8b203501c54f3b5187b3559c1357ad2580fa41a84960fd4b66e8c180099f",
+      "source_pdf_sha256_actual": "231f8b203501c54f3b5187b3559c1357ad2580fa41a84960fd4b66e8c180099f",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 932,
+          "sha256": "64ebf7abacf5a9879149f8b976b18ac531aa2445f063a3bec84780b800ee6a05"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 1628495,
+          "sha256": "7db6034c2a282c300778e7d3b7e3abc9d134041de6d3e552d46f0fd55c459382"
+        },
+        {
+          "name": "documents.csv",
+          "size": 36229,
+          "sha256": "2334bb6144abdaeafc763c3c6b48ac86ac50c931badb0168d52300b042f1161f"
+        },
+        {
+          "name": "import_manifest.json",
+          "size": 2338,
+          "sha256": "66c28e22da884f2fc8b1b78e5ebb5216d8086d71284a0aa77804fbb5215d7fb4"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 1305431,
+          "sha256": "b99ddef9ed105a3a0f436e447da72787138178893be6d3a064ed7406e038d0b5"
+        }
+      ],
+      "image_count": 16,
+      "image_bytes": 4658624
+    },
+    {
+      "run_id": "run_1a0ee38c6dba8cca3d2740376f7dcfb1e867dcafbb920969de3b9cf272abcd73",
+      "run_dir": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/outputs/runs/issue16_2026",
+      "app_version": "0.7.0",
+      "is_published": 0,
+      "source_pdf": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/input/anotariais-16-2026.pdf",
+      "source_pdf_sha256_expected": "9fa0eafd24c167786c65363ff57113acb7fb43ca4f17f6db4846b858d169ddb5",
+      "source_pdf_sha256_actual": "9fa0eafd24c167786c65363ff57113acb7fb43ca4f17f6db4846b858d169ddb5",
+      "source_pdf_hash_match": true,
+      "files": [
+        {
+          "name": "run_report.json",
+          "size": 929,
+          "sha256": "7cdb75ba60cd89fd11bfd8749fab7929475990ae7dfbdd497ac20b6d5f6a0074"
+        },
+        {
+          "name": "tb_rows.csv",
+          "size": 343920,
+          "sha256": "73ddc6e4ad4158dea8285007464902a0dca4bb8ad4f9d548ac38aac2ca9e54de"
+        },
+        {
+          "name": "documents.csv",
+          "size": 6343,
+          "sha256": "acd97e95c5d1afd9a2f29629a40197cb01012a82965bf6a5a1a2e770e565e9b0"
+        },
+        {
+          "name": "import_manifest.json",
+          "size": 2337,
+          "sha256": "33e327730dd5138416b71b25de62e8c09f8b49625a0fcc59e6f757be3a8dad5d"
+        },
+        {
+          "name": "review_queue.csv",
+          "size": 331704,
+          "sha256": "d3749865a1b3b0d61a3e73cc21dd1e1e2c93a1c45239f39bbd179b7fba7e6aa9"
+        }
+      ],
+      "image_count": 2,
+      "image_bytes": 1614448
+    }
+  ],
+  "provenance_mismatches": []
+}

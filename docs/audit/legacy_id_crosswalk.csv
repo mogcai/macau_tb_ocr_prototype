@@ -1,0 +1,120 @@
+﻿legacy_id,rows,legacy_labels,languages,label_lexicon_std,label_lexicon_language,label_lexicon_level,concept_keys,user_standard_keys,suggested_standard_keys,suggested_action
+pt_001,27,"Acções, obrigações e quotas",pt,"Acções, obrigações e quotas",pt,parent,lex:pt_001,user:股票、債券及股權,user:股票、債券及股權,map_via_lexicon
+pt_002,24,Aplicações de recursos consignados,pt,Aplicações de recursos consignados,pt,parent,lex:pt_002,user:承銷資金投資,user:承銷資金投資,map_via_lexicon
+pt_003,27,Aplicações em instituições de crédito no Território,pt,Aplicações em instituições de crédito no Território,pt,parent,lex:pt_003,user:在本澳信用機構拆放,user:在本澳信用機構拆放,map_via_lexicon
+pt_004,21,Caixa,pt,Caixa,pt,parent,lex:pt_004,user:現金,user:現金,map_via_lexicon
+pt_005,18,Capital,pt,Capital,pt,parent,lex:pt_005,user:股本,user:股本,map_via_lexicon
+pt_006,24,Cheques e ordens a pagar,pt,Cheques e ordens a pagar,pt,parent,lex:pt_006,user:應付支票及票據,user:應付支票及票據,map_via_lexicon
+pt_007,27,Contas internas e de regularização,pt,Contas internas e de regularização,pt,parent,lex:pt_007,user:內部及調整帳,user:內部及調整帳,map_via_lexicon
+pt_008,27,Crédito concedido,pt,Crédito concedido,pt,parent,lex:pt_008,user:放款,user:放款,map_via_lexicon
+pt_009,24,Créditos abertos,pt,Créditos abertos,pt,parent,lex:pt_009,user:信用狀,user:信用狀,map_via_lexicon
+pt_010,26,Credores,pt,Credores,pt,parent,lex:pt_010,user:債權人,user:債權人,map_via_lexicon
+pt_011,24,Credores por recursos consignados,pt,Credores por recursos consignados,pt,parent,lex:pt_011,user:承銷資金債權人,user:承銷資金債權人,map_via_lexicon
+pt_012,24,Credores por valores recebidos em caução,pt,Credores por valores recebidos em caução,pt,parent,lex:pt_012,user:抵押帳(貸方),user:抵押帳(貸方),map_via_lexicon
+pt_013,24,Credores por valores recebidos em depósito,pt,Credores por valores recebidos em depósito,pt,parent,lex:pt_013,user:代客保管帳(貸方),user:代客保管帳(貸方),map_via_lexicon
+pt_014,24,Credores por valores recebidos para cobrança,pt,Credores por valores recebidos para cobrança,pt,parent,lex:pt_014,user:代收帳(貸方),user:代收帳(貸方),map_via_lexicon
+pt_015,24,Custos plurienais,pt,Custos plurienais,pt,parent,lex:pt_015,user:遞延費用,user:遞延費用,map_via_lexicon
+pt_016,27,Custos por natureza,pt,Custos por natureza,pt,parent,lex:pt_016,user:總支出,user:總支出,map_via_lexicon
+pt_017,27,Depósitos à ordem,pt,Depósitos à ordem,pt,parent,lex:pt_017,user:活期存款,user:活期存款,map_via_lexicon
+pt_018,24,Depósitos à ordem no exterior,pt,Depósitos à ordem no exterior,pt,parent,lex:pt_018,user:在外地之其他信用機構活期存款,user:在外地之其他信用機構活期存款,map_via_lexicon
+pt_019,12,Depósitos à ordem noutras instituições de crédito,pt,Depósitos à ordem noutras instituições de crédito,pt,parent,lex:pt_019,user:在本地之其他信用機構活期存款,,map_via_lexicon
+pt_020,27,Depósitos à ordem noutras instituições de crédito no Território,pt,Depósitos à ordem noutras instituições de crédito no Território,pt,parent,lex:pt_020,user:在本地之其他信用機構活期存款,user:在本地之其他信用機構活期存款,map_via_lexicon
+pt_021,27,Depósitos a prazo,pt,Depósitos a prazo,pt,parent,lex:pt_021,user:定期存款,user:定期存款,map_via_lexicon
+pt_022,24,Depósitos com pré-aviso,pt,Depósitos com pré-aviso,pt,parent,lex:pt_022,user:通知存款,user:通知存款,map_via_lexicon
+pt_023,24,Depósitos com pré-aviso e a prazo no exterior,pt,Depósitos com pré-aviso e a prazo no exterior,pt,parent,lex:pt_023,user:在外地信用機構之通知及定期存款,user:在外地信用機構之通知及定期存款,map_via_lexicon
+pt_024,26,Depósitos do sector público,pt,Depósitos do sector público,pt,parent,lex:pt_024,user:公共機構存款,user:公共機構存款,map_via_lexicon
+pt_025,28,Depósitos na A.M.C.M.,pt,Depósitos na A.M.C.M.,pt,parent,lex:pt_025,user:AMCM存款,user:AMCM存款,map_via_lexicon
+pt_026,24,Despesas de instalação,pt,Despesas de instalação,pt,parent,lex:pt_026,user:開辦費用,user:開辦費用,map_via_lexicon
+pt_027,27,Devedores,pt,Devedores,pt,parent,lex:pt_027,user:債務人,user:債務人,map_via_lexicon
+pt_028,24,Devedores por créditos abertos,pt,Devedores por créditos abertos,pt,parent,lex:pt_028,user:信用狀(借方),user:信用狀(借方),map_via_lexicon
+pt_030,27,Devedores por garantias e avales prestados,pt,Devedores por garantias e avales prestados,pt,parent,lex:pt_030,user:保證及擔保付款(借方),user:保證及擔保付款(借方),map_via_lexicon
+pt_031,24,Empréstimos em moedas externas,pt,Empréstimos em moedas externas,pt,parent,lex:pt_031,user:外幣借款,user:外幣借款,map_via_lexicon
+pt_032,24,Empréstimos por obrigações,pt,Empréstimos por obrigações,pt,parent,lex:pt_032,user:債券借款,user:債券借款,map_via_lexicon
+pt_033,24,Equipamento,pt,Equipamento,pt,parent,lex:pt_033,user:設備,user:設備,map_via_lexicon
+pt_034,24,Exigibilidades diversas,pt,Exigibilidades diversas,pt,parent,lex:pt_034,user:各項負債,user:各項負債,map_via_lexicon
+pt_035,10,FUNDO DE MANEIO,pt,FUNDO DE MANEIO,pt,parent,lex:pt_035,user:營運資金,user:營運資金,map_via_lexicon
+pt_037,27,Garantias e avales prestados,pt,Garantias e avales prestados,pt,parent,lex:pt_037,user:保證及擔保付款,user:保證及擔保付款,map_via_lexicon
+pt_038,24,Imobilizações em curso,pt,Imobilizações em curso,pt,parent,lex:pt_038,user:未完成不動產,user:未完成不動產,map_via_lexicon
+pt_039,26,Imóveis,pt,Imóveis,pt,parent,lex:pt_039,user:不動產,user:不動產,map_via_lexicon
+pt_040,108,Moedas externas,pt,Moedas externas,pt,child,lex:pt_040,user:AMCM存款>外幣 | user:定期存款>外幣 | user:活期存款>外幣 | user:現金>外幣 | user:通知存款>外幣,user:AMCM存款>外幣 | user:定期存款>外幣 | user:活期存款>外幣 | user:現金>外幣 | user:通知存款>外幣,map_via_lexicon
+pt_041,3,no Território,pt,no Território,pt,parent,lex:pt_041,user:在本地之其他信用機構活期存款,,map_via_lexicon
+pt_042,24,Ouro e prata,pt,Ouro e prata,pt,parent,lex:pt_042,user:金、銀,user:金、銀,map_via_lexicon
+pt_043,3,Outra Reserva,pt,Outra Reserva,pt,parent,lex:pt_043,user:其他儲備,,map_via_lexicon
+pt_044,27,Outras aplicações,pt,Outras aplicações,pt,parent,lex:pt_044,user:其他投資,user:其他投資,map_via_lexicon
+pt_045,24,Outras contas extrapatrimoniais,pt,Outras contas extrapatrimoniais,pt,parent,lex:pt_045,user:其他備查帳,user:其他備查帳,map_via_lexicon
+pt_046,24,Outras reservas,pt,Outras reservas,pt,parent,lex:pt_046,user:其他儲備,user:其他儲備,map_via_lexicon
+pt_047,24,Outros Valores,pt,Outros Valores,pt,parent,lex:pt_047,user:其他流動資產,user:其他流動資產,map_via_lexicon
+pt_048,24,Outros valores imobilizados,pt,Outros valores imobilizados,pt,parent,lex:pt_048,user:其他固定資產,user:其他固定資產,map_via_lexicon
+pt_049,24,Participações financeiras,pt,Participações financeiras,pt,parent,lex:pt_049,user:財務投資,user:財務投資,map_via_lexicon
+pt_050,115,Patacas,pt,Patacas,pt,child,lex:pt_050,user:AMCM存款>澳門元 | user:定期存款>澳門元 | user:活期存款>澳門元 | user:現金>澳門元 | user:通知存款>澳門元,user:AMCM存款>澳門元 | user:定期存款>澳門元 | user:活期存款>澳門元 | user:現金>澳門元 | user:通知存款>澳門元,map_via_lexicon
+pt_051,27,Proveitos por natureza,pt,Proveitos por natureza,pt,parent,lex:pt_051,user:總收入,user:總收入,map_via_lexicon
+pt_052,27,Provisões para riscos diversos,pt,Provisões para riscos diversos,pt,parent,lex:pt_052,user:各項風險備用金,user:各項風險備用金,map_via_lexicon
+pt_053,24,Recursos de instituições de crédito no Território,pt,Recursos de instituições de crédito no Território,pt,parent,lex:pt_053,user:本地信用機構資金,user:本地信用機構資金,map_via_lexicon
+pt_054,24,Recursos de outras entidades locais,pt,Recursos de outras entidades locais,pt,parent,lex:pt_054,user:其他本地機構資金,user:其他本地機構資金,map_via_lexicon
+pt_055,7,RESERVA DA REAVALIAÇÃO,pt,RESERVA DA REAVALIAÇÃO,pt,parent,lex:pt_055,user:重估儲備,user:重估儲備,map_via_lexicon
+pt_056,24,Reserva estatutária,pt,Reserva estatutária,pt,parent,lex:pt_056,user:自定儲備,user:自定儲備,map_via_lexicon
+pt_057,27,Reserva legal,pt,Reserva legal,pt,parent,lex:pt_057,user:法定儲備,user:法定儲備,map_via_lexicon
+pt_058,24,Resultados transitados de exercícios anteriores,pt,Resultados transitados de exercícios anteriores,pt,parent,lex:pt_058,user:歷年營業結果,user:歷年營業結果,map_via_lexicon
+pt_059,24,TOTAIS,pt,TOTAIS,pt,parent,lex:pt_059,user:總計,user:總計,map_via_lexicon
+pt_060,27,Valores a cobrar,pt,Valores a cobrar,pt,parent,lex:pt_060,user:應收帳項,user:應收帳項,map_via_lexicon
+pt_061,24,Valores recebidos em caução,pt,Valores recebidos em caução,pt,parent,lex:pt_061,user:抵押帳,user:抵押帳,map_via_lexicon
+pt_062,24,Valores recebidos em depósito:,pt,Valores recebidos em depósito:,pt,parent,lex:pt_062,user:代客保管帳,user:代客保管帳,map_via_lexicon
+pt_063,24,Valores recebidos para cobrança,pt,Valores recebidos para cobrança,pt,parent,lex:pt_063,user:代收帳,user:代收帳,map_via_lexicon
+zh_001,80,AMCM存款,zh-Hant,AMCM存款,zh-Hant,parent,lex:zh_001,user:AMCM存款,user:AMCM存款,map_via_lexicon
+zh_002,81,不動產,zh-Hant,不動產,zh-Hant,parent,lex:zh_002,user:不動產,user:不動產,map_via_lexicon
+zh_003,72,代客保管帳,zh-Hant,代客保管帳,zh-Hant,parent,lex:zh_003,user:代客保管帳,user:代客保管帳,map_via_lexicon
+zh_004,67,代客保管帳(貸方),zh-Hant,代客保管帳(貸方),zh-Hant,parent,lex:zh_004,user:代客保管帳(貸方),user:代客保管帳(貸方),map_via_lexicon
+zh_005,80,代收帳,zh-Hant,代收帳,zh-Hant,parent,lex:zh_005,user:代收帳,user:代收帳,map_via_lexicon
+zh_006,81,代收帳(貸方),zh-Hant,代收帳(貸方),zh-Hant,parent,lex:zh_006,user:代收帳(貸方),user:代收帳(貸方),map_via_lexicon
+zh_007,78,保證及擔保付款,zh-Hant,保證及擔保付款,zh-Hant,parent,lex:zh_007,user:保證及擔保付款,user:保證及擔保付款,map_via_lexicon
+zh_008,74,保證及擔保付款(借方),zh-Hant,保證及擔保付款(借方),zh-Hant,parent,lex:zh_008,user:保證及擔保付款(借方),user:保證及擔保付款(借方),map_via_lexicon
+zh_009,75,信用狀,zh-Hant,信用狀,zh-Hant,parent,lex:zh_009,user:信用狀,user:信用狀,map_via_lexicon
+zh_010,77,信用狀(借方),zh-Hant,信用狀(借方),zh-Hant,parent,lex:zh_010,user:信用狀(借方),user:信用狀(借方),map_via_lexicon
+zh_011,73,債券借款,zh-Hant,債券借款,zh-Hant,parent,lex:zh_011,user:債券借款,user:債券借款,map_via_lexicon
+zh_012,80,債務人,zh-Hant,債務人,zh-Hant,parent,lex:zh_012,user:債務人,user:債務人,map_via_lexicon
+zh_013,58,債權人,zh-Hant,債權人,zh-Hant,parent,lex:zh_013,user:債權人,user:債權人,map_via_lexicon
+zh_014,80,內部及調整帳,zh-Hant,內部及調整帳,zh-Hant,parent,lex:zh_014,user:內部及調整帳,user:內部及調整帳,map_via_lexicon
+zh_015,81,公共機構存款,zh-Hant,公共機構存款,zh-Hant,parent,lex:zh_015,user:公共機構存款,user:公共機構存款,map_via_lexicon
+zh_016,73,其他備查帳,zh-Hant,其他備查帳,zh-Hant,parent,lex:zh_016,user:其他備查帳,user:其他備查帳,map_via_lexicon
+zh_017,77,其他儲備,zh-Hant,其他儲備,zh-Hant,parent,lex:zh_017,user:其他儲備,user:其他儲備,map_via_lexicon
+zh_018,83,其他固定資產,zh-Hant,其他固定資產,zh-Hant,parent,lex:zh_018,user:其他固定資產,user:其他固定資產,map_via_lexicon
+zh_019,79,其他投資,zh-Hant,其他投資,zh-Hant,parent,lex:zh_019,user:其他投資,user:其他投資,map_via_lexicon
+zh_020,76,其他本地機構資金,zh-Hant,其他本地機構資金,zh-Hant,parent,lex:zh_020,user:其他本地機構資金,user:其他本地機構資金,map_via_lexicon
+zh_021,76,其他流動資產,zh-Hant,其他流動資產,zh-Hant,parent,lex:zh_021,user:其他流動資產,user:其他流動資產,map_via_lexicon
+zh_022,76,各項負債,zh-Hant,各項負債,zh-Hant,parent,lex:zh_022,user:各項負債,user:各項負債,map_via_lexicon
+zh_023,80,各項風險備用金,zh-Hant,各項風險備用金,zh-Hant,parent,lex:zh_023,user:各項風險備用金,user:各項風險備用金,map_via_lexicon
+zh_024,78,在外地之其他信用機構活期存款,zh-Hant,在外地之其他信用機構活期存款,zh-Hant,parent,lex:zh_024,user:在外地之其他信用機構活期存款,user:在外地之其他信用機構活期存款,map_via_lexicon
+zh_026,77,在外地信用機構之通知及定期存款,zh-Hant,在外地信用機構之通知及定期存款,zh-Hant,parent,lex:zh_026,user:在外地信用機構之通知及定期存款,user:在外地信用機構之通知及定期存款,map_via_lexicon
+zh_027,84,在本地之其他信用機構活期存款,zh-Hant,在本地之其他信用機構活期存款,zh-Hant,parent,lex:zh_027,user:在本地之其他信用機構活期存款,user:在本地之其他信用機構活期存款,map_via_lexicon
+zh_028,79,在本澳信用機構拆放,zh-Hant,在本澳信用機構拆放,zh-Hant,parent,lex:zh_028,user:在本澳信用機構拆放,user:在本澳信用機構拆放,map_via_lexicon
+zh_029,366,外幣,zh-Hant,外幣,zh-Hant,child,lex:zh_029,user:AMCM存款>外幣 | user:定期存款>外幣 | user:活期存款>外幣 | user:現金>外幣 | user:通知存款>外幣,user:AMCM存款>外幣 | user:定期存款>外幣 | user:活期存款>外幣 | user:現金>外幣 | user:通知存款>外幣,map_via_lexicon
+zh_030,79,外幣借款,zh-Hant,外幣借款,zh-Hant,parent,lex:zh_030,user:外幣借款,user:外幣借款,map_via_lexicon
+zh_031,76,定期存款,zh-Hant,定期存款,zh-Hant,parent,lex:zh_031,user:定期存款,user:定期存款,map_via_lexicon
+zh_032,76,應付支票及票據,zh-Hant,應付支票及票據,zh-Hant,parent,lex:zh_032,user:應付支票及票據,user:應付支票及票據,map_via_lexicon
+zh_033,83,應收帳項,zh-Hant,應收帳項,zh-Hant,parent,lex:zh_033,user:應收帳項,user:應收帳項,map_via_lexicon
+zh_034,77,承銷資金債權人,zh-Hant,承銷資金債權人,zh-Hant,parent,lex:zh_034,user:承銷資金債權人,user:承銷資金債權人,map_via_lexicon
+zh_035,76,承銷資金投資,zh-Hant,承銷資金投資,zh-Hant,parent,lex:zh_035,user:承銷資金投資,user:承銷資金投資,map_via_lexicon
+zh_036,71,抵押帳,zh-Hant,抵押帳,zh-Hant,parent,lex:zh_036,user:抵押帳,user:抵押帳,map_via_lexicon
+zh_037,79,抵押帳(貸方),zh-Hant,抵押帳(貸方),zh-Hant,parent,lex:zh_037,user:抵押帳(貸方),user:抵押帳(貸方),map_via_lexicon
+zh_038,80,放款,zh-Hant,放款,zh-Hant,parent,lex:zh_038,user:放款,user:放款,map_via_lexicon
+zh_039,75,未完成不動產,zh-Hant,未完成不動產,zh-Hant,parent,lex:zh_039,user:未完成不動產,user:未完成不動產,map_via_lexicon
+zh_040,76,本地信用機構資金,zh-Hant,本地信用機構資金,zh-Hant,parent,lex:zh_040,user:本地信用機構資金,user:本地信用機構資金,map_via_lexicon
+zh_041,77,歷年營業結果,zh-Hant,歷年營業結果,zh-Hant,parent,lex:zh_041,user:歷年營業結果,user:歷年營業結果,map_via_lexicon
+zh_042,76,法定儲備,zh-Hant,法定儲備,zh-Hant,parent,lex:zh_042,user:法定儲備,user:法定儲備,map_via_lexicon
+zh_043,79,活期存款,zh-Hant,活期存款,zh-Hant,parent,lex:zh_043,user:活期存款,user:活期存款,map_via_lexicon
+zh_044,374,澳門元,zh-Hant,澳門元,zh-Hant,child,lex:zh_044,user:AMCM存款>澳門元 | user:定期存款>澳門元 | user:活期存款>澳門元 | user:現金>澳門元 | user:通知存款>澳門元,user:AMCM存款>澳門元 | user:定期存款>澳門元 | user:活期存款>澳門元 | user:現金>澳門元 | user:通知存款>澳門元,map_via_lexicon
+zh_045,9,營運資金,zh-Hant,營運資金,zh-Hant,parent,lex:zh_045,user:營運資金,user:營運資金,map_via_lexicon
+zh_046,81,現金,zh-Hant,現金,zh-Hant,parent,lex:zh_046,user:現金,user:現金,map_via_lexicon
+zh_047,84,總支出,zh-Hant,總支出,zh-Hant,parent,lex:zh_047,user:總支出,user:總支出,map_via_lexicon
+zh_049,86,總收入,zh-Hant,總收入,zh-Hant,parent,lex:zh_049,user:總收入,user:總收入,map_via_lexicon
+zh_050,76,總額,zh-Hant,總額,zh-Hant,parent,lex:zh_050,user:總計,,map_via_lexicon
+zh_051,6,總額TOTAIS,zh-Hant,總額TOTAIS,zh-Hant,parent,lex:zh_051,user:總計,,map_via_lexicon
+zh_052,81,股本,zh-Hant,股本,zh-Hant,parent,lex:zh_052,user:股本,user:股本,map_via_lexicon
+zh_053,79,股票、債券及股權,zh-Hant,股票、債券及股權,zh-Hant,parent,lex:zh_053,user:股票、債券及股權,user:股票、債券及股權,map_via_lexicon
+zh_054,74,自定儲備,zh-Hant,自定儲備,zh-Hant,parent,lex:zh_054,user:自定儲備,user:自定儲備,map_via_lexicon
+zh_055,69,設備,zh-Hant,設備,zh-Hant,parent,lex:zh_055,user:設備,user:設備,map_via_lexicon
+zh_056,80,財務投資,zh-Hant,財務投資,zh-Hant,parent,lex:zh_056,user:財務投資,user:財務投資,map_via_lexicon
+zh_057,77,通知存款,zh-Hant,通知存款,zh-Hant,parent,lex:zh_057,user:通知存款,user:通知存款,map_via_lexicon
+zh_058,74,遞延費用,zh-Hant,遞延費用,zh-Hant,parent,lex:zh_058,user:遞延費用,user:遞延費用,map_via_lexicon
+zh_059,67,金、銀,zh-Hant,金、銀,zh-Hant,parent,lex:zh_059,user:金、銀,user:金、銀,map_via_lexicon
+zh_060,73,開辦費用,zh-Hant,開辦費用,zh-Hant,parent,lex:zh_060,user:開辦費用,user:開辦費用,map_via_lexicon

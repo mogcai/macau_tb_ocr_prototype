@@ -1,0 +1,5 @@
+﻿label_language,rows,user_mapped,user_unmapped,user_mapped_pct,concept_mapped,concept_unmapped,legacy_present,legacy_missing,conflict_rows,no_standard_label
+(blank),55,,55,0.0,,55,,55,,55
+latin,127,36,91,28.35,,127,,127,,127
+pt,1603,1597,6,99.63,532,1071,1603,,3,
+zh-Hant,5371,5169,202,96.24,1683,3688,4911,460,82,460
