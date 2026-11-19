@@ -63,7 +63,8 @@ def summary() -> dict[str, Any]:
             "mapping_conflict_rows": _count(
                 conn,
                 "SELECT COUNT(DISTINCT statement_row_id) FROM statement_row_mappings "
-                "WHERE conflict_group_id IS NOT NULL",
+                "WHERE conflict_group_id IS NOT NULL "
+                "AND mapping_status IN ('proposed','approved')",
             ),
         }
     finally:
@@ -199,6 +200,12 @@ def mark_statement_reviewed(
             raise LookupError("statement not found")
         if statement["statement_status"] == "active":
             raise ValueError("active statements are already adopted; review state is not applicable")
+        readiness = next((item for item in review_queue() if item["statement_id"] == statement_id), None)
+        if readiness is not None and not readiness["mapping_ready"]:
+            raise ValueError(
+                "resolve mapping conflict/unmatched before marking reviewed: "
+                f"{readiness['mapping_blockers']}"
+            )
         conn.execute(
             """
             INSERT INTO statement_reviews(
@@ -489,7 +496,8 @@ def review_queue() -> list[dict[str, Any]]:
                    FROM statement_row_mappings m
                    JOIN statement_rows sr2 ON sr2.statement_row_id=m.statement_row_id
                   WHERE sr2.statement_id=s.statement_id
-                    AND m.conflict_group_id IS NOT NULL) AS mapping_conflict_rows
+                    AND m.conflict_group_id IS NOT NULL
+                    AND m.mapping_status IN ('proposed','approved')) AS mapping_conflict_rows
             FROM statements s
             JOIN reporting_entities e ON e.entity_id=s.reporting_entity_id
             LEFT JOIN effective er ON er.statement_id=s.statement_id
@@ -505,8 +513,24 @@ def review_queue() -> list[dict[str, Any]]:
             difference = int(data["debit_total_minor"] or 0) - int(data["credit_total_minor"] or 0)
             data["debit_credit_difference_minor"] = difference
             data["debit_credit_equal"] = difference == 0
+            data["unmapped_rows"] = max(0, int(data["row_count"] or 0) - int(data["mapped_rows"] or 0))
+            data["mapping_ready"] = (
+                int(data["row_count"] or 0) > 0
+                and int(data["mapping_conflict_rows"] or 0) == 0
+                and data["unmapped_rows"] == 0
+            )
+            data["mapping_blockers"] = ";".join(
+                part for part in (
+                    f"mapping_conflict={data['mapping_conflict_rows']}" if data["mapping_conflict_rows"] else "",
+                    f"mapping_unmatched={data['unmapped_rows']}" if data["unmapped_rows"] else "",
+                ) if part
+            )
             if not data["row_count"]:
                 bucket = "no_rows"
+            elif data["mapping_conflict_rows"]:
+                bucket = "mapping_conflict"
+            elif data["unmapped_rows"]:
+                bucket = "mapping_unmatched"
             elif difference != 0:
                 bucket = "unbalanced"
             elif data["missing_labels"] or data["issue_rows"]:
@@ -514,8 +538,10 @@ def review_queue() -> list[dict[str, Any]]:
             else:
                 bucket = "ready_for_adoption"
             data["review_bucket"] = bucket
-            data["priority"] = {"unbalanced": 1, "no_rows": 1, "row_issues": 2}.get(bucket, 3)
-            data["unmapped_rows"] = max(0, int(data["row_count"] or 0) - int(data["mapped_rows"] or 0))
+            data["priority"] = {
+                "mapping_conflict": 1, "mapping_unmatched": 1,
+                "unbalanced": 1, "no_rows": 1, "row_issues": 2,
+            }.get(bucket, 3)
             data["debit_total_display"] = _money(data["debit_total_minor"], data["amount_decimal_places"])
             data["credit_total_display"] = _money(data["credit_total_minor"], data["amount_decimal_places"])
             result.append(data)
@@ -673,6 +699,12 @@ def approve_mapping(
         ).fetchone()
         if item is None:
             raise LookupError("standard item not found")
+        review = conn.execute(
+            "SELECT review_status FROM statement_reviews WHERE statement_id=?",
+            (statement_id,),
+        ).fetchone()
+        if review is not None and review["review_status"] == "reviewed":
+            raise ValueError("statement is reviewed; reopen it before changing mappings")
 
         before = [
             dict(mapping)
@@ -683,7 +715,8 @@ def approve_mapping(
             )
         ]
         conn.execute(
-            "UPDATE statement_row_mappings SET mapping_status='rejected' "
+            "UPDATE statement_row_mappings SET mapping_status='rejected', "
+            "conflict_group_id=NULL "
             "WHERE statement_row_id=? AND standard_item_id<>? "
             "AND mapping_status IN ('proposed','approved')",
             (statement_row_id, standard_item_id),

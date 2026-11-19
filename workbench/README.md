@@ -7,6 +7,8 @@ FastAPI scaffold for the Data Verification Workbench.  It connects to the
 
 ```bash
 .venv/bin/pip install -r requirements-workbench.txt
+```
+```bash
 .venv/bin/uvicorn workbench.main:app --reload --port 8000
 ```
 
@@ -80,14 +82,19 @@ POST /api/statements/{statement_id}/publish  # X-Workbench-Role: publisher, 501 
 1. Reviewer opens `/review`.
 2. Row corrections are saved as `field_verifications`; any correction reopens the
    statement review state (`needs_rework`).
-3. Reviewer marks the statement **reviewed**; it moves from “Pending review” to
+3. Every row must have an `approved` or a single `proposed` standard-item
+   mapping.  Any `conflict` or `unmatched` row blocks review; such statements
+   appear in the `mapping_conflict` / `mapping_unmatched` buckets with the
+   counts shown in the queue.  Proposed mappings do not need to be approved
+   first — they are trusted enough to pass the review gate.
+4. Reviewer marks the statement **reviewed**; it moves from “Pending review” to
    “Reviewed — still held”. It is **not** adopted.
    Reviewed statements are read-only: Save returns `409` and the UI disables
    row editing until **Reopen for editing** is used. Save never changes the
    review status.
-4. An adopter can adopt only a reviewed statement whose queue bucket is
+5. An adopter can adopt only a reviewed statement whose queue bucket is
    `ready_for_adoption`.
-5. Publication remains a separate, not-yet-implemented gate.
+6. Publication remains a separate, not-yet-implemented gate.
 
 This is a scaffold, not production authentication.  It does not yet implement
 login, real user accounts, PDF rendering, import-batch upload, or publish

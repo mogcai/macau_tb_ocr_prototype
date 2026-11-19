@@ -10,7 +10,7 @@
     <thead>
       <tr>
         <th>Priority</th><th>Entity</th><th>Dates</th><th>Bucket</th>
-        <th>Rows</th><th>Mapped</th><th>Unmapped</th><th>Missing</th><th>Issues</th>
+        <th>Rows</th><th>Mapped</th><th>Unmapped</th><th>Conflict</th><th>Missing</th><th>Issues</th>
         <th>Debit / Credit</th><th>Difference</th><th>Field ver.</th><th></th>
       </tr>
     </thead>
@@ -24,19 +24,22 @@
         <td>{{ item.row_count }}</td>
         <td>{{ item.mapped_rows }}</td>
         <td>{{ item.unmapped_rows }}</td>
+        <td>{{ item.mapping_conflict_rows }}</td>
         <td>{{ item.missing_labels }}</td>
         <td>{{ item.issue_rows }}</td>
         <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
         <td>{% if item.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</td>
         <td>{{ item.field_verifications }}</td>
         <td>
-          {% if can_review_statement %}
+          {% if can_review_statement and item.mapping_ready %}
           <button class="review-button" data-statement="{{ item.statement_id }}" data-role="{{ role }}" data-status="reviewed">Mark reviewed</button>
+          {% elif can_review_statement %}
+          <span class="muted">Resolve mapping first</span>
           {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="13" class="muted">No pending held statements.</td></tr>
+      <tr><td colspan="14" class="muted">No pending held statements.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -48,7 +51,7 @@
   <table class="data">
     <thead>
       <tr>
-        <th>Entity</th><th>Dates</th><th>Bucket</th><th>Rows</th><th>Mapped</th><th>Unmapped</th>
+        <th>Entity</th><th>Dates</th><th>Bucket</th><th>Rows</th><th>Mapped</th><th>Unmapped</th><th>Conflict</th>
         <th>Missing</th><th>Issues</th><th>Debit / Credit</th><th>Difference</th><th>Reviewed by</th><th></th>
       </tr>
     </thead>
@@ -61,6 +64,7 @@
         <td>{{ item.row_count }}</td>
         <td>{{ item.mapped_rows }}</td>
         <td>{{ item.unmapped_rows }}</td>
+        <td>{{ item.mapping_conflict_rows }}</td>
         <td>{{ item.missing_labels }}</td>
         <td>{{ item.issue_rows }}</td>
         <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
@@ -73,7 +77,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="12" class="muted">No reviewed held statements.</td></tr>
+      <tr><td colspan="13" class="muted">No reviewed held statements.</td></tr>
       {% endfor %}
     </tbody>
   </table>

@@ -183,7 +183,10 @@ class ReviewWriteTests(unittest.TestCase):
 
     def test_mark_reviewed_then_adopt(self) -> None:
         queue = self.client.get("/api/review/queue").json()
-        ready = [item for item in queue if item["review_bucket"] == "ready_for_adoption"]
+        ready = [
+            item for item in queue
+            if item["review_bucket"] == "ready_for_adoption" and item["mapping_ready"]
+        ]
         if not ready:
             self.skipTest("no ready held statement")
         statement_id = ready[0]["statement_id"]
@@ -211,7 +214,10 @@ class ReviewWriteTests(unittest.TestCase):
 
     def test_reviewed_statement_is_read_only_until_reopened(self) -> None:
         queue = self.client.get("/api/review/queue").json()
-        statement_id = queue[0]["statement_id"]
+        ready = next((item for item in queue if item["mapping_ready"]), None)
+        if ready is None:
+            self.skipTest("no mapping-ready held statement")
+        statement_id = ready["statement_id"]
         reviewed = self.client.post(
             f"/api/review/{statement_id}/review",
             json={"review_status": "reviewed", "note": "reviewed"},
@@ -327,6 +333,57 @@ class ReviewWriteTests(unittest.TestCase):
             1,
         )
         conn.close()
+
+    def test_mapping_conflict_or_unmatched_blocks_review(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        blocked = next((item for item in queue if not item["mapping_ready"]), None)
+        if blocked is None:
+            self.skipTest("no mapping-blocked statement")
+        response = self.client.post(
+            f"/api/review/{blocked['statement_id']}/review",
+            json={"review_status": "reviewed", "note": "should be blocked"},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("mapping", response.json()["detail"].lower())
+        conn = sqlite3.connect(self.db)
+        self.assertIsNone(
+            conn.execute(
+                "SELECT 1 FROM statement_reviews WHERE statement_id=? AND review_status='reviewed'",
+                (blocked["statement_id"],),
+            ).fetchone()
+        )
+        conn.close()
+
+    def test_approving_a_conflict_clears_conflict_state(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        blocked = next(
+            (item for item in queue if item["mapping_conflict_rows"]), None
+        )
+        if blocked is None:
+            self.skipTest("no mapping-conflict statement")
+        statement_id = blocked["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        conflict_row = next(row for row in rows if row["mapping_status"] == "conflict")
+        candidate = conflict_row["mapping_candidates"][0]
+
+        response = self.client.post(
+            f"/api/review/{statement_id}/rows/{conflict_row['statement_row_id']}/map",
+            json={"standard_item_id": candidate["standard_item_id"], "note": "resolve conflict"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["mapping_status"], "approved")
+
+        refreshed = next(
+            item for item in self.client.get("/api/review/queue").json()
+            if item["statement_id"] == statement_id
+        )
+        self.assertEqual(
+            refreshed["mapping_conflict_rows"],
+            blocked["mapping_conflict_rows"] - 1,
+        )
+        self.assertEqual(refreshed["mapped_rows"], blocked["mapped_rows"])
 
 
 if __name__ == "__main__":

@@ -52,3 +52,4 @@ select.cell { min-width: 110px; }
 .save-row { padding: 5px 9px; font-size: 12px; }
 .role-switch { display: inline-flex; gap: 6px; margin-left: 8px; }
 .role-switch a { color: #93c5fd; font-size: 11px; }
+.bad { color: var(--bad); font-weight: 600; }
