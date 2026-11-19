@@ -50,3 +50,5 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 .cell { width: 100%; min-width: 90px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 5px; font-size: 12px; }
 select.cell { min-width: 110px; }
 .save-row { padding: 5px 9px; font-size: 12px; }
+.role-switch { display: inline-flex; gap: 6px; margin-left: 8px; }
+.role-switch a { color: #93c5fd; font-size: 11px; }

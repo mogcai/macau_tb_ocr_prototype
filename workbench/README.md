@@ -28,7 +28,9 @@ version.
 
 ## Roles (local scaffold)
 
-Roles are passed with the `X-Workbench-Role` header (default: `viewer`).
+For local browsing, use the role links in the top bar (they set a
+`workbench_role` cookie via `/set-role/{role}`).  API clients can pass the
+`X-Workbench-Role` header.  Default is `viewer`.
 
 | Role | Capabilities |
 |---|---|

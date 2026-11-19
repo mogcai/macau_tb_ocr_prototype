@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from workbench import service
-from workbench.permissions import DEFAULT_ROLE, can_adopt, can_publish, can_verify
+from workbench.permissions import DEFAULT_ROLE, ROLES, can_adopt, can_publish, can_verify
 
 
 class RowVerificationPayload(BaseModel):
@@ -32,7 +32,14 @@ templates = Jinja2Templates(directory=str(TEMPLATES))
 
 
 def role_from(request: Request, header_role: str | None = None) -> str:
-    return (header_role or request.headers.get("X-Workbench-Role") or DEFAULT_ROLE).strip()
+    candidate = (
+        header_role
+        or request.headers.get("X-Workbench-Role")
+        or request.query_params.get("role")
+        or request.cookies.get("workbench_role")
+        or DEFAULT_ROLE
+    ).strip()
+    return candidate if candidate in ROLES else DEFAULT_ROLE
 
 
 def actor_from(request: Request) -> str:
@@ -49,6 +56,16 @@ def template_context(request: Request, **extra: Any) -> dict[str, Any]:
         "can_publish": can_publish(role),
         **extra,
     }
+
+
+@app.get("/set-role/{role}")
+def set_role(role: str, next: str = "/") -> RedirectResponse:
+    if role not in ROLES:
+        raise HTTPException(status_code=400, detail="unknown role")
+    target = next if next.startswith("/") and not next.startswith("//") else "/"
+    response = RedirectResponse(url=target, status_code=303)
+    response.set_cookie("workbench_role", role, path="/", httponly=False, samesite="lax")
+    return response
 
 
 @app.get("/health")

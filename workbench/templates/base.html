@@ -16,7 +16,14 @@
       <a href="/review">Review queue</a>
       <a href="/statements?status=all">All statements</a>
     </nav>
-    <div class="role">role: <strong>{{ role }}</strong></div>
+    <div class="role">
+      role: <strong>{{ role }}</strong>
+      <span class="role-switch">
+        {% for candidate in ["viewer", "reviewer", "adopter", "publisher", "admin"] %}
+        <a href="/set-role/{{ candidate }}?next={{ request.url.path }}">{{ candidate }}</a>
+        {% endfor %}
+      </span>
+    </div>
   </header>
   <main>
     {% block content %}{% endblock %}

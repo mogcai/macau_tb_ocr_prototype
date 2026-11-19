@@ -89,6 +89,15 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(not_implemented.status_code, 501)
 
+    def test_role_switch_cookie(self) -> None:
+        switch = self.client.get("/set-role/reviewer?next=/review", follow_redirects=False)
+        self.assertEqual(switch.status_code, 303)
+        page = self.client.get("/review")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("reviewer", page.text)
+        bad = self.client.get("/set-role/nope", follow_redirects=False)
+        self.assertEqual(bad.status_code, 400)
+
     def test_review_queue_and_rows(self) -> None:
         queue = self.client.get("/api/review/queue")
         self.assertEqual(queue.status_code, 200)
