@@ -1,0 +1,28 @@
+{
+  "snapshot_path": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/baseline/macau_balancete_v3_mvp_20261119.sqlite",
+  "snapshot_sha256": "3a2a7bb7d6f47a1e1a9baba532bd9333f0c7e867c1fea0036cf202aceb76e48b",
+  "snapshot_size": 16048128,
+  "created_at": "2026-11-19T10:19:10+00:00",
+  "source_db": "/Users/tonyfong/Projects/macau_tb_ocr_prototype/data/macau_balancete_v3.sqlite",
+  "source_sha256": "7370ec3fb8e29a447685a409803d427ca6b315b1014c28798d6bd9aceabfb0c2",
+  "schema_version": "3.0",
+  "scope": "mvp_current",
+  "read_only": true,
+  "integrity_check": "ok",
+  "foreign_key_errors": 0,
+  "adopted_statements": 72,
+  "current_rows": 4462,
+  "held_statements_excluded": 41,
+  "held_rows_excluded": 2584,
+  "active_field_verifications": 0,
+  "active_financially_verified": false,
+  "table_counts": {
+    "statements": 72,
+    "statement_pages": 72,
+    "statement_extractions": 72,
+    "statement_rows": 4462,
+    "extracted_rows": 4462,
+    "field_verifications": 0,
+    "audit_events": 387
+  }
+}

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Macau Banking Workbench{% endblock %}
+{% block content %}
+<h1>Data Workbench</h1>
+<p class="muted">Operational database: <code>{{ summary.db_path }}</code></p>
+
+<section class="cards">
+  <div class="card">
+    <div class="label">Active statements</div>
+    <div class="value">{{ summary.statements_active }}</div>
+    <div class="hint">adopted / current</div>
+  </div>
+  <div class="card">
+    <div class="label">Current rows</div>
+    <div class="value">{{ summary.current_rows }}</div>
+    <div class="hint">v_current_statement_rows</div>
+  </div>
+  <div class="card">
+    <div class="label">Held statements</div>
+    <div class="value">{{ summary.statements_held }}</div>
+    <div class="hint">staging / review</div>
+  </div>
+  <div class="card">
+    <div class="label">Held rows</div>
+    <div class="value">{{ summary.held_rows }}</div>
+    <div class="hint">not current</div>
+  </div>
+  <div class="card">
+    <div class="label">Field verifications</div>
+    <div class="value">{{ summary.field_verifications }}</div>
+    <div class="hint">active: {{ summary.active_field_verifications }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Publications</div>
+    <div class="value">{{ summary.publications }}</div>
+    <div class="hint">publish gate separate</div>
+  </div>
+</section>
+
+{% if summary.snapshot_manifest_exists %}
+<section class="panel">
+  <h2>Read-only MVP snapshot</h2>
+  {% if summary.snapshot %}
+  <table>
+    <tbody>
+      <tr><th>Path</th><td><code>{{ summary.snapshot.path }}</code></td></tr>
+      <tr><th>SHA-256</th><td><code>{{ summary.snapshot.sha256 }}</code></td></tr>
+      <tr><th>Adopted statements</th><td>{{ summary.snapshot.adopted_statements }}</td></tr>
+      <tr><th>Current rows</th><td>{{ summary.snapshot.current_rows }}</td></tr>
+      <tr><th>Held excluded</th><td>{{ summary.snapshot.held_statements_excluded }}</td></tr>
+      <tr><th>Read-only</th><td>{{ summary.snapshot.read_only }}</td></tr>
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Start here</h2>
+  <p>Workbench v1 covers statement review, field verification, adoption and a
+  separate publication gate.  Standard Item mapping / P1 catalogue
+  reconciliation is intentionally out of scope for this version.</p>
+  <p>
+    <a class="button" href="/statements?status=active">Active statements</a>
+    <a class="button secondary" href="/statements?status=held">Held statements</a>
+  </p>
+</section>
+{% endblock %}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Macau Banking Workbench{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Macau Banking <span>Workbench</span></div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/statements?status=active">Active</a>
+      <a href="/statements?status=held">Held</a>
+      <a href="/statements?status=all">All statements</a>
+    </nav>
+    <div class="role">role: <strong>{{ role }}</strong></div>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    Workbench v1 scaffold · adoption and publication are separate capabilities
+  </footer>
+</body>
+</html>

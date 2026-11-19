@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ statement.entity_name }} · Workbench{% endblock %}
+{% block content %}
+<p><a href="/statements">← Statements</a></p>
+<h1>{{ statement.entity_name }}</h1>
+
+<section class="panel">
+  <table class="kv">
+    <tbody>
+      <tr><th>Statement ID</th><td><code>{{ statement.statement_id }}</code></td></tr>
+      <tr><th>Status</th><td><span class="pill {{ statement.statement_status }}">{{ statement.statement_status }}</span></td></tr>
+      <tr><th>Identity</th><td>{{ statement.identity_status }} · {{ statement.metadata_status }}</td></tr>
+      <tr><th>Statement date</th><td>{{ statement.statement_date or "—" }}</td></tr>
+      <tr><th>Publication date</th><td>{{ statement.publication_date or "—" }}</td></tr>
+      <tr><th>Scope</th><td>{{ statement.reporting_scope }}</td></tr>
+      <tr><th>Currency / unit</th><td>{{ statement.currency or "—" }} / {{ statement.unit_scale if statement.unit_scale is not none else "—" }}</td></tr>
+      <tr><th>Extraction</th><td>{{ statement.extraction_status or "—" }} · <code>{{ statement.statement_extraction_id or "—" }}</code></td></tr>
+      <tr><th>Adopted extraction</th><td><code>{{ statement.adopted_statement_extraction_id or "—" }}</code></td></tr>
+      <tr><th>Row count</th><td>{{ rows|length }}</td></tr>
+    </tbody>
+  </table>
+
+  <div class="actions">
+    {% if can_adopt and not statement.adopted_statement_extraction_id %}
+    <button id="adopt-button" data-statement="{{ statement.statement_id }}" data-role="{{ role }}">Adopt current extraction</button>
+    {% elif statement.adopted_statement_extraction_id %}
+    <span class="ok">Already adopted</span>
+    {% else %}
+    <span class="muted">Role <strong>{{ role }}</strong> cannot adopt.</span>
+    {% endif %}
+    <button id="publish-button" disabled title="Publish gate is not implemented in Workbench v1">Publish (not available)</button>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Pages</h2>
+  <table class="data">
+    <thead><tr><th>Order</th><th>PDF page</th><th>Printed page</th><th>Role</th><th>Classification</th><th>Primary</th></tr></thead>
+    <tbody>
+      {% for page in statement.pages %}
+      <tr>
+        <td>{{ page.page_order }}</td>
+        <td>{{ page.pdf_page }}</td>
+        <td>{{ page.printed_page or "—" }}</td>
+        <td>{{ page.page_role }}</td>
+        <td>{{ page.classification_status }}</td>
+        <td>{% if page.is_primary %}yes{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">No pages.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>Statement rows</h2>
+  <table class="data compact">
+    <thead>
+      <tr>
+        <th>#</th><th>Page</th><th>Label</th><th>Debit</th><th>Credit</th><th>State</th><th>Parent context</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.statement_order }}</td>
+        <td>{{ row.pdf_page }}</td>
+        <td>{{ row.label_normalized or "(missing label)" }}</td>
+        <td>{{ row.debit_minor if row.debit_minor is not none else "—" }}</td>
+        <td>{{ row.credit_minor if row.credit_minor is not none else "—" }}</td>
+        <td>{{ row.debit_value_state }} / {{ row.credit_value_state }}</td>
+        <td>{{ row.parent_context_status }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="muted">No rows.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted">Amounts are shown in minor units in this scaffold.  A display formatter is a Workbench v1 UI follow-up.</p>
+</section>
+
+{% if statement.findings %}
+<section class="panel">
+  <h2>Validation findings</h2>
+  <table class="data"><thead><tr><th>Rule</th><th>Severity</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody>{% for finding in statement.findings %}<tr><td>{{ finding.rule_key }}</td><td>{{ finding.severity }}</td><td>{{ finding.finding_status }}</td><td>{{ finding.created_at }}</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+{% endif %}
+
+<script>
+const adoptButton = document.getElementById("adopt-button");
+if (adoptButton) {
+  adoptButton.addEventListener("click", async () => {
+    const statementId = adoptButton.dataset.statement;
+    const role = adoptButton.dataset.role;
+    adoptButton.disabled = true;
+    const response = await fetch(`/api/statements/${statementId}/adopt`, {
+      method: "POST",
+      headers: {"X-Workbench-Role": role, "X-Workbench-Actor": "workbench-ui"}
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Adoption failed");
+      adoptButton.disabled = false;
+    }
+  });
+}
+</script>
+{% endblock %}

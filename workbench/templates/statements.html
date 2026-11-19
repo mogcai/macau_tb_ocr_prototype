@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Statements · Macau Banking Workbench{% endblock %}
+{% block content %}
+<h1>Statements</h1>
+<div class="filters">
+  <a class="{% if status == 'all' %}active{% endif %}" href="/statements?status=all">All</a>
+  <a class="{% if status == 'active' %}active{% endif %}" href="/statements?status=active">Active</a>
+  <a class="{% if status == 'held' %}active{% endif %}" href="/statements?status=held">Held</a>
+</div>
+
+<table class="data">
+  <thead>
+    <tr>
+      <th>Entity</th>
+      <th>Issue / dates</th>
+      <th>Scope</th>
+      <th>Status</th>
+      <th>Rows</th>
+      <th>Pages</th>
+      <th>Adopted</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for statement in statements %}
+    <tr>
+      <td><a href="/statements/{{ statement.statement_id }}">{{ statement.entity_name }}</a></td>
+      <td>{{ statement.statement_date }}{% if statement.publication_date %} · pub {{ statement.publication_date }}{% endif %}</td>
+      <td>{{ statement.reporting_scope }}</td>
+      <td><span class="pill {{ statement.statement_status }}">{{ statement.statement_status }}</span></td>
+      <td>{{ statement.row_count }}</td>
+      <td>{{ statement.page_count }}</td>
+      <td>{% if statement.adopted_statement_extraction_id %}<span class="ok">yes</span>{% else %}<span class="muted">no</span>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="muted">No statements.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
