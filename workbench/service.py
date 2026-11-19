@@ -919,7 +919,7 @@ def approve_mapping(
                     mapping_version, evidence_source, context_json,
                     reviewed_by, reviewed_at, created_at, notes
                 ) VALUES (?, ?, ?, NULL, 'approved', 'manual', 1.0,
-                          'p1-review-1', 'workbench_manual', ?, ?, ?, ?)
+                          'p1-review-1', 'workbench_manual', ?, ?, ?, ?, ?)
                 """,
                 (
                     mapping_id, statement_row_id, standard_item_id,

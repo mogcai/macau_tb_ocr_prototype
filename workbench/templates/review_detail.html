@@ -161,23 +161,27 @@
           <div class="muted candidates">{{ row.mapping_candidates | map(attribute='item_key') | join(' | ') }}</div>
           {% endif %}
         </td>
-        <td>
+        <td class="mapping-cell">
           {% if can_map and not reviewed %}
-          <select class="cell standard-item">
-            <option value="">— select standard item —</option>
-            {% for item in standard_items %}
-            <option value="{{ item.standard_item_id }}" {% if row.standard_item_id == item.standard_item_id %}selected{% endif %}>{{ item.path }}</option>
-            {% endfor %}
-          </select>
-          <button class="map-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Approve</button>
+          <div class="map-actions">
+            <select class="cell standard-item">
+              <option value="">— select standard item —</option>
+              {% for item in standard_items %}
+              <option value="{{ item.standard_item_id }}" {% if row.standard_item_id == item.standard_item_id %}selected{% endif %}>{{ item.path }}</option>
+              {% endfor %}
+            </select>
+            <button class="map-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Approve</button>
+          </div>
           {% else %}
           <span class="muted">—</span>
           {% endif %}
         </td>
-        <td class="row-actions">
+        <td class="actions-cell">
           {% if not reviewed %}
-          <button class="save-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Save</button>
-          <button class="delete-row secondary" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}" data-origin="{{ row.row_origin }}">{% if row.row_origin == 'manual' %}Remove{% else %}Delete{% endif %}</button>
+          <div class="row-actions">
+            <button class="save-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Save</button>
+            <button class="delete-row secondary" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}" data-origin="{{ row.row_origin }}">{% if row.row_origin == 'manual' %}Remove{% else %}Delete{% endif %}</button>
+          </div>
           {% endif %}
         </td>
       </tr>

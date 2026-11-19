@@ -539,6 +539,40 @@ class ReviewWriteTests(unittest.TestCase):
         )
         self.assertEqual(exclude.status_code, 409)
 
+    def test_unmatched_row_can_be_mapped(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        blocked = next((item for item in queue if item["unmapped_rows"]), None)
+        if blocked is None:
+            self.skipTest("no unmatched row")
+        statement_id = blocked["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        row = next(item for item in rows if item["mapping_status"] == "unmatched")
+        item = self.client.get("/api/standard-items").json()[0]
+        response = self.client.post(
+            f"/api/review/{statement_id}/rows/{row['statement_row_id']}/map",
+            json={"standard_item_id": item["standard_item_id"], "note": "match unmatched"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["mapping_status"], "approved")
+        self.assertEqual(response.json()["standard_item_key"], item["item_key"])
+        refreshed = self.client.get(f"/api/review/{statement_id}/rows").json()
+        updated = next(
+            item2 for item2 in refreshed
+            if item2["statement_row_id"] == row["statement_row_id"]
+        )
+        self.assertEqual(updated["mapping_status"], "approved")
+        conn = sqlite3.connect(self.db)
+        self.assertEqual(
+            conn.execute(
+                "SELECT COUNT(*) FROM statement_row_mappings "
+                "WHERE statement_row_id=? AND mapping_status='approved'",
+                (row["statement_row_id"],),
+            ).fetchone()[0],
+            1,
+        )
+        conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()
