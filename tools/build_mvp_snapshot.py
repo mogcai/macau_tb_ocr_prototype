@@ -171,10 +171,23 @@ def build_snapshot(source: Path, out: Path, manifest_path: Path) -> dict[str, An
             where="statement_id IN (%s)" % ",".join("?" * len(active)),
             params=tuple(active),
         )
+        copy_rows(
+            src, dst, "statement_row_adjustments",
+            where="statement_id IN (%s)" % ",".join("?" * len(active)),
+            params=tuple(active),
+        )
 
-        # Catalogue/mapping tables are deliberately empty in the MVP snapshot.
-        for table in ("standard_items", "standard_item_aliases", "statement_row_mappings"):
+        # Catalogue tables are global.  Mappings are copied only for rows that
+        # exist in the snapshot (adopted statements); held-row proposals stay
+        # in the operational DB.
+        for table in ("standard_items", "standard_item_aliases"):
             copy_rows(src, dst, table)
+        if active_rows:
+            copy_rows(
+                src, dst, "statement_row_mappings",
+                where="statement_row_id IN (%s)" % ",".join("?" * len(active_rows)),
+                params=tuple(active_rows),
+            )
 
         copy_rows(
             src, dst, "field_verifications",
@@ -197,7 +210,10 @@ def build_snapshot(source: Path, out: Path, manifest_path: Path) -> dict[str, An
             "entity_id": {row[0] for row in dst.execute("SELECT entity_id FROM reporting_entities")},
             "statement_id": {row[0] for row in dst.execute("SELECT statement_id FROM statements")},
             "statement_extraction_id": {row[0] for row in dst.execute("SELECT statement_extraction_id FROM statement_extractions")},
-            "statement_row_id": {row[0] for row in dst.execute("SELECT statement_row_id FROM statement_rows")},
+            "statement_row_id": (
+                {row[0] for row in dst.execute("SELECT statement_row_id FROM statement_rows")}
+                | {row[0] for row in dst.execute("SELECT adjustment_id FROM statement_row_adjustments")}
+            ),
             "standard_item_id": {row[0] for row in dst.execute("SELECT standard_item_id FROM standard_items")},
             "mapping_id": {row[0] for row in dst.execute("SELECT mapping_id FROM statement_row_mappings")},
             "field_verification_id": {row[0] for row in dst.execute("SELECT field_verification_id FROM field_verifications")},
@@ -272,10 +288,13 @@ def build_snapshot(source: Path, out: Path, manifest_path: Path) -> dict[str, An
             table: dst.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
             for table in (
                 "statements", "statement_pages", "statement_extractions",
-                "statement_rows", "extracted_rows", "field_verifications",
-                "audit_events",
+                "statement_rows", "statement_row_adjustments",
+                "extracted_rows", "field_verifications", "audit_events",
             )
         }
+        current_row_count = dst.execute(
+            "SELECT COUNT(*) FROM v_current_statement_rows"
+        ).fetchone()[0]
     finally:
         src.close()
         dst.close()
@@ -294,7 +313,7 @@ def build_snapshot(source: Path, out: Path, manifest_path: Path) -> dict[str, An
         "integrity_check": integrity,
         "foreign_key_errors": len(fk_errors),
         "adopted_statements": table_counts["statements"],
-        "current_rows": table_counts["statement_rows"],
+        "current_rows": current_row_count,
         "held_statements_excluded": int(meta["snapshot_held_statements"]),
         "held_rows_excluded": int(meta["snapshot_held_rows"]),
         "active_field_verifications": int(meta["snapshot_active_field_verifications"]),

@@ -2,6 +2,7 @@
 {% block title %}Review · {{ statement.entity_name }}{% endblock %}
 {% block content %}
 {% set reviewed = queue_row and queue_row.review_status == 'reviewed' %}
+{% set excluded_adjustments = adjustments | selectattr('adjustment_type', 'equalto', 'exclude') | list %}
 <p><a href="/review">← Review queue</a></p>
 <h1>{{ statement.entity_name }}</h1>
 
@@ -18,6 +19,7 @@
       <tr><th>Issues</th><td>missing {{ queue_row.missing_labels }} · ambiguous/unreadable {{ queue_row.issue_rows }}</td></tr>
       <tr><th>Field verifications</th><td>{{ queue_row.field_verifications }}</td></tr>
       <tr><th>Mapping coverage</th><td>{{ queue_row.mapped_rows }} mapped · {{ queue_row.unmapped_rows }} unmatched · {{ queue_row.mapping_conflict_rows }} conflict{% if queue_row.mapping_ready %} · <span class="ok">ready</span>{% else %} · <span class="bad">resolve mapping first</span>{% endif %}</td></tr>
+      <tr><th>Row adjustments</th><td>{{ adjustments|length }} active{% if excluded_adjustments %} · {{ excluded_adjustments|length }} excluded row(s){% endif %}</td></tr>
       <tr><th>Reviewer status</th><td>{{ queue_row.review_status }}{% if queue_row.reviewed_by %} · {{ queue_row.reviewed_by }}{% endif %}</td></tr>
     </tbody>
   </table>
@@ -33,31 +35,98 @@
   {% elif queue_row.mapping_ready %}
   <button class="review-button" data-statement="{{ statement.statement_id }}" data-role="{{ role }}" data-status="reviewed">Mark reviewed</button>
   {% else %}
+  <p><span class="pill blocked">Resolve mapping first</span></p>
   <p class="bad">Resolve all conflict / unmatched standard-item mappings before marking reviewed.</p>
   {% endif %}
 </section>
 {% endif %}
 
+{% if can_verify and not reviewed %}
 <section class="panel">
-  <h2>Rows</h2>
+  <h2>Insert a missed row</h2>
+  <p class="muted">Use this when OCR read too few rows. The inserted row is a manual overlay; raw OCR evidence is unchanged.</p>
+  <div class="insert-form">
+    <label>Position
+      <select class="insert-after">
+        <option value="__start__">At start</option>
+        <option value="__end__" selected>At end</option>
+        {% for row in rows %}
+        <option value="{{ row.statement_row_id }}">After #{{ row.statement_order }} · {{ row.effective_label or "—" }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Type
+      <select class="insert-type">
+        {% for type in ["item", "heading", "subtotal", "total", "continuation", "note", "header", "unknown"] %}
+        <option value="{{ type }}" {% if type == "item" %}selected{% endif %}>{{ type }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Page
+      <input class="insert-page" type="number" min="1" placeholder="page">
+    </label>
+    <label class="wide">Label
+      <input class="insert-label" placeholder="row label">
+    </label>
+    <label>Debit
+      <input class="insert-debit" placeholder="0.00">
+    </label>
+    <label>Debit state
+      <select class="insert-debit-state">
+        {% for state in ["amount", "blank", "dash", "unreadable", "not_applicable", "ambiguous"] %}
+        <option value="{{ state }}" {% if state == "amount" %}selected{% endif %}>{{ state }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Credit
+      <input class="insert-credit" placeholder="0.00">
+    </label>
+    <label>Credit state
+      <select class="insert-credit-state">
+        {% for state in ["amount", "blank", "dash", "unreadable", "not_applicable", "ambiguous"] %}
+        <option value="{{ state }}" {% if state == "blank" %}selected{% endif %}>{{ state }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="wide">Standard item (optional)
+      <select class="insert-standard-item">
+        <option value="">— select later —</option>
+        {% for item in standard_items %}
+        <option value="{{ item.standard_item_id }}">{{ item.path }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="wide">Reason
+      <input class="insert-note" placeholder="e.g. OCR missed this line">
+    </label>
+    <div class="insert-actions">
+      <button class="insert-row" data-statement="{{ statement.statement_id }}" data-role="{{ role }}">Insert row</button>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Rows <span class="muted">({{ rows|length }})</span></h2>
   {% if reviewed %}
   <p class="muted">This statement is <strong>reviewed</strong>. Rows are read-only; use Reopen for editing.</p>
   {% else %}
-  <p class="muted">Raw OCR is read-only. Saving writes a field verification, not an OCR change.</p>
+  <p class="muted">Raw OCR is read-only. Saving writes a field verification; Delete hides an over-read row without deleting OCR evidence.</p>
   {% endif %}
+  <div class="table-scroll">
   <table class="data compact">
     <thead>
       <tr>
         <th>#</th><th>Page</th><th>Raw label</th><th>Effective label</th>
         <th>Raw debit / credit</th><th>Effective debit</th><th>State</th><th>Effective credit</th><th>State</th>
-        <th>Standard item</th><th>Mapping</th><th></th>
+        <th>Standard item</th><th>Mapping</th><th>Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for row in rows %}
-      <tr data-row="{{ row.statement_row_id }}">
-        <td>{{ row.statement_order }}</td>
-        <td>{{ row.pdf_page }}</td>
+      <tr data-row="{{ row.statement_row_id }}" {% if row.row_origin == 'manual' %}class="manual-row"{% endif %}>
+        <td>{{ row.statement_order }}{% if row.row_origin == 'manual' %} <span class="pill manual">manual</span>{% endif %}</td>
+        <td>{{ row.pdf_page or "—" }}</td>
         <td><code>{{ row.label_raw or "—" }}</code></td>
         <td><input class="cell label" value="{{ row.effective_label or '' }}" placeholder="corrected label" {% if reviewed %}disabled{% endif %}></td>
         <td class="muted"><code>{{ row.debit_raw or "—" }} / {{ row.credit_raw or "—" }}</code></td>
@@ -86,7 +155,7 @@
             <span class="pill proposed">conflict</span>
             <span class="muted">{{ row.mapping_candidates|length }} candidates</span>
           {% else %}
-            <span class="muted">unmatched</span>
+            <span class="pill blocked">unmatched</span>
           {% endif %}
           {% if row.mapping_candidates %}
           <div class="muted candidates">{{ row.mapping_candidates | map(attribute='item_key') | join(' | ') }}</div>
@@ -105,14 +174,50 @@
           <span class="muted">—</span>
           {% endif %}
         </td>
-        <td>{% if not reviewed %}<button class="save-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Save</button>{% endif %}</td>
+        <td class="row-actions">
+          {% if not reviewed %}
+          <button class="save-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Save</button>
+          <button class="delete-row secondary" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}" data-origin="{{ row.row_origin }}">{% if row.row_origin == 'manual' %}Remove{% else %}Delete{% endif %}</button>
+          {% endif %}
+        </td>
       </tr>
       {% else %}
       <tr><td colspan="12" class="muted">No rows.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </section>
+
+{% if excluded_adjustments %}
+<section class="panel">
+  <h2>Excluded OCR rows <span class="muted">({{ excluded_adjustments|length }})</span></h2>
+  <p class="muted">These rows were read by mistake. The raw OCR row is retained; only the effective statement excludes it.</p>
+  <div class="table-scroll">
+  <table class="data compact">
+    <thead>
+      <tr><th>#</th><th>Page</th><th>Label</th><th>Raw debit / credit</th><th>Reason</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for adjustment in excluded_adjustments %}
+      <tr>
+        <td>{{ adjustment.display_order_value or "—" }}</td>
+        <td>{{ adjustment.display_page or "—" }}</td>
+        <td><code>{{ adjustment.target_label_raw or adjustment.target_label or "—" }}</code></td>
+        <td class="muted"><code>{{ adjustment.debit_display or "—" }} / {{ adjustment.credit_display or "—" }}</code></td>
+        <td>{{ adjustment.reason or "—" }}</td>
+        <td>
+          {% if can_verify and not reviewed %}
+          <button class="restore-adjustment secondary" data-statement="{{ statement.statement_id }}" data-adjustment="{{ adjustment.adjustment_id }}" data-role="{{ role }}">Restore</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
 
 <script>
 let dirty = false;
@@ -151,6 +256,93 @@ document.querySelectorAll(".save-row").forEach((button) => {
       button.disabled = false;
     }
   });
+});
+document.querySelectorAll(".delete-row").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const manual = button.dataset.origin === "manual";
+    const message = manual
+      ? "Remove this manually inserted row?"
+      : "Exclude this OCR row from the statement? Raw OCR evidence is kept.";
+    if (!window.confirm(message)) {
+      return;
+    }
+    button.disabled = true;
+    const response = await fetch(`/api/review/${button.dataset.statement}/rows/${button.dataset.row}/exclude`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      },
+      body: JSON.stringify({note: manual ? "Manual row removed" : "OCR over-read; row excluded"})
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Exclude failed");
+      button.disabled = false;
+    }
+  });
+});
+document.querySelectorAll(".restore-adjustment").forEach((button) => {
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    const response = await fetch(`/api/review/${button.dataset.statement}/adjustments/${button.dataset.adjustment}/restore`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      },
+      body: JSON.stringify({note: "Restore row in Workbench"})
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Restore failed");
+      button.disabled = false;
+    }
+  });
+});
+document.querySelector(".insert-row")?.addEventListener("click", async () => {
+  const button = document.querySelector(".insert-row");
+  const position = document.querySelector(".insert-after").value;
+  const payload = {
+    at_start: position === "__start__",
+    after_row_id: position === "__start__" || position === "__end__" ? null : position,
+    pdf_page: document.querySelector(".insert-page").value ? Number(document.querySelector(".insert-page").value) : null,
+    row_type: document.querySelector(".insert-type").value,
+    label: document.querySelector(".insert-label").value,
+    debit: document.querySelector(".insert-debit").value,
+    credit: document.querySelector(".insert-credit").value,
+    debit_state: document.querySelector(".insert-debit-state").value,
+    credit_state: document.querySelector(".insert-credit-state").value,
+    standard_item_id: document.querySelector(".insert-standard-item").value || null,
+    note: document.querySelector(".insert-note").value || "OCR missed this row"
+  };
+  if (!payload.label.trim()) {
+    alert("Enter a label for the inserted row.");
+    return;
+  }
+  button.disabled = true;
+  const response = await fetch(`/api/review/${button.dataset.statement}/rows`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Workbench-Role": button.dataset.role,
+      "X-Workbench-Actor": "workbench-ui"
+    },
+    body: JSON.stringify(payload)
+  });
+  if (response.ok) {
+    window.location.reload();
+  } else {
+    const body = await response.json().catch(() => ({}));
+    alert(body.detail || "Insert failed");
+    button.disabled = false;
+  }
 });
 document.querySelectorAll(".map-row").forEach((button) => {
   button.addEventListener("click", async () => {

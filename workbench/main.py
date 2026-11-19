@@ -34,6 +34,24 @@ class StandardItemPayload(BaseModel):
     standard_item_id: str
     note: str = ""
 
+
+class RowInsertPayload(BaseModel):
+    after_row_id: str | None = None
+    at_start: bool = False
+    pdf_page: int | None = None
+    row_type: str = "item"
+    label: str
+    debit: str | None = None
+    credit: str | None = None
+    debit_state: str = "blank"
+    credit_state: str = "blank"
+    standard_item_id: str | None = None
+    note: str = ""
+
+
+class RowAdjustmentPayload(BaseModel):
+    note: str = ""
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 STATIC = Path(__file__).resolve().parent / "static"
@@ -174,6 +192,102 @@ def api_map_row(
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except service.StatementReviewedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/review/{statement_id}/adjustments")
+def api_statement_adjustments(statement_id: str) -> list[dict[str, Any]]:
+    try:
+        return service.statement_adjustments(statement_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/review/{statement_id}/rows")
+def api_insert_row(
+    statement_id: str,
+    payload: RowInsertPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_verify(role):
+        raise HTTPException(status_code=403, detail="verify capability is required")
+    try:
+        return service.insert_row(
+            statement_id,
+            actor=actor_from(request),
+            after_row_id=payload.after_row_id,
+            at_start=payload.at_start,
+            pdf_page=payload.pdf_page,
+            row_type=payload.row_type,
+            label=payload.label,
+            debit=payload.debit,
+            credit=payload.credit,
+            debit_state=payload.debit_state,
+            credit_state=payload.credit_state,
+            standard_item_id=payload.standard_item_id,
+            note=payload.note,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except service.StatementReviewedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/review/{statement_id}/rows/{statement_row_id}/exclude")
+def api_exclude_row(
+    statement_id: str,
+    statement_row_id: str,
+    payload: RowAdjustmentPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_verify(role):
+        raise HTTPException(status_code=403, detail="verify capability is required")
+    try:
+        return service.exclude_row(
+            statement_id,
+            statement_row_id,
+            actor=actor_from(request),
+            note=payload.note,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except service.StatementReviewedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/review/{statement_id}/adjustments/{adjustment_id}/restore")
+def api_restore_adjustment(
+    statement_id: str,
+    adjustment_id: str,
+    payload: RowAdjustmentPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_verify(role):
+        raise HTTPException(status_code=403, detail="verify capability is required")
+    try:
+        return service.restore_adjustment(
+            statement_id,
+            adjustment_id,
+            actor=actor_from(request),
+            note=payload.note,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except service.StatementReviewedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -277,6 +391,7 @@ def review_detail_page(request: Request, statement_id: str) -> HTMLResponse:
             statement=detail,
             queue_row=queue_row,
             rows=service.review_rows(statement_id),
+            adjustments=service.statement_adjustments(statement_id),
             standard_items=service.standard_items(),
         ),
     )

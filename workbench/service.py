@@ -377,10 +377,44 @@ SELECT
         AND fv.verification_status='verified'), sr.credit_minor) AS effective_credit_minor,
     COALESCE((SELECT fv.verified_value_text FROM field_verifications fv
       WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='credit_value_state'
-        AND fv.verification_status='verified'), sr.credit_value_state) AS effective_credit_state
+        AND fv.verification_status='verified'), sr.credit_value_state) AS effective_credit_state,
+    'ocr' AS row_origin,
+    NULL AS standard_item_id
 FROM statement_rows sr
 JOIN extracted_rows er ON er.extracted_row_id=sr.extracted_row_id
 JOIN document_pages dp ON dp.document_page_id=er.document_page_id
+WHERE NOT EXISTS (
+    SELECT 1 FROM statement_row_adjustments a
+    WHERE a.adjustment_type='exclude'
+      AND a.adjustment_status='active'
+      AND a.target_statement_row_id=sr.statement_row_id
+)
+UNION ALL
+SELECT
+    a.statement_id,
+    a.adjustment_id AS statement_row_id,
+    a.display_order AS statement_order,
+    a.row_type,
+    'unknown' AS parent_context_status,
+    NULL AS label_raw,
+    NULL AS debit_raw,
+    NULL AS credit_raw,
+    a.pdf_page,
+    a.label_normalized AS base_label,
+    a.debit_minor AS base_debit_minor,
+    a.debit_value_state AS base_debit_state,
+    a.credit_minor AS base_credit_minor,
+    a.credit_value_state AS base_credit_state,
+    a.label_normalized AS effective_label,
+    a.debit_minor AS effective_debit_minor,
+    a.debit_value_state AS effective_debit_state,
+    a.credit_minor AS effective_credit_minor,
+    a.credit_value_state AS effective_credit_state,
+    'manual' AS row_origin,
+    a.standard_item_id
+FROM statement_row_adjustments a
+WHERE a.adjustment_type='insert'
+  AND a.adjustment_status='active'
 """
 
 
@@ -412,7 +446,47 @@ def standard_items() -> list[dict[str, Any]]:
     return rows
 
 
-def _mapping_info(conn: sqlite3.Connection, statement_row_id: str) -> dict[str, Any]:
+def _mapping_info(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, Any]:
+    statement_row_id = row["statement_row_id"]
+    if row.get("row_origin") == "manual":
+        item_id = row.get("standard_item_id") or ""
+        if item_id:
+            item = conn.execute(
+                "SELECT standard_item_id, item_key, canonical_zh, canonical_pt "
+                "FROM standard_items WHERE standard_item_id=?",
+                (item_id,),
+            ).fetchone()
+            if item is not None:
+                candidate = {
+                    "mapping_id": "",
+                    "statement_row_id": statement_row_id,
+                    "standard_item_id": item["standard_item_id"],
+                    "mapping_status": "approved",
+                    "conflict_group_id": None,
+                    "match_method": "manual",
+                    "match_score": 1.0,
+                    "mapping_version": "manual-row",
+                    "item_key": item["item_key"],
+                    "canonical_zh": item["canonical_zh"],
+                    "canonical_pt": item["canonical_pt"],
+                }
+                return {
+                    "mapping_status": "approved",
+                    "standard_item_id": item["standard_item_id"],
+                    "standard_item_key": item["item_key"],
+                    "standardised_label": text(item["canonical_zh"]) or text(item["canonical_pt"]),
+                    "mapping_candidates": [candidate],
+                    "row_origin": "manual",
+                }
+        return {
+            "mapping_status": "unmatched",
+            "standard_item_id": "",
+            "standard_item_key": "",
+            "standardised_label": "",
+            "mapping_candidates": [],
+            "row_origin": "manual",
+        }
+
     mappings = [dict(row) for row in conn.execute(
         """
         SELECT m.mapping_id, m.statement_row_id, m.standard_item_id,
@@ -451,6 +525,7 @@ def _mapping_info(conn: sqlite3.Connection, statement_row_id: str) -> dict[str, 
             if selected else ""
         ),
         "mapping_candidates": mappings,
+        "row_origin": "ocr",
     }
 
 
@@ -482,22 +557,24 @@ def review_queue() -> list[dict[str, Any]]:
                   WHERE rv.statement_id=s.statement_id) AS reviewed_by,
                 (SELECT rv.reviewed_at FROM statement_reviews rv
                   WHERE rv.statement_id=s.statement_id) AS reviewed_at,
-                (SELECT COUNT(DISTINCT m.statement_row_id)
-                   FROM statement_row_mappings m
-                   JOIN statement_rows sr2 ON sr2.statement_row_id=m.statement_row_id
-                  WHERE sr2.statement_id=s.statement_id
-                    AND m.mapping_status IN ('proposed','approved')) AS mapped_rows,
-                (SELECT COUNT(DISTINCT m.statement_row_id)
-                   FROM statement_row_mappings m
-                   JOIN statement_rows sr2 ON sr2.statement_row_id=m.statement_row_id
-                  WHERE sr2.statement_id=s.statement_id
-                    AND m.mapping_status='approved') AS approved_mapping_rows,
-                (SELECT COUNT(DISTINCT m.statement_row_id)
-                   FROM statement_row_mappings m
-                   JOIN statement_rows sr2 ON sr2.statement_row_id=m.statement_row_id
-                  WHERE sr2.statement_id=s.statement_id
-                    AND m.conflict_group_id IS NOT NULL
-                    AND m.mapping_status IN ('proposed','approved')) AS mapping_conflict_rows
+                (SELECT COUNT(*) FROM effective er2
+                  WHERE er2.statement_id=s.statement_id
+                    AND (er2.standard_item_id IS NOT NULL
+                         OR EXISTS (SELECT 1 FROM statement_row_mappings m
+                                     WHERE m.statement_row_id=er2.statement_row_id
+                                       AND m.mapping_status IN ('proposed','approved')))) AS mapped_rows,
+                (SELECT COUNT(*) FROM effective er2
+                  WHERE er2.statement_id=s.statement_id
+                    AND (er2.standard_item_id IS NOT NULL
+                         OR EXISTS (SELECT 1 FROM statement_row_mappings m
+                                     WHERE m.statement_row_id=er2.statement_row_id
+                                       AND m.mapping_status='approved'))) AS approved_mapping_rows,
+                (SELECT COUNT(*) FROM effective er2
+                  WHERE er2.statement_id=s.statement_id
+                    AND EXISTS (SELECT 1 FROM statement_row_mappings m
+                                 WHERE m.statement_row_id=er2.statement_row_id
+                                   AND m.conflict_group_id IS NOT NULL
+                                   AND m.mapping_status IN ('proposed','approved'))) AS mapping_conflict_rows
             FROM statements s
             JOIN reporting_entities e ON e.entity_id=s.reporting_entity_id
             LEFT JOIN effective er ON er.statement_id=s.statement_id
@@ -560,7 +637,8 @@ def review_rows(statement_id: str, limit: int = 1000) -> list[dict[str, Any]]:
             raise LookupError("statement not found")
         places = statement["amount_decimal_places"]
         rows = conn.execute(
-            f"{EFFECTIVE_ROW_SQL} WHERE sr.statement_id=? ORDER BY sr.statement_order, sr.statement_row_id LIMIT ?",
+            f"SELECT * FROM ({EFFECTIVE_ROW_SQL}) "
+            "WHERE statement_id=? ORDER BY statement_order, statement_row_id LIMIT ?",
             (statement_id, limit),
         ).fetchall()
         result = []
@@ -576,7 +654,7 @@ def review_rows(statement_id: str, limit: int = 1000) -> list[dict[str, Any]]:
             if data["effective_credit_state"] in ("ambiguous", "unreadable"):
                 issues.append("credit_" + data["effective_credit_state"])
             data["row_issues"] = ";".join(issues)
-            data.update(_mapping_info(conn, data["statement_row_id"]))
+            data.update(_mapping_info(conn, data))
             result.append(data)
         return result
     finally:
@@ -603,6 +681,60 @@ def verify_row(
     credit_minor = _parse_money(credit) if credit_state == "amount" else 0
     conn = connect_v3(write=True)
     try:
+        review = conn.execute(
+            "SELECT review_status FROM statement_reviews WHERE statement_id=?",
+            (statement_id,),
+        ).fetchone()
+        if review is not None and review["review_status"] == "reviewed":
+            raise StatementReviewedError("statement is reviewed; reopen it before editing")
+
+        adjustment = conn.execute(
+            "SELECT * FROM statement_row_adjustments "
+            "WHERE adjustment_id=? AND statement_id=? AND adjustment_type='insert' "
+            "AND adjustment_status='active'",
+            (statement_row_id, statement_id),
+        ).fetchone()
+        if adjustment is not None:
+            before = dict(adjustment)
+            conn.execute(
+                "UPDATE statement_row_adjustments SET label_normalized=?, "
+                "debit_minor=?, debit_value_state=?, credit_minor=?, credit_value_state=? "
+                "WHERE adjustment_id=?",
+                (
+                    "" if label is None else text(label),
+                    debit_minor if debit_state == "amount" else None, debit_state,
+                    credit_minor if credit_state == "amount" else None, credit_state,
+                    statement_row_id,
+                ),
+            )
+            event_id = stable_id(
+                "workbench_manual_row_edit", statement_row_id, VERSION, now()
+            )
+            conn.execute(
+                "INSERT INTO audit_events("
+                "audit_event_id, event_type, statement_id, actor_id, "
+                "before_json, after_json, details_json, reason, created_at"
+                ") VALUES (?, 'workbench_manual_row_edited', ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    event_id, statement_id, actor,
+                    json.dumps(before, ensure_ascii=False, default=str),
+                    json.dumps({
+                        "label": label, "debit_minor": debit_minor,
+                        "debit_state": debit_state, "credit_minor": credit_minor,
+                        "credit_state": credit_state,
+                    }, ensure_ascii=False),
+                    json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
+                    note or "Workbench manual row edit",
+                    now(),
+                ),
+            )
+            conn.commit()
+            rows = review_rows(statement_id)
+            for item in rows:
+                if item["statement_row_id"] == statement_row_id:
+                    return item
+            raise LookupError("statement row not found after verification")
+
         row = conn.execute(
             "SELECT statement_id, label_normalized, debit_minor, debit_value_state, "
             "credit_minor, credit_value_state FROM statement_rows WHERE statement_row_id=?",
@@ -610,12 +742,6 @@ def verify_row(
         ).fetchone()
         if row is None or row["statement_id"] != statement_id:
             raise LookupError("statement row not found")
-        review = conn.execute(
-            "SELECT review_status FROM statement_reviews WHERE statement_id=?",
-            (statement_id,),
-        ).fetchone()
-        if review is not None and review["review_status"] == "reviewed":
-            raise StatementReviewedError("statement is reviewed; reopen it before editing")
         before = dict(row)
         fields = [
             ("label_normalized", before["label_normalized"], "" if label is None else label),
@@ -691,7 +817,7 @@ def approve_mapping(
             "SELECT statement_id FROM statement_rows WHERE statement_row_id=?",
             (statement_row_id,),
         ).fetchone()
-        if row is None or row["statement_id"] != statement_id:
+        if row is not None and row["statement_id"] != statement_id:
             raise LookupError("statement row not found")
         item = conn.execute(
             "SELECT standard_item_id, item_key FROM standard_items WHERE standard_item_id=?",
@@ -704,8 +830,51 @@ def approve_mapping(
             (statement_id,),
         ).fetchone()
         if review is not None and review["review_status"] == "reviewed":
-            raise ValueError("statement is reviewed; reopen it before changing mappings")
+            raise StatementReviewedError("statement is reviewed; reopen it before changing mappings")
 
+        adjustment = conn.execute(
+            "SELECT * FROM statement_row_adjustments "
+            "WHERE adjustment_id=? AND statement_id=? AND adjustment_type='insert' "
+            "AND adjustment_status='active'",
+            (statement_row_id, statement_id),
+        ).fetchone()
+        if adjustment is not None:
+            conn.execute(
+                "UPDATE statement_row_adjustments SET standard_item_id=? "
+                "WHERE adjustment_id=?",
+                (standard_item_id, statement_row_id),
+            )
+            event_id = stable_id(
+                "workbench_manual_row_mapping", statement_row_id, standard_item_id,
+                VERSION, now(),
+            )
+            conn.execute(
+                "INSERT INTO audit_events("
+                "audit_event_id, event_type, statement_id, "
+                "standard_item_id, actor_id, before_json, after_json, "
+                "details_json, reason, created_at"
+                ") VALUES (?, 'workbench_manual_row_mapped', ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    event_id, statement_id, standard_item_id, actor,
+                    json.dumps(
+                        {"standard_item_id": adjustment["standard_item_id"]},
+                        ensure_ascii=False,
+                    ),
+                    json.dumps({"standard_item_id": standard_item_id}, ensure_ascii=False),
+                    json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
+                    note or "Manual row standard item selected",
+                    now(),
+                ),
+            )
+            conn.commit()
+            rows = review_rows(statement_id)
+            for item_row in rows:
+                if item_row["statement_row_id"] == statement_row_id:
+                    return item_row
+            raise LookupError("statement row not found after mapping")
+
+        if row is None:
+            raise LookupError("statement row not found")
         before = [
             dict(mapping)
             for mapping in conn.execute(
@@ -788,3 +957,374 @@ def approve_mapping(
         if item_row["statement_row_id"] == statement_row_id:
             return item_row
     raise LookupError("statement row not found after mapping")
+
+
+def _language_of(value: str) -> str:
+    if any("\u3400" <= char <= "\u9fff" for char in value):
+        return "zh-Hant"
+    if any(char.isalpha() for char in value):
+        return "pt"
+    return "unknown"
+
+
+def statement_adjustments(statement_id: str) -> list[dict[str, Any]]:
+    """Return active row adjustments with enough detail for review."""
+    conn = connect_v3()
+    try:
+        statement = conn.execute(
+            "SELECT amount_decimal_places FROM statements WHERE statement_id=?",
+            (statement_id,),
+        ).fetchone()
+        if statement is None:
+            raise LookupError("statement not found")
+        places = statement["amount_decimal_places"]
+        rows = conn.execute(
+            """
+            SELECT a.*,
+                   sr.statement_order AS target_order,
+                   sr.label_normalized AS target_label,
+                   er.label_raw AS target_label_raw,
+                   er.debit_raw AS target_debit_raw,
+                   er.credit_raw AS target_credit_raw,
+                   dp.pdf_page AS target_page,
+                   si.item_key AS standard_item_key,
+                   si.canonical_zh AS standard_item_zh,
+                   si.canonical_pt AS standard_item_pt
+            FROM statement_row_adjustments a
+            LEFT JOIN statement_rows sr
+              ON sr.statement_row_id=a.target_statement_row_id
+            LEFT JOIN extracted_rows er
+              ON er.extracted_row_id=sr.extracted_row_id
+            LEFT JOIN document_pages dp
+              ON dp.document_page_id=er.document_page_id
+            LEFT JOIN standard_items si
+              ON si.standard_item_id=a.standard_item_id
+            WHERE a.statement_id=?
+              AND a.adjustment_status='active'
+            ORDER BY a.adjustment_type DESC, a.display_order, a.created_at
+            """,
+            (statement_id,),
+        ).fetchall()
+        result = []
+        for row in rows:
+            data = dict(row)
+            if data["adjustment_type"] == "insert":
+                data["display_label"] = data.get("label_normalized") or ""
+                data["display_order_value"] = data.get("display_order")
+                data["display_page"] = data.get("pdf_page")
+                data["debit_display"] = _money(data.get("debit_minor"), places)
+                data["credit_display"] = _money(data.get("credit_minor"), places)
+            else:
+                data["display_label"] = data.get("target_label") or data.get("target_label_raw") or ""
+                data["display_order_value"] = data.get("target_order")
+                data["display_page"] = data.get("target_page")
+                data["debit_display"] = data.get("target_debit_raw") or ""
+                data["credit_display"] = data.get("target_credit_raw") or ""
+            data["standardised_label"] = (
+                text(data.get("standard_item_zh")) or text(data.get("standard_item_pt"))
+            )
+            result.append(data)
+        return result
+    finally:
+        conn.close()
+
+
+def _effective_orders(conn: sqlite3.Connection, statement_id: str) -> list[dict[str, Any]]:
+    return [
+        dict(row)
+        for row in conn.execute(
+            f"SELECT statement_row_id, statement_order, pdf_page FROM ({EFFECTIVE_ROW_SQL}) "
+            "WHERE statement_id=? ORDER BY statement_order, statement_row_id",
+            (statement_id,),
+        )
+    ]
+
+
+def _check_editable(conn: sqlite3.Connection, statement_id: str) -> None:
+    review = conn.execute(
+        "SELECT review_status FROM statement_reviews WHERE statement_id=?",
+        (statement_id,),
+    ).fetchone()
+    if review is not None and review["review_status"] == "reviewed":
+        raise StatementReviewedError("statement is reviewed; reopen it before editing")
+
+
+def insert_row(
+    statement_id: str,
+    *,
+    actor: str,
+    after_row_id: str | None,
+    at_start: bool,
+    pdf_page: int | None,
+    row_type: str,
+    label: str | None,
+    debit: str | None,
+    credit: str | None,
+    debit_state: str,
+    credit_state: str,
+    standard_item_id: str | None,
+    note: str,
+) -> dict[str, Any]:
+    """Insert a manually verified row that OCR missed."""
+    if row_type not in {
+        "heading", "item", "subtotal", "total", "continuation", "note", "header", "unknown",
+    }:
+        raise ValueError("invalid row type")
+    if debit_state not in {"amount", "dash", "blank", "unreadable", "not_applicable", "ambiguous"}:
+        raise ValueError("invalid debit state")
+    if credit_state not in {"amount", "dash", "blank", "unreadable", "not_applicable", "ambiguous"}:
+        raise ValueError("invalid credit state")
+    if not text(label):
+        raise ValueError("label is required for an inserted row")
+    debit_minor = _parse_money(debit) if debit_state == "amount" else None
+    credit_minor = _parse_money(credit) if credit_state == "amount" else None
+
+    conn = connect_v3(write=True)
+    try:
+        statement = conn.execute(
+            "SELECT statement_id, statement_status FROM statements WHERE statement_id=?",
+            (statement_id,),
+        ).fetchone()
+        if statement is None:
+            raise LookupError("statement not found")
+        _check_editable(conn, statement_id)
+        if standard_item_id:
+            if conn.execute(
+                "SELECT 1 FROM standard_items WHERE standard_item_id=?",
+                (standard_item_id,),
+            ).fetchone() is None:
+                raise LookupError("standard item not found")
+
+        orders = _effective_orders(conn, statement_id)
+        page = pdf_page
+        if at_start:
+            order = (orders[0]["statement_order"] / 2) if orders else 1.0
+        elif after_row_id:
+            index = next(
+                (
+                    position for position, item in enumerate(orders)
+                    if item["statement_row_id"] == after_row_id
+                ),
+                None,
+            )
+            if index is None:
+                raise LookupError("insert position row not found")
+            current = orders[index]["statement_order"]
+            following = (
+                orders[index + 1]["statement_order"]
+                if index + 1 < len(orders) else None
+            )
+            order = current + 1 if following is None else (current + following) / 2
+            if page is None:
+                page = orders[index].get("pdf_page")
+        else:
+            order = (orders[-1]["statement_order"] + 1) if orders else 1.0
+            if page is None and orders:
+                page = orders[-1].get("pdf_page")
+
+        adjustment_id = stable_id(
+            "manual_row", statement_id, order, text(label), VERSION, now()
+        )
+        conn.execute(
+            """
+            INSERT INTO statement_row_adjustments(
+                adjustment_id, statement_id, adjustment_type,
+                target_statement_row_id, display_order, pdf_page, row_type,
+                label_normalized, label_language,
+                debit_minor, debit_value_state,
+                credit_minor, credit_value_state,
+                standard_item_id, reason, adjusted_by, adjusted_at,
+                adjustment_status, created_at
+            ) VALUES (?, ?, 'insert', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      'active', ?)
+            """,
+            (
+                adjustment_id, statement_id, order, page, row_type,
+                text(label), _language_of(text(label)),
+                debit_minor, debit_state, credit_minor, credit_state,
+                standard_item_id or None, note, actor, now(), now(),
+            ),
+        )
+        conn.execute(
+            "INSERT INTO audit_events("
+            "audit_event_id, event_type, statement_id, "
+            "standard_item_id, actor_id, after_json, details_json, reason, created_at"
+            ") VALUES (?, 'workbench_row_inserted', ?, ?, ?, ?, ?, ?, ?)",
+            (
+                stable_id("workbench_row_inserted", adjustment_id, VERSION),
+                statement_id, standard_item_id or None, actor,
+                json.dumps({
+                    "adjustment_id": adjustment_id, "display_order": order,
+                    "pdf_page": page, "row_type": row_type, "label": text(label),
+                    "debit_minor": debit_minor, "debit_state": debit_state,
+                    "credit_minor": credit_minor, "credit_state": credit_state,
+                    "standard_item_id": standard_item_id or None,
+                }, ensure_ascii=False),
+                json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
+                note or "OCR missed this row; inserted manually",
+                now(),
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    for item in review_rows(statement_id):
+        if item["statement_row_id"] == adjustment_id:
+            return item
+    raise LookupError("inserted row not found")
+
+
+def exclude_row(
+    statement_id: str,
+    statement_row_id: str,
+    *,
+    actor: str,
+    note: str,
+) -> dict[str, Any]:
+    """Hide an OCR row that was read by mistake; raw OCR stays untouched."""
+    conn = connect_v3(write=True)
+    try:
+        statement = conn.execute(
+            "SELECT statement_id FROM statements WHERE statement_id=?",
+            (statement_id,),
+        ).fetchone()
+        if statement is None:
+            raise LookupError("statement not found")
+        _check_editable(conn, statement_id)
+
+        manual = conn.execute(
+            "SELECT adjustment_id FROM statement_row_adjustments "
+            "WHERE adjustment_id=? AND statement_id=? AND adjustment_type='insert' "
+            "AND adjustment_status='active'",
+            (statement_row_id, statement_id),
+        ).fetchone()
+        if manual is not None:
+            adjustment_id = manual["adjustment_id"]
+            conn.execute(
+                "UPDATE statement_row_adjustments SET adjustment_status='void', "
+                "voided_by=?, voided_at=?, void_reason=? WHERE adjustment_id=?",
+                (actor, now(), note or "Manual row removed", adjustment_id),
+            )
+            conn.execute(
+                "INSERT INTO audit_events("
+                "audit_event_id, event_type, statement_id, "
+                "actor_id, details_json, reason, created_at"
+                ") VALUES (?, 'workbench_adjustment_voided', ?, ?, ?, ?, ?)",
+                (
+                    stable_id("workbench_adjustment_voided", adjustment_id, VERSION, now()),
+                    statement_id, actor,
+                    json.dumps({
+                        "adjustment_id": adjustment_id,
+                        "adjustment_type": "insert",
+                    }, ensure_ascii=False),
+                    note or "Manual row removed", now(),
+                ),
+            )
+            conn.commit()
+            return {"statement_id": statement_id, "voided_adjustment_id": adjustment_id}
+
+        row = conn.execute(
+            "SELECT statement_id FROM statement_rows WHERE statement_row_id=?",
+            (statement_row_id,),
+        ).fetchone()
+        if row is None or row["statement_id"] != statement_id:
+            raise LookupError("statement row not found")
+        existing = conn.execute(
+            "SELECT adjustment_id FROM statement_row_adjustments "
+            "WHERE target_statement_row_id=? AND adjustment_type='exclude' "
+            "AND adjustment_status='active'",
+            (statement_row_id,),
+        ).fetchone()
+        if existing is not None:
+            return {"statement_id": statement_id, "adjustment_id": existing["adjustment_id"]}
+
+        adjustment_id = stable_id(
+            "excluded_row", statement_id, statement_row_id, VERSION, now()
+        )
+        conn.execute(
+            """
+            INSERT INTO statement_row_adjustments(
+                adjustment_id, statement_id, adjustment_type,
+                target_statement_row_id, display_order, row_type,
+                label_normalized, label_language,
+                debit_value_state, credit_value_state,
+                reason, adjusted_by, adjusted_at, adjustment_status, created_at
+            ) VALUES (?, ?, 'exclude', ?, NULL, NULL, NULL, 'unknown',
+                      'blank', 'blank', ?, ?, ?, 'active', ?)
+            """,
+            (
+                adjustment_id, statement_id, statement_row_id, note, actor, now(), now(),
+            ),
+        )
+        conn.execute(
+            "INSERT INTO audit_events("
+            "audit_event_id, event_type, statement_id, statement_row_id, "
+            "actor_id, details_json, reason, created_at"
+            ") VALUES (?, 'workbench_row_excluded', ?, ?, ?, ?, ?, ?)",
+            (
+                stable_id("workbench_row_excluded", adjustment_id, VERSION),
+                statement_id, statement_row_id, actor,
+                json.dumps({"adjustment_id": adjustment_id}, ensure_ascii=False),
+                note or "OCR read this row by mistake; excluded from the statement",
+                now(),
+            ),
+        )
+        conn.commit()
+        return {"statement_id": statement_id, "adjustment_id": adjustment_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def restore_adjustment(
+    statement_id: str,
+    adjustment_id: str,
+    *,
+    actor: str,
+    note: str,
+) -> dict[str, Any]:
+    """Void an adjustment so the original OCR row or manual row is restored."""
+    conn = connect_v3(write=True)
+    try:
+        adjustment = conn.execute(
+            "SELECT * FROM statement_row_adjustments "
+            "WHERE adjustment_id=? AND statement_id=? AND adjustment_status='active'",
+            (adjustment_id, statement_id),
+        ).fetchone()
+        if adjustment is None:
+            raise LookupError("active adjustment not found")
+        _check_editable(conn, statement_id)
+        conn.execute(
+            "UPDATE statement_row_adjustments SET adjustment_status='void', "
+            "voided_by=?, voided_at=?, void_reason=? WHERE adjustment_id=?",
+            (actor, now(), note or "Adjustment restored", adjustment_id),
+        )
+        conn.execute(
+            "INSERT INTO audit_events("
+            "audit_event_id, event_type, statement_id, statement_row_id, "
+            "actor_id, details_json, reason, created_at"
+            ") VALUES (?, 'workbench_adjustment_voided', ?, ?, ?, ?, ?, ?)",
+            (
+                stable_id("workbench_adjustment_voided", adjustment_id, VERSION, now()),
+                statement_id,
+                adjustment["target_statement_row_id"],
+                actor,
+                json.dumps({
+                    "adjustment_id": adjustment_id,
+                    "adjustment_type": adjustment["adjustment_type"],
+                }, ensure_ascii=False),
+                note or "Adjustment restored", now(),
+            ),
+        )
+        conn.commit()
+        return {"statement_id": statement_id, "voided_adjustment_id": adjustment_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()

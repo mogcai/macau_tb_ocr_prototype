@@ -385,6 +385,160 @@ class ReviewWriteTests(unittest.TestCase):
         )
         self.assertEqual(refreshed["mapped_rows"], blocked["mapped_rows"])
 
+    def _insert_row(self, statement_id: str, *, after_row_id: str | None = None,
+                    standard_item_id: str | None = None) -> dict:
+        payload = {
+            "after_row_id": after_row_id,
+            "row_type": "item",
+            "label": "測試插入行",
+            "debit": "123.45",
+            "debit_state": "amount",
+            "credit_state": "blank",
+            "standard_item_id": standard_item_id,
+            "note": "test insert",
+        }
+        response = self.client.post(
+            f"/api/review/{statement_id}/rows",
+            json=payload,
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    def test_inserted_row_appears_and_counts_as_mapped(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        ready = next(item for item in queue if item["mapping_ready"])
+        statement_id = ready["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        item = self.client.get("/api/standard-items").json()[0]
+
+        inserted = self._insert_row(
+            statement_id, after_row_id=rows[0]["statement_row_id"],
+            standard_item_id=item["standard_item_id"],
+        )
+        self.assertEqual(inserted["row_origin"], "manual")
+        self.assertEqual(inserted["mapping_status"], "approved")
+        self.assertEqual(inserted["effective_debit_display"], "123.45")
+
+        refreshed = self.client.get(f"/api/review/{statement_id}/rows").json()
+        self.assertEqual(len(refreshed), len(rows) + 1)
+        self.assertEqual(
+            next(row for row in refreshed if row["statement_row_id"] == inserted["statement_row_id"])[
+                "standard_item_key"
+            ],
+            item["item_key"],
+        )
+        queue_row = next(
+            item2 for item2 in self.client.get("/api/review/queue").json()
+            if item2["statement_id"] == statement_id
+        )
+        self.assertEqual(queue_row["row_count"], ready["row_count"] + 1)
+        self.assertEqual(queue_row["mapped_rows"], ready["mapped_rows"] + 1)
+
+        removed = self.client.post(
+            f"/api/review/{statement_id}/rows/{inserted['statement_row_id']}/exclude",
+            json={"note": "remove manual row"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(removed.status_code, 200)
+        final = self.client.get(f"/api/review/{statement_id}/rows").json()
+        self.assertEqual(len(final), len(rows))
+        self.assertNotIn(
+            inserted["statement_row_id"],
+            {row["statement_row_id"] for row in final},
+        )
+
+    def test_inserted_row_without_mapping_blocks_review(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        ready = next(item for item in queue if item["mapping_ready"])
+        statement_id = ready["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        inserted = self._insert_row(statement_id, after_row_id=rows[0]["statement_row_id"])
+
+        blocked = next(
+            item for item in self.client.get("/api/review/queue").json()
+            if item["statement_id"] == statement_id
+        )
+        self.assertFalse(blocked["mapping_ready"])
+        self.assertEqual(blocked["unmapped_rows"], 1)
+        review = self.client.post(
+            f"/api/review/{statement_id}/review",
+            json={"review_status": "reviewed"},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(review.status_code, 409)
+
+        item = self.client.get("/api/standard-items").json()[0]
+        mapped = self.client.post(
+            f"/api/review/{statement_id}/rows/{inserted['statement_row_id']}/map",
+            json={"standard_item_id": item["standard_item_id"]},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(mapped.status_code, 200)
+        self.assertEqual(mapped.json()["mapping_status"], "approved")
+        unblocked = next(
+            item2 for item2 in self.client.get("/api/review/queue").json()
+            if item2["statement_id"] == statement_id
+        )
+        self.assertTrue(unblocked["mapping_ready"])
+
+    def test_excluded_ocr_row_can_be_restored(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        ready = next(item for item in queue if item["mapping_ready"])
+        statement_id = ready["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        target = rows[0]
+
+        excluded = self.client.post(
+            f"/api/review/{statement_id}/rows/{target['statement_row_id']}/exclude",
+            json={"note": "OCR over-read"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(excluded.status_code, 200)
+        adjustment_id = excluded.json()["adjustment_id"]
+        self.assertNotIn(
+            target["statement_row_id"],
+            {row["statement_row_id"] for row in self.client.get(f"/api/review/{statement_id}/rows").json()},
+        )
+        adjustments = self.client.get(f"/api/review/{statement_id}/adjustments").json()
+        active = next(item for item in adjustments if item["adjustment_id"] == adjustment_id)
+        self.assertEqual(active["adjustment_type"], "exclude")
+
+        restored = self.client.post(
+            f"/api/review/{statement_id}/adjustments/{adjustment_id}/restore",
+            json={"note": "restore"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(restored.status_code, 200)
+        self.assertIn(
+            target["statement_row_id"],
+            {row["statement_row_id"] for row in self.client.get(f"/api/review/{statement_id}/rows").json()},
+        )
+
+    def test_row_adjustments_require_unreviewed_statement(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        ready = next(item for item in queue if item["mapping_ready"])
+        statement_id = ready["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        reviewed = self.client.post(
+            f"/api/review/{statement_id}/review",
+            json={"review_status": "reviewed"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(reviewed.status_code, 200)
+        insert = self.client.post(
+            f"/api/review/{statement_id}/rows",
+            json={"label": "blocked", "debit_state": "blank", "credit_state": "blank"},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(insert.status_code, 409)
+        exclude = self.client.post(
+            f"/api/review/{statement_id}/rows/{rows[0]['statement_row_id']}/exclude",
+            json={"note": "blocked"},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(exclude.status_code, 409)
+
 
 if __name__ == "__main__":
     unittest.main()

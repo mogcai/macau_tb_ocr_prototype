@@ -6,11 +6,12 @@
 
 <section class="panel">
   <h2>Pending review</h2>
+  <div class="table-scroll">
   <table class="data">
     <thead>
       <tr>
         <th>Priority</th><th>Entity</th><th>Dates</th><th>Bucket</th>
-        <th>Rows</th><th>Mapped</th><th>Unmapped</th><th>Conflict</th><th>Missing</th><th>Issues</th>
+        <th>Rows</th><th>Mapping</th><th>Row issues</th>
         <th>Debit / Credit</th><th>Difference</th><th>Field ver.</th><th></th>
       </tr>
     </thead>
@@ -22,11 +23,12 @@
         <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
         <td><span class="pill {{ item.statement_status }}">{{ item.review_bucket }}</span></td>
         <td>{{ item.row_count }}</td>
-        <td>{{ item.mapped_rows }}</td>
-        <td>{{ item.unmapped_rows }}</td>
-        <td>{{ item.mapping_conflict_rows }}</td>
-        <td>{{ item.missing_labels }}</td>
-        <td>{{ item.issue_rows }}</td>
+        <td>
+          {{ item.mapped_rows }}/{{ item.row_count }}
+          {% if item.mapping_conflict_rows %}<span class="pill blocked">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
+          {% if item.unmapped_rows %}<span class="pill blocked">{{ item.unmapped_rows }} unmatched</span>{% endif %}
+        </td>
+        <td>missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
         <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
         <td>{% if item.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</td>
         <td>{{ item.field_verifications }}</td>
@@ -34,25 +36,27 @@
           {% if can_review_statement and item.mapping_ready %}
           <button class="review-button" data-statement="{{ item.statement_id }}" data-role="{{ role }}" data-status="reviewed">Mark reviewed</button>
           {% elif can_review_statement %}
-          <span class="muted">Resolve mapping first</span>
+          <span class="pill blocked">Resolve mapping first</span>
           {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="14" class="muted">No pending held statements.</td></tr>
+      <tr><td colspan="11" class="muted">No pending held statements.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </section>
 
 <section class="panel">
   <h2>Reviewed — still held</h2>
   <p class="muted">These have reviewer sign-off but are not adopted. Adoption remains a separate capability.</p>
+  <div class="table-scroll">
   <table class="data">
     <thead>
       <tr>
-        <th>Entity</th><th>Dates</th><th>Bucket</th><th>Rows</th><th>Mapped</th><th>Unmapped</th><th>Conflict</th>
-        <th>Missing</th><th>Issues</th><th>Debit / Credit</th><th>Difference</th><th>Reviewed by</th><th></th>
+        <th>Entity</th><th>Dates</th><th>Bucket</th><th>Rows</th><th>Mapping</th>
+        <th>Row issues</th><th>Debit / Credit</th><th>Difference</th><th>Reviewed by</th><th></th>
       </tr>
     </thead>
     <tbody>
@@ -62,11 +66,12 @@
         <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
         <td><span class="pill {{ item.statement_status }}">{{ item.review_bucket }}</span></td>
         <td>{{ item.row_count }}</td>
-        <td>{{ item.mapped_rows }}</td>
-        <td>{{ item.unmapped_rows }}</td>
-        <td>{{ item.mapping_conflict_rows }}</td>
-        <td>{{ item.missing_labels }}</td>
-        <td>{{ item.issue_rows }}</td>
+        <td>
+          {{ item.mapped_rows }}/{{ item.row_count }}
+          {% if item.mapping_conflict_rows %}<span class="pill blocked">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
+          {% if item.unmapped_rows %}<span class="pill blocked">{{ item.unmapped_rows }} unmatched</span>{% endif %}
+        </td>
+        <td>missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
         <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
         <td>{% if item.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</td>
         <td>{{ item.reviewed_by or "—" }}</td>
@@ -77,10 +82,11 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="13" class="muted">No reviewed held statements.</td></tr>
+      <tr><td colspan="10" class="muted">No reviewed held statements.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </section>
 
 <script>

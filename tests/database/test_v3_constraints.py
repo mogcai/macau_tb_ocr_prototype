@@ -179,7 +179,7 @@ class V3ConstraintTests(unittest.TestCase):
         views = self.conn.execute(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='view'"
         ).fetchone()[0]
-        self.assertEqual(tables, 22)
+        self.assertEqual(tables, 23)
         self.assertEqual(views, 7)
         self.assertEqual(
             self.conn.execute("PRAGMA integrity_check").fetchone()[0], "ok"

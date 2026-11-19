@@ -20,10 +20,11 @@ Open <http://127.0.0.1:8000>.
 2. Review Queue (`/review`) for held statements
 3. Statement / page / row review
 4. Field verification (`field_verifications`) with inline row editing
-5. Preliminary Standard Item display and mapping approval
-6. Adoption gate
-7. Audit trail
-8. Read-only MVP snapshot visibility
+5. Manual row insert / exclude for OCR under-read and over-read
+6. Preliminary Standard Item display and mapping approval
+7. Adoption gate
+8. Audit trail
+9. Read-only MVP snapshot visibility
 
 The 89-item user catalogue is seeded into `standard_items`; statement rows have
 `proposed` mappings from the first-pass auto-map.  Review Queue rows show
@@ -44,7 +45,7 @@ For local browsing, use the role links in the top bar (they set a
 | `reviewer` | read, verify, review, map |
 | `adopter` | read, verify, review, map, adopt |
 | `publisher` | read, publish |
-| `admin` | read, verify, adopt, publish |
+| `admin` | read, verify, review, map, adopt, publish |
 
 Adoption and publish are deliberately separate.  The publish endpoint returns
 `501 Not Implemented` until the publication quality gate is defined.  This is a
@@ -67,15 +68,35 @@ GET  /api/statements/{statement_id}
 GET  /api/statements/{statement_id}/rows
 GET  /api/review/queue
 GET  /api/review/{statement_id}/rows
+GET  /api/review/{statement_id}/adjustments
 GET  /api/standard-items
+POST /api/review/{statement_id}/rows                   # insert missed row, reviewer
 POST /api/review/{statement_id}/rows/{row_id}/verify  # X-Workbench-Role: reviewer
+POST /api/review/{statement_id}/rows/{row_id}/exclude # exclude/remove row, reviewer
 POST /api/review/{statement_id}/rows/{row_id}/map     # X-Workbench-Role: reviewer
+POST /api/review/{statement_id}/adjustments/{id}/restore
 POST /api/review/{statement_id}/review                 # X-Workbench-Role: reviewer
 POST /api/statements/{statement_id}/adopt    # X-Workbench-Role: adopter
 POST /api/statements/{statement_id}/publish  # X-Workbench-Role: publisher, 501 in v1
 ```
 
 ## Important
+
+### Row adjustments
+
+OCR under-read and over-read are handled with
+`statement_row_adjustments` rather than editing OCR evidence:
+
+- **Insert** adds a manual row that OCR missed. Its standard item can be set
+  immediately or approved later.
+- **Delete** on an OCR row creates an active `exclude` adjustment; the raw
+  `extracted_rows` / `statement_rows` evidence is untouched.
+- **Restore** voids the adjustment and the original row returns.
+
+Active adjustments are applied by `v_current_statement_rows`, so adopted
+statements include inserted rows and omit excluded rows.  Inserted rows obey
+the same mapping gate as OCR rows: they block review until a standard item is
+selected.
 
 ### Review workflow
 
