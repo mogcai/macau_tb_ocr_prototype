@@ -1,14 +1,22 @@
 # Statement Validation / Adoption Worksheet
 
-**File to review:** `docs/audit/statement_validation_decisions.csv`
+**File reviewed:** `docs/audit/statement_validation_decisions.csv`
 **Rows:** 113 proposed statements
 **Generated:** 2026-11-19
-**Database:** `data/macau_balancete_v3.sqlite` (read-only for this worksheet)
+**Database:** `data/macau_balancete_v3.sqlite`
 
-This worksheet is the human review gate before adopting a statement extraction.
-It does **not** adopt, publish or financially verify anything.
+**Review status:** reviewed 2026-11-19.
 
-## Summary
+| Applied decision | Statements |
+|---|---:|
+| `adopt` | 72 |
+| `needs_further_review` | 41 |
+| `v_current_statement_rows` | 4,462 rows |
+
+The 41 held statements are covered by
+`docs/audit/MANUAL_ADJUSTMENT_WORKFLOW.md`.
+
+## Proposal summary
 
 | Proposed validation | Statements |
 |---|---:|
