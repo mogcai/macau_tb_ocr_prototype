@@ -5,8 +5,16 @@
 **Source:** v5 bank registry + reviewed P2-A page decisions
 **Rows:** 48 legacy entities
 
-This is a proposal only. It does not update `reporting_entities` and does not
-approve any merge or exclusion.
+**Status: reviewed and applied 2026-11-19.** The human-reviewed CSV was imported
+with `tools/apply_entity_reconciliation_decisions.py`:
+
+- 38 active approved entities
+- 5 merged legacy entities (with `merged_into_entity_id`)
+- 5 excluded non-entities (no v3 entity row)
+- 57 approved entity aliases
+- 48 entity audit events
+
+The original proposal columns are preserved.
 
 ## Proposal summary
 
@@ -37,9 +45,9 @@ approve any merge or exclusion.
 | 115 | Shareholder list text, not an entity |
 | 116 | Auditor report text, not an entity |
 
-## Review fields
+## Review fields (already filled in this round)
 
-Fill:
+The fields below were used for the applied review:
 
 - `reviewer_decision`:
   - `approve_entity`
@@ -50,8 +58,7 @@ Fill:
 - `reviewer_survivor_entity_id`: required for `approve_merge`
 - `reviewer_note`: reason / alias / scope decision
 
-Do not edit `proposed_action`, `proposed_survivor_entity_id` or the legacy
-evidence columns.  Keep the AI proposal separate from the human decision.
+The AI proposal and human decision remain separate columns in the CSV.
 
 ## Notes
 

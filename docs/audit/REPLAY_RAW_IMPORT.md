@@ -8,6 +8,10 @@
 This slice imports raw OCR evidence only. It deliberately does **not** create
 financial statements, statement rows, entity approvals or mappings yet.
 
+> Historical milestone: P2-A/P2-B/P2-C were completed after this raw replay.
+> See `STATEMENT_SEGMENTATION.md` for the current 113 statements / 7,046
+> statement rows.  The raw replay itself remains the source of extracted rows.
+
 ## Imported
 
 | Object | Count |

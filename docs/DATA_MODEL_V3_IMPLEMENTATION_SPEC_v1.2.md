@@ -1188,7 +1188,7 @@ DB Trigger 必須拒絕採納非 `completed` Extraction。MVP 不支援多 Extra
 - 新 Extraction 不更新舊 Rows。
 - Current Rows 由 `statements.adopted_statement_extraction_id` 唯一決定。
 - Parent FK 必須限定同一 Statement + Extraction。
-- `statement_rows`、`extracted_rows`、`audit_events` 不可 UPDATE / DELETE；以 DB Trigger 或等效明確的 Application Enforcement 實施。
+- `statement_rows`、`audit_events` 不可 UPDATE / DELETE；`extracted_rows` 的 OCR 欄位亦不可改寫，但 `row_disposition`、`statement_id`、`statement_extraction_id`、`statement_order` 可在 P2-C 由 `unassigned` 一次性轉為 `included` / `excluded_page_role`，並必須寫 Audit Event。以 DB Trigger 或等效明確的 Application Enforcement 實施。
 - `field_verifications` 用於修正值；不得直接改寫 Snapshot。
 
 ### 9.5 Re-OCR Carry-forward Policy
@@ -1563,7 +1563,7 @@ SQLite / PostgreSQL Target Version 必須在 CI 實測 Partial Index，不可靜
 
 DB Trigger 必須執行以下保護（或在採用 Application-only 時明確列出限制並以 Transaction Integration Tests 證明）：
 
-1. `BEFORE UPDATE/DELETE ON extracted_rows` → ABORT；原始 OCR Evidence immutable。
+1. `BEFORE UPDATE/DELETE ON extracted_rows` → OCR 欄位 immutable；只允許 P2-C 的 assignment 欄位一次性轉換（`row_disposition` / `statement_id` / `statement_extraction_id` / `statement_order`），並寫 Audit Event。
 2. `BEFORE UPDATE/DELETE ON statement_rows` → ABORT；Snapshot immutable。
 3. `BEFORE UPDATE/DELETE ON audit_events` → ABORT；Audit append-only。
 4. `BEFORE INSERT ON statements` → 新 Statement 必須以 `adopted_statement_extraction_id IS NULL` 建立；因為 Statement Extraction 需先引用 Statement，首次採納只能在 Extraction 建立及完成後透過 UPDATE 進行。`BEFORE UPDATE OF adopted_statement_extraction_id ON statements`（新值非 NULL 且與舊值不同時）→ 新 Extraction 必須存在、屬於該 Statement 且 `extraction_status='completed'`。
@@ -1750,7 +1750,7 @@ View 不得把 Proposed Mapping 當作正式 Standard Item。
 - Nullable language uniqueness 不能漏過重複 Alias（language 使用 unknown）。
 - Publication 不可指向非 Adopted Extraction；每份 Statement 最多一筆 current published。
 - `ON DELETE RESTRICT` 防止刪除已引用歷史資料。
-- Append-only Triggers 阻止 UPDATE / DELETE Extracted Rows、Statement Rows、Audit Events。
+- Append-only Triggers 阻止 UPDATE / DELETE Statement Rows、Audit Events；Extracted Rows 只允許一次性 assignment transition，OCR 欄位不可改寫。
 
 ### 14.2 Standard Item Tests
 

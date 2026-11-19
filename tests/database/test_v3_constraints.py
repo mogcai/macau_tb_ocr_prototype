@@ -351,6 +351,41 @@ class V3ConstraintTests(unittest.TestCase):
             1,
         )
 
+    def test_unassigned_row_can_be_assigned_without_changing_ocr(self) -> None:
+        self.conn.execute(
+            "INSERT INTO extracted_rows("
+            "extracted_row_id, page_extraction_id, document_page_id, run_id, row_disposition, "
+            "page_row_order, label_raw, label_language, debit_value_state, credit_value_state, "
+            "row_type_proposed, parent_context_status, created_at"
+            ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "ER2", "PE1", "P1", "R1", "unassigned", 2,
+                "外幣", "zh-Hant", "blank", "blank", "item", "unknown", NOW,
+            ),
+        )
+        self.conn.commit()
+        self.conn.execute(
+            "UPDATE extracted_rows SET row_disposition='included', statement_id='S1', "
+            "statement_extraction_id='SE1', statement_order=2 WHERE extracted_row_id='ER2'"
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT row_disposition, statement_id, statement_extraction_id, statement_order "
+            "FROM extracted_rows WHERE extracted_row_id='ER2'"
+        ).fetchone()
+        self.assertEqual(row[0], "included")
+        self.assertEqual(row[1], "S1")
+        self.assertEqual(row[2], "SE1")
+        self.assertEqual(row[3], 2)
+
+        self.assert_sqlite_error(
+            "UPDATE extracted_rows SET label_raw='changed' WHERE extracted_row_id='ER2'"
+        )
+        self.assert_sqlite_error(
+            "UPDATE extracted_rows SET row_disposition='excluded_page_role', "
+            "statement_id=NULL, statement_extraction_id=NULL WHERE extracted_row_id='ER2'"
+        )
+
     def test_amount_state_requires_matching_minor(self) -> None:
         self.assert_sqlite_error(
             "INSERT INTO extracted_rows("
