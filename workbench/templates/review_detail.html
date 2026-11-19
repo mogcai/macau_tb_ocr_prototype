@@ -2,27 +2,42 @@
 {% block title %}Review · {{ statement.entity_name }}{% endblock %}
 {% block content %}
 {% set reviewed = queue_row and queue_row.review_status == 'reviewed' %}
+{% set adopted = statement.statement_status == 'active' %}
+{% set editable = not reviewed and not adopted %}
+{% set summary = queue_row or adoption_row %}
 {% set excluded_adjustments = adjustments | selectattr('adjustment_type', 'equalto', 'exclude') | list %}
 <p><a href="/review">← Review queue</a></p>
 <h1>{{ statement.entity_name }}</h1>
 
-{% if queue_row %}
+{% if summary %}
 <section class="panel">
   <table class="kv">
     <tbody>
       <tr><th>Status</th><td><span class="pill {{ statement.statement_status }}">{{ statement.statement_status }}</span></td></tr>
-      <tr><th>Review bucket</th><td>{{ queue_row.review_bucket }}</td></tr>
+      <tr><th>Review bucket</th><td>{{ summary.review_bucket }}</td></tr>
       <tr><th>Statement date</th><td>{{ statement.statement_date or "—" }}</td></tr>
       <tr><th>Publication date</th><td>{{ statement.publication_date or "—" }}</td></tr>
-      <tr><th>Debit / Credit</th><td>{{ queue_row.debit_total_display }} / {{ queue_row.credit_total_display }} {{ statement.currency or "" }}</td></tr>
-      <tr><th>Difference</th><td>{% if queue_row.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ queue_row.debit_credit_difference_minor }} minor units{% endif %}</td></tr>
-      <tr><th>Issues</th><td>missing {{ queue_row.missing_labels }} · ambiguous/unreadable {{ queue_row.issue_rows }}</td></tr>
-      <tr><th>Field verifications</th><td>{{ queue_row.field_verifications }}</td></tr>
-      <tr><th>Mapping coverage</th><td>{{ queue_row.mapped_rows }} mapped · {{ queue_row.unmapped_rows }} unmatched · {{ queue_row.mapping_conflict_rows }} conflict{% if queue_row.mapping_ready %} · <span class="ok">ready</span>{% else %} · <span class="bad">resolve mapping first</span>{% endif %}</td></tr>
+      <tr><th>Debit / Credit</th><td>{{ summary.debit_total_display }} / {{ summary.credit_total_display }} {{ statement.currency or "" }}</td></tr>
+      <tr><th>Difference</th><td>{% if summary.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ summary.debit_credit_difference_minor }} minor units{% endif %}</td></tr>
+      <tr><th>Issues</th><td>missing {{ summary.missing_labels }} · ambiguous/unreadable {{ summary.issue_rows }}</td></tr>
+      <tr><th>Field verifications</th><td>{{ summary.field_verifications }}</td></tr>
+      <tr><th>Mapping coverage</th><td>{{ summary.mapped_rows }} mapped · {{ summary.unmapped_rows }} unmatched · {{ summary.mapping_conflict_rows }} conflict{% if summary.mapping_ready %} · <span class="ok">ready</span>{% else %} · <span class="bad">resolve mapping first</span>{% endif %}</td></tr>
       <tr><th>Row adjustments</th><td>{{ adjustments|length }} active{% if excluded_adjustments %} · {{ excluded_adjustments|length }} excluded row(s){% endif %}</td></tr>
-      <tr><th>Reviewer status</th><td>{{ queue_row.review_status }}{% if queue_row.reviewed_by %} · {{ queue_row.reviewed_by }}{% endif %}</td></tr>
+      <tr><th>Reviewer status</th><td>{{ summary.review_status }}{% if summary.reviewed_by %} · {{ summary.reviewed_by }}{% endif %}</td></tr>
     </tbody>
   </table>
+</section>
+{% endif %}
+
+{% if adopted %}
+<section class="panel">
+  <h2>Adopted — current dataset</h2>
+  <p class="muted">This statement is active and read-only in the Workbench. Returning it to <strong>reviewed</strong> removes it from the current adopted dataset until it is adopted again.</p>
+  {% if can_adopt %}
+  <button class="return-review-button secondary" data-statement="{{ statement.statement_id }}" data-role="{{ role }}">Return to reviewed</button>
+  {% else %}
+  <p class="muted">Role <strong>{{ role }}</strong> cannot return adopted statements.</p>
+  {% endif %}
 </section>
 {% endif %}
 
@@ -41,7 +56,7 @@
 </section>
 {% endif %}
 
-{% if can_verify and not reviewed %}
+{% if can_verify and editable %}
 <section class="panel">
   <h2>Insert a missed row</h2>
   <p class="muted">Use this when OCR read too few rows. The inserted row is a manual overlay; raw OCR evidence is unchanged.</p>
@@ -108,7 +123,9 @@
 
 <section class="panel">
   <h2>Rows <span class="muted">({{ rows|length }})</span></h2>
-  {% if reviewed %}
+  {% if adopted %}
+  <p class="muted">This statement is <strong>adopted</strong>. Rows are read-only; return it to reviewed to edit under the new workflow.</p>
+  {% elif reviewed %}
   <p class="muted">This statement is <strong>reviewed</strong>. Rows are read-only; use Reopen for editing.</p>
   {% else %}
   <p class="muted">Raw OCR is read-only. Saving writes a field verification; Delete hides an over-read row without deleting OCR evidence.</p>
@@ -128,19 +145,19 @@
         <td>{{ row.statement_order }}{% if row.row_origin == 'manual' %} <span class="pill manual">manual</span>{% endif %}</td>
         <td>{{ row.pdf_page or "—" }}</td>
         <td><code>{{ row.label_raw or "—" }}</code></td>
-        <td><input class="cell label" value="{{ row.effective_label or '' }}" placeholder="corrected label" {% if reviewed %}disabled{% endif %}></td>
+        <td><input class="cell label" value="{{ row.effective_label or '' }}" placeholder="corrected label" {% if not editable %}disabled{% endif %}></td>
         <td class="muted"><code>{{ row.debit_raw or "—" }} / {{ row.credit_raw or "—" }}</code></td>
-        <td><input class="cell debit" value="{{ row.effective_debit_display if row.effective_debit_state == 'amount' else '' }}" placeholder="0.00" {% if reviewed %}disabled{% endif %}></td>
+        <td><input class="cell debit" value="{{ row.effective_debit_display if row.effective_debit_state == 'amount' else '' }}" placeholder="0.00" {% if not editable %}disabled{% endif %}></td>
         <td>
-          <select class="cell debit-state" {% if reviewed %}disabled{% endif %}>
+          <select class="cell debit-state" {% if not editable %}disabled{% endif %}>
             {% for state in ["amount", "blank", "dash", "unreadable", "not_applicable", "ambiguous"] %}
             <option value="{{ state }}" {% if row.effective_debit_state == state %}selected{% endif %}>{{ state }}</option>
             {% endfor %}
           </select>
         </td>
-        <td><input class="cell credit" value="{{ row.effective_credit_display if row.effective_credit_state == 'amount' else '' }}" placeholder="0.00" {% if reviewed %}disabled{% endif %}></td>
+        <td><input class="cell credit" value="{{ row.effective_credit_display if row.effective_credit_state == 'amount' else '' }}" placeholder="0.00" {% if not editable %}disabled{% endif %}></td>
         <td>
-          <select class="cell credit-state" {% if reviewed %}disabled{% endif %}>
+          <select class="cell credit-state" {% if not editable %}disabled{% endif %}>
             {% for state in ["amount", "blank", "dash", "unreadable", "not_applicable", "ambiguous"] %}
             <option value="{{ state }}" {% if row.effective_credit_state == state %}selected{% endif %}>{{ state }}</option>
             {% endfor %}
@@ -162,7 +179,7 @@
           {% endif %}
         </td>
         <td class="mapping-cell">
-          {% if can_map and not reviewed %}
+          {% if can_map and editable %}
           <div class="map-actions">
             <select class="cell standard-item">
               <option value="">— select standard item —</option>
@@ -177,7 +194,7 @@
           {% endif %}
         </td>
         <td class="actions-cell">
-          {% if not reviewed %}
+          {% if editable %}
           <div class="row-actions">
             <button class="save-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Save</button>
             <button class="delete-row secondary" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}" data-origin="{{ row.row_origin }}">{% if row.row_origin == 'manual' %}Remove{% else %}Delete{% endif %}</button>
@@ -211,7 +228,7 @@
         <td class="muted"><code>{{ adjustment.debit_display or "—" }} / {{ adjustment.credit_display or "—" }}</code></td>
         <td>{{ adjustment.reason or "—" }}</td>
         <td>
-          {% if can_verify and not reviewed %}
+          {% if can_verify and editable %}
           <button class="restore-adjustment secondary" data-statement="{{ statement.statement_id }}" data-adjustment="{{ adjustment.adjustment_id }}" data-role="{{ role }}">Restore</button>
           {% endif %}
         </td>
@@ -257,6 +274,28 @@ document.querySelectorAll(".save-row").forEach((button) => {
     } else {
       const body = await response.json().catch(() => ({}));
       alert(body.detail || "Verification failed");
+      button.disabled = false;
+    }
+  });
+});
+document.querySelectorAll(".return-review-button").forEach((button) => {
+  button.addEventListener("click", async () => {
+    if (!window.confirm("Return this adopted statement to reviewed status? It will leave the current adopted dataset until adopted again.")) {
+      return;
+    }
+    button.disabled = true;
+    const response = await fetch(`/api/statements/${button.dataset.statement}/return-to-review`, {
+      method: "POST",
+      headers: {
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      }
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Return to review failed");
       button.disabled = false;
     }
   });

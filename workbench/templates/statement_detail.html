@@ -18,6 +18,10 @@
       <tr><th>Extraction</th><td>{{ statement.extraction_status or "—" }} · <code>{{ statement.statement_extraction_id or "—" }}</code></td></tr>
       <tr><th>Adopted extraction</th><td><code>{{ statement.adopted_statement_extraction_id or "—" }}</code></td></tr>
       <tr><th>Row count</th><td>{{ rows|length }}</td></tr>
+      {% if adoption_row %}
+      <tr><th>Mapping coverage</th><td>{{ adoption_row.mapped_rows }} mapped · {{ adoption_row.unmapped_rows }} unmatched · {{ adoption_row.mapping_conflict_rows }} conflict{% if adoption_row.mapping_ready %} · <span class="ok">ready</span>{% else %} · <span class="bad">resolve mapping first</span>{% endif %}</td></tr>
+      <tr><th>Effective totals</th><td>{{ adoption_row.debit_total_display }} / {{ adoption_row.credit_total_display }}{% if adoption_row.debit_credit_equal %} · <span class="ok">balanced</span>{% else %} · <span class="bad">difference {{ adoption_row.debit_credit_difference_minor }}</span>{% endif %}</td></tr>
+      {% endif %}
     </tbody>
   </table>
 
@@ -26,6 +30,9 @@
     <button id="adopt-button" data-statement="{{ statement.statement_id }}" data-role="{{ role }}">Adopt current extraction</button>
     {% elif statement.adopted_statement_extraction_id %}
     <span class="ok">Already adopted</span>
+    {% if can_adopt %}
+    <button id="return-review-button" class="secondary" data-statement="{{ statement.statement_id }}" data-role="{{ role }}">Return to reviewed</button>
+    {% endif %}
     {% else %}
     <span class="muted">Role <strong>{{ role }}</strong> cannot adopt.</span>
     {% endif %}
@@ -60,7 +67,8 @@
     <thead>
       <tr>
         <th>#</th><th>Page</th><th>Raw label</th><th>Effective label</th>
-        <th>Raw debit / credit</th><th>Effective debit</th><th>Effective credit</th><th>State</th><th>Parent context</th>
+        <th>Raw debit / credit</th><th>Effective debit</th><th>Effective credit</th><th>State</th>
+        <th>Standard item</th><th>Mapping</th><th>Parent context</th>
       </tr>
     </thead>
     <tbody>
@@ -74,10 +82,12 @@
         <td>{{ row.effective_debit_display or "—" }}</td>
         <td>{{ row.effective_credit_display or "—" }}</td>
         <td>{{ row.effective_debit_state }} / {{ row.effective_credit_state }}</td>
+        <td>{{ row.standardised_label or "—" }}</td>
+        <td>{% if row.mapping_status == "approved" %}<span class="pill active">approved</span>{% elif row.mapping_status == "unique" %}<span class="pill proposed">proposed</span>{% elif row.mapping_status == "conflict" %}<span class="pill blocked">conflict</span>{% else %}<span class="pill blocked">unmatched</span>{% endif %}</td>
         <td>{{ row.parent_context_status }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="9" class="muted">No rows.</td></tr>
+      <tr><td colspan="11" class="muted">No rows.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -110,6 +120,29 @@ if (adoptButton) {
       const body = await response.json().catch(() => ({}));
       alert(body.detail || "Adoption failed");
       adoptButton.disabled = false;
+    }
+  });
+}
+const returnButton = document.getElementById("return-review-button");
+if (returnButton) {
+  returnButton.addEventListener("click", async () => {
+    if (!window.confirm("Return this adopted statement to reviewed status? It will leave the current adopted dataset until adopted again.")) {
+      return;
+    }
+    returnButton.disabled = true;
+    const response = await fetch(`/api/statements/${returnButton.dataset.statement}/return-to-review`, {
+      method: "POST",
+      headers: {
+        "X-Workbench-Role": returnButton.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      }
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Return to review failed");
+      returnButton.disabled = false;
     }
   });
 }

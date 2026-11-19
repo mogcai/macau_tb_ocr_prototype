@@ -103,6 +103,11 @@ class ApiTests(unittest.TestCase):
         bad = self.client.get("/set-role/nope", follow_redirects=False)
         self.assertEqual(bad.status_code, 400)
 
+    def test_review_page_includes_adopted_section(self) -> None:
+        page = self.client.get("/review")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Adopted — current dataset", page.text)
+
     def test_review_queue_and_rows(self) -> None:
         queue = self.client.get("/api/review/queue")
         self.assertEqual(queue.status_code, 200)
@@ -568,6 +573,82 @@ class ReviewWriteTests(unittest.TestCase):
                 "SELECT COUNT(*) FROM statement_row_mappings "
                 "WHERE statement_row_id=? AND mapping_status='approved'",
                 (row["statement_row_id"],),
+            ).fetchone()[0],
+            1,
+        )
+        conn.close()
+
+    def test_return_to_review_requires_adopter_role(self) -> None:
+        active = self.client.get("/api/statements?status=active&limit=1").json()
+        if not active:
+            self.skipTest("no adopted statement")
+        response = self.client.post(
+            f"/api/statements/{active[0]['statement_id']}/return-to-review",
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_adopted_statement_is_read_only_until_returned(self) -> None:
+        active = self.client.get("/api/statements?status=active&limit=1").json()
+        if not active:
+            self.skipTest("no adopted statement")
+        statement_id = active[0]["statement_id"]
+        rows = self.client.get(f"/api/statements/{statement_id}/rows").json()
+        verify = self.client.post(
+            f"/api/review/{statement_id}/rows/{rows[0]['statement_row_id']}/verify",
+            json={
+                "label": "blocked",
+                "debit": "1.00",
+                "debit_state": "amount",
+                "credit_state": "blank",
+            },
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(verify.status_code, 409)
+        self.assertIn("adopted", verify.json()["detail"].lower())
+        insert = self.client.post(
+            f"/api/review/{statement_id}/rows",
+            json={"label": "blocked", "debit_state": "blank", "credit_state": "blank"},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(insert.status_code, 409)
+
+    def test_return_to_review_restores_reviewed_held_state(self) -> None:
+        active = self.client.get("/api/statements?status=active&limit=1").json()
+        if not active:
+            self.skipTest("no adopted statement")
+        statement_id = active[0]["statement_id"]
+        before_rows = self.client.get(f"/api/statements/{statement_id}/rows").json()
+        current_before = self.client.get("/api/summary").json()["current_rows"]
+
+        response = self.client.post(
+            f"/api/statements/{statement_id}/return-to-review",
+            headers={"X-Workbench-Role": "adopter", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["statement_status"], "proposed")
+        self.assertEqual(response.json()["review_status"], "reviewed")
+
+        detail = self.client.get(f"/api/statements/{statement_id}").json()
+        self.assertEqual(detail["statement_status"], "proposed")
+        self.assertIsNone(detail["adopted_statement_extraction_id"])
+        self.assertEqual(detail["review_status"], "reviewed")
+        self.assertEqual(
+            self.client.get("/api/summary").json()["current_rows"],
+            current_before - len(before_rows),
+        )
+        queue = self.client.get("/api/review/queue").json()
+        queue_row = next(item for item in queue if item["statement_id"] == statement_id)
+        self.assertEqual(queue_row["review_status"], "reviewed")
+        self.assertIn("reviewed", queue_row["review_bucket"] + "reviewed")
+
+        conn = sqlite3.connect(self.db)
+        self.assertEqual(
+            conn.execute(
+                "SELECT COUNT(*) FROM audit_events "
+                "WHERE event_type='workbench_statement_returned_to_review' "
+                "AND statement_id=?",
+                (statement_id,),
             ).fetchone()[0],
             1,
         )

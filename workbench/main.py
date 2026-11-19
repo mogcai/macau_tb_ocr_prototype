@@ -151,6 +151,25 @@ def api_adopt(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@app.post("/api/statements/{statement_id}/return-to-review")
+def api_return_to_review(
+    statement_id: str,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_adopt(role):
+        raise HTTPException(status_code=403, detail="adopt capability is required")
+    try:
+        return service.return_to_review(
+            statement_id, actor_from(request), note="Returned to reviewed"
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @app.post("/api/statements/{statement_id}/publish")
 def api_publish(
     statement_id: str,
@@ -194,6 +213,8 @@ def api_map_row(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except service.StatementReviewedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except service.StatementAdoptedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -236,6 +257,8 @@ def api_insert_row(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except service.StatementReviewedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except service.StatementAdoptedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -262,6 +285,8 @@ def api_exclude_row(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except service.StatementReviewedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except service.StatementAdoptedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -287,6 +312,8 @@ def api_restore_adjustment(
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except service.StatementReviewedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except service.StatementAdoptedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -332,6 +359,8 @@ def api_verify_row(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except service.StatementReviewedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except service.StatementAdoptedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -370,6 +399,7 @@ def review_page(request: Request) -> HTMLResponse:
             queue=queue,
             pending_review=[item for item in queue if item["review_status"] != "reviewed"],
             reviewed_held=[item for item in queue if item["review_status"] == "reviewed"],
+            adopted=service.adopted_statements(),
         ),
     )
 
@@ -383,6 +413,10 @@ def review_detail_page(request: Request, statement_id: str) -> HTMLResponse:
         (item for item in service.review_queue() if item["statement_id"] == statement_id),
         None,
     )
+    adoption_row = next(
+        (item for item in service.adopted_statements() if item["statement_id"] == statement_id),
+        None,
+    )
     return templates.TemplateResponse(
         request,
         "review_detail.html",
@@ -390,6 +424,7 @@ def review_detail_page(request: Request, statement_id: str) -> HTMLResponse:
             request,
             statement=detail,
             queue_row=queue_row,
+            adoption_row=adoption_row,
             rows=service.review_rows(statement_id),
             adjustments=service.statement_adjustments(statement_id),
             standard_items=service.standard_items(),
@@ -411,6 +446,10 @@ def statements_page(
     request: Request,
     status: str = Query("all", pattern="^(all|active|held)$"),
 ) -> HTMLResponse:
+    metrics = {
+        item["statement_id"]: item
+        for item in (service.review_queue() + service.adopted_statements())
+    }
     return templates.TemplateResponse(
         request,
         "statements.html",
@@ -418,6 +457,7 @@ def statements_page(
             request,
             summary=service.summary(),
             statements=service.list_statements(status=status),
+            metrics=metrics,
             status=status,
         ),
     )
@@ -428,6 +468,10 @@ def statement_page(request: Request, statement_id: str) -> HTMLResponse:
     detail = service.statement_detail(statement_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="statement not found")
+    adoption_row = next(
+        (item for item in service.adopted_statements() if item["statement_id"] == statement_id),
+        None,
+    )
     return templates.TemplateResponse(
         request,
         "statement_detail.html",
@@ -435,5 +479,6 @@ def statement_page(request: Request, statement_id: str) -> HTMLResponse:
             request,
             statement=detail,
             rows=service.statement_rows(statement_id),
+            adoption_row=adoption_row,
         ),
     )

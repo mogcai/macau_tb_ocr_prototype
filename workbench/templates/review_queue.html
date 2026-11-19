@@ -89,6 +89,46 @@
   </div>
 </section>
 
+<section class="panel">
+  <h2>Adopted — current dataset</h2>
+  <p class="muted">These statements are active. They use the same effective rows and standard-item coverage; return one to <strong>reviewed</strong> to edit it under the new workflow.</p>
+  <div class="table-scroll">
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Entity</th><th>Dates</th><th>Rows</th><th>Mapping</th>
+        <th>Row issues</th><th>Debit / Credit</th><th>Difference</th><th>Reviewer</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in adopted %}
+      <tr>
+        <td><a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a></td>
+        <td>{{ item.statement_date }}{% if item.publication_date %} · {{ item.publication_date }}{% endif %}</td>
+        <td>{{ item.row_count }}</td>
+        <td>
+          {{ item.mapped_rows }}/{{ item.row_count }}
+          {% if item.mapping_conflict_rows %}<span class="pill blocked">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
+          {% if item.unmapped_rows %}<span class="pill blocked">{{ item.unmapped_rows }} unmatched</span>{% endif %}
+        </td>
+        <td>missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
+        <td>{{ item.debit_total_display }} / {{ item.credit_total_display }}</td>
+        <td>{% if item.debit_credit_equal %}<span class="ok">0</span>{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</td>
+        <td>{{ item.review_status }}{% if item.reviewed_by %} · {{ item.reviewed_by }}{% endif %}</td>
+        <td>
+          {% if can_adopt %}
+          <button class="return-review-button secondary" data-statement="{{ item.statement_id }}" data-role="{{ role }}">Return to reviewed</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="muted">No adopted statements.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
 <script>
 document.querySelectorAll(".review-button").forEach((button) => {
   button.addEventListener("click", async () => {
@@ -107,6 +147,28 @@ document.querySelectorAll(".review-button").forEach((button) => {
     } else {
       const body = await response.json().catch(() => ({}));
       alert(body.detail || "Review update failed");
+      button.disabled = false;
+    }
+  });
+});
+document.querySelectorAll(".return-review-button").forEach((button) => {
+  button.addEventListener("click", async () => {
+    if (!window.confirm("Return this adopted statement to reviewed status? It will leave the current adopted dataset until adopted again.")) {
+      return;
+    }
+    button.disabled = true;
+    const response = await fetch(`/api/statements/${button.dataset.statement}/return-to-review`, {
+      method: "POST",
+      headers: {
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      }
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Return to review failed");
       button.disabled = false;
     }
   });

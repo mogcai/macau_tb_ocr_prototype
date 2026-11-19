@@ -77,6 +77,7 @@ POST /api/review/{statement_id}/rows/{row_id}/map     # X-Workbench-Role: review
 POST /api/review/{statement_id}/adjustments/{id}/restore
 POST /api/review/{statement_id}/review                 # X-Workbench-Role: reviewer
 POST /api/statements/{statement_id}/adopt    # X-Workbench-Role: adopter
+POST /api/statements/{statement_id}/return-to-review  # X-Workbench-Role: adopter
 POST /api/statements/{statement_id}/publish  # X-Workbench-Role: publisher, 501 in v1
 ```
 
@@ -115,7 +116,11 @@ selected.
    review status.
 5. An adopter can adopt only a reviewed statement whose queue bucket is
    `ready_for_adoption`.
-6. Publication remains a separate, not-yet-implemented gate.
+6. Adopted statements are read-only and listed under **Adopted — current
+   dataset** with the same mapping coverage. An adopter can **Return to
+   reviewed**, which clears the adopted extraction and puts the statement back
+   into the reviewed/held queue. A current publication must be revoked first.
+7. Publication remains a separate, not-yet-implemented gate.
 
 This is a scaffold, not production authentication.  It does not yet implement
 login, real user accounts, PDF rendering, import-batch upload, or publish

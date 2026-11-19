@@ -242,6 +242,51 @@ class V3ConstraintTests(unittest.TestCase):
             "UPDATE statements SET adopted_statement_extraction_id='SE4' WHERE statement_id='S1'"
         )
 
+    def test_adoption_cannot_be_cleared_while_active(self) -> None:
+        self.conn.execute(
+            "UPDATE statements SET adopted_statement_extraction_id='SE1', "
+            "statement_status='active' WHERE statement_id='S1'"
+        )
+        self.conn.commit()
+        self.assert_sqlite_error(
+            "UPDATE statements SET adopted_statement_extraction_id=NULL "
+            "WHERE statement_id='S1'"
+        )
+
+    def test_adoption_can_be_cleared_when_leaving_active(self) -> None:
+        self.conn.execute(
+            "UPDATE statements SET adopted_statement_extraction_id='SE1', "
+            "statement_status='active' WHERE statement_id='S1'"
+        )
+        self.conn.commit()
+        self.conn.execute(
+            "UPDATE statements SET adopted_statement_extraction_id=NULL, "
+            "statement_status='proposed' WHERE statement_id='S1'"
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT statement_status, adopted_statement_extraction_id "
+            "FROM statements WHERE statement_id='S1'"
+        ).fetchone()
+        self.assertEqual(row, ("proposed", None))
+
+    def test_active_requires_adopted_extraction(self) -> None:
+        self.assert_sqlite_error(
+            "UPDATE statements SET statement_status='active' WHERE statement_id='S1'"
+        )
+
+    def test_return_to_review_blocked_by_publication(self) -> None:
+        self.conn.execute(
+            "UPDATE statements SET adopted_statement_extraction_id='SE1', "
+            "statement_status='active' WHERE statement_id='S1'"
+        )
+        self.conn.commit()
+        self.publish()
+        self.assert_sqlite_error(
+            "UPDATE statements SET adopted_statement_extraction_id=NULL, "
+            "statement_status='proposed' WHERE statement_id='S1'"
+        )
+
     def test_publication_requires_adopted_extraction(self) -> None:
         self.adopt()
         self.assert_sqlite_error(

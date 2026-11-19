@@ -19,6 +19,10 @@ class StatementReviewedError(ValueError):
     """Raised when a reviewed statement is edited without reopening."""
 
 
+class StatementAdoptedError(ValueError):
+    """Raised when an adopted statement is edited without returning it to review."""
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -681,12 +685,7 @@ def verify_row(
     credit_minor = _parse_money(credit) if credit_state == "amount" else 0
     conn = connect_v3(write=True)
     try:
-        review = conn.execute(
-            "SELECT review_status FROM statement_reviews WHERE statement_id=?",
-            (statement_id,),
-        ).fetchone()
-        if review is not None and review["review_status"] == "reviewed":
-            raise StatementReviewedError("statement is reviewed; reopen it before editing")
+        _check_editable(conn, statement_id)
 
         adjustment = conn.execute(
             "SELECT * FROM statement_row_adjustments "
@@ -825,12 +824,7 @@ def approve_mapping(
         ).fetchone()
         if item is None:
             raise LookupError("standard item not found")
-        review = conn.execute(
-            "SELECT review_status FROM statement_reviews WHERE statement_id=?",
-            (statement_id,),
-        ).fetchone()
-        if review is not None and review["review_status"] == "reviewed":
-            raise StatementReviewedError("statement is reviewed; reopen it before changing mappings")
+        _check_editable(conn, statement_id)
 
         adjustment = conn.execute(
             "SELECT * FROM statement_row_adjustments "
@@ -1041,6 +1035,16 @@ def _effective_orders(conn: sqlite3.Connection, statement_id: str) -> list[dict[
 
 
 def _check_editable(conn: sqlite3.Connection, statement_id: str) -> None:
+    statement = conn.execute(
+        "SELECT statement_status FROM statements WHERE statement_id=?",
+        (statement_id,),
+    ).fetchone()
+    if statement is None:
+        raise LookupError("statement not found")
+    if statement["statement_status"] == "active":
+        raise StatementAdoptedError(
+            "statement is adopted; return it to reviewed before editing"
+        )
     review = conn.execute(
         "SELECT review_status FROM statement_reviews WHERE statement_id=?",
         (statement_id,),
@@ -1323,6 +1327,179 @@ def restore_adjustment(
         )
         conn.commit()
         return {"statement_id": statement_id, "voided_adjustment_id": adjustment_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def adopted_statements() -> list[dict[str, Any]]:
+    """Current adopted statements, shown with the same review metrics."""
+    conn = connect_v3()
+    try:
+        rows = conn.execute(
+            """
+            SELECT s.statement_id, s.statement_date, s.publication_date,
+                   s.reporting_scope, s.statement_status,
+                   s.currency, s.unit_scale, s.amount_decimal_places,
+                   s.adopted_statement_extraction_id,
+                   e.canonical_zh AS entity_name, e.entity_key,
+                   COALESCE((SELECT rv.review_status FROM statement_reviews rv
+                     WHERE rv.statement_id=s.statement_id), 'pending') AS review_status,
+                   (SELECT rv.reviewed_by FROM statement_reviews rv
+                     WHERE rv.statement_id=s.statement_id) AS reviewed_by,
+                   (SELECT COUNT(*) FROM v_current_statement_rows sr
+                     WHERE sr.statement_id=s.statement_id) AS row_count,
+                   (SELECT COUNT(*) FROM field_verifications fv
+                     JOIN statement_rows sr ON sr.statement_row_id=fv.statement_row_id
+                     WHERE sr.statement_id=s.statement_id) AS field_verifications,
+                   (SELECT COUNT(*) FROM v_current_statement_rows sr
+                     WHERE sr.statement_id=s.statement_id
+                       AND (EXISTS (SELECT 1 FROM statement_row_mappings m
+                                     WHERE m.statement_row_id=sr.statement_row_id
+                                       AND m.mapping_status IN ('proposed','approved'))
+                            OR EXISTS (SELECT 1 FROM statement_row_adjustments a
+                                        WHERE a.adjustment_id=sr.statement_row_id
+                                          AND a.adjustment_type='insert'
+                                          AND a.adjustment_status='active'
+                                          AND a.standard_item_id IS NOT NULL))) AS mapped_rows,
+                   (SELECT COUNT(*) FROM v_current_statement_rows sr
+                     WHERE sr.statement_id=s.statement_id
+                       AND EXISTS (SELECT 1 FROM statement_row_mappings m
+                                    WHERE m.statement_row_id=sr.statement_row_id
+                                      AND m.conflict_group_id IS NOT NULL
+                                      AND m.mapping_status IN ('proposed','approved'))) AS mapping_conflict_rows,
+                   (SELECT COUNT(*) FROM v_effective_statement_rows er
+                     WHERE er.statement_id=s.statement_id
+                       AND (er.effective_label_normalized IS NULL
+                            OR er.effective_label_normalized = '')) AS missing_labels,
+                   (SELECT COUNT(*) FROM v_effective_statement_rows er
+                     WHERE er.statement_id=s.statement_id
+                       AND (er.effective_debit_value_state IN ('ambiguous','unreadable')
+                            OR er.effective_credit_value_state IN ('ambiguous','unreadable'))) AS issue_rows,
+                   (SELECT SUM(CASE WHEN er.effective_debit_value_state='amount'
+                                    THEN er.effective_debit_minor ELSE 0 END)
+                      FROM v_effective_statement_rows er
+                     WHERE er.statement_id=s.statement_id) AS debit_total_minor,
+                   (SELECT SUM(CASE WHEN er.effective_credit_value_state='amount'
+                                    THEN er.effective_credit_minor ELSE 0 END)
+                      FROM v_effective_statement_rows er
+                     WHERE er.statement_id=s.statement_id) AS credit_total_minor
+            FROM statements s
+            JOIN reporting_entities e ON e.entity_id=s.reporting_entity_id
+            WHERE s.statement_status='active'
+            ORDER BY s.statement_date DESC, e.canonical_zh
+            """
+        ).fetchall()
+        result = []
+        for row in rows:
+            data = dict(row)
+            difference = int(data["debit_total_minor"] or 0) - int(data["credit_total_minor"] or 0)
+            data["debit_credit_difference_minor"] = difference
+            data["debit_credit_equal"] = difference == 0
+            data["unmapped_rows"] = max(
+                0, int(data["row_count"] or 0) - int(data["mapped_rows"] or 0)
+            )
+            data["mapping_ready"] = (
+                int(data["row_count"] or 0) > 0
+                and int(data["mapping_conflict_rows"] or 0) == 0
+                and data["unmapped_rows"] == 0
+            )
+            data["review_bucket"] = "adopted"
+            data["debit_total_display"] = _money(
+                data["debit_total_minor"], data["amount_decimal_places"]
+            )
+            data["credit_total_display"] = _money(
+                data["credit_total_minor"], data["amount_decimal_places"]
+            )
+            result.append(data)
+        return result
+    finally:
+        conn.close()
+
+
+def return_to_review(
+    statement_id: str,
+    actor: str,
+    note: str = "",
+) -> dict[str, Any]:
+    """Revoke adoption and put the statement back into reviewed/held state."""
+    conn = connect_v3(write=True)
+    try:
+        statement = conn.execute(
+            "SELECT statement_id, statement_status, adopted_statement_extraction_id "
+            "FROM statements WHERE statement_id=?",
+            (statement_id,),
+        ).fetchone()
+        if statement is None:
+            raise LookupError("statement not found")
+        if (
+            statement["statement_status"] != "active"
+            or not statement["adopted_statement_extraction_id"]
+        ):
+            raise ValueError("statement is not adopted")
+        if conn.execute(
+            "SELECT 1 FROM publication_records "
+            "WHERE statement_id=? AND publication_status='published'",
+            (statement_id,),
+        ).fetchone():
+            raise ValueError("revoke the current publication before returning to review")
+
+        extraction_id = statement["adopted_statement_extraction_id"]
+        conn.execute(
+            "UPDATE statements SET statement_status='proposed', "
+            "adopted_statement_extraction_id=NULL WHERE statement_id=?",
+            (statement_id,),
+        )
+        conn.execute(
+            """
+            INSERT INTO statement_reviews(
+                statement_id, review_status, reviewed_by, reviewed_at, note, updated_at
+            ) VALUES (?, 'reviewed', ?, ?, ?, ?)
+            ON CONFLICT(statement_id) DO UPDATE SET
+                review_status='reviewed',
+                reviewed_by=excluded.reviewed_by,
+                reviewed_at=excluded.reviewed_at,
+                note=excluded.note,
+                updated_at=excluded.updated_at
+            """,
+            (
+                statement_id, actor, now(),
+                note or "Returned from adoption to reviewed status", now(),
+            ),
+        )
+        conn.execute(
+            "INSERT INTO audit_events("
+            "audit_event_id, event_type, statement_id, statement_extraction_id, "
+            "actor_id, before_json, after_json, details_json, reason, created_at"
+            ") VALUES (?, 'workbench_statement_returned_to_review', ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                stable_id(
+                    "workbench_return_to_review", statement_id, extraction_id, VERSION, now()
+                ),
+                statement_id, extraction_id, actor,
+                json.dumps({
+                    "statement_status": "active",
+                    "adopted_statement_extraction_id": extraction_id,
+                }, ensure_ascii=False),
+                json.dumps({
+                    "statement_status": "proposed",
+                    "adopted_statement_extraction_id": None,
+                    "review_status": "reviewed",
+                }, ensure_ascii=False),
+                json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
+                note or "Returned from adoption to reviewed status",
+                now(),
+            ),
+        )
+        conn.commit()
+        return {
+            "statement_id": statement_id,
+            "statement_status": "proposed",
+            "review_status": "reviewed",
+            "released_statement_extraction_id": extraction_id,
+        }
     except Exception:
         conn.rollback()
         raise
