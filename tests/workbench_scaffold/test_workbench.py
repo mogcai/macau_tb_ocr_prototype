@@ -15,9 +15,10 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from workbench.config import SNAPSHOT_DB, V3_DB  # noqa: E402
 import workbench.db as wdb  # noqa: E402
+from workbench import service  # noqa: E402
 from workbench.db import connect_v3, is_snapshot  # noqa: E402
 from workbench.main import app  # noqa: E402
-from workbench.permissions import can_adopt, can_publish, can_verify  # noqa: E402
+from workbench.permissions import can_adopt, can_catalogue, can_publish, can_verify  # noqa: E402
 
 
 class PermissionTests(unittest.TestCase):
@@ -28,6 +29,12 @@ class PermissionTests(unittest.TestCase):
         self.assertFalse(can_adopt("publisher"))
         self.assertTrue(can_verify("reviewer"))
         self.assertFalse(can_adopt("reviewer"))
+
+    def test_catalogue_maintenance_is_admin_only(self) -> None:
+        self.assertTrue(can_catalogue("admin"))
+        for role in ("viewer", "reviewer", "adopter", "publisher"):
+            with self.subTest(role=role):
+                self.assertFalse(can_catalogue(role))
 
 
 class SnapshotGuardTests(unittest.TestCase):
@@ -46,6 +53,35 @@ class SnapshotGuardTests(unittest.TestCase):
         self.assertFalse(SNAPSHOT_DB.stat().st_mode & 0o222)
 
 
+class MoneyContractTests(unittest.TestCase):
+    def test_dot_decimal_and_thousands_separator(self) -> None:
+        self.assertEqual(service._parse_money("1234.56"), 123456)
+        self.assertEqual(service._parse_money("1,234.56"), 123456)
+        self.assertEqual(service._parse_money("1,234"), 123400)
+        self.assertEqual(service._parse_money("-1.50"), -150)
+        self.assertEqual(service._parse_money("0.00"), 0)
+        self.assertEqual(service._parse_money("1234.5"), 123450)
+
+    def test_decimal_comma_and_ambiguous_values_are_rejected(self) -> None:
+        for value in ("1.234,56", "12,34", "1.234", "1234,56", "1 234.56", "abc"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    service._parse_money(value)
+        with self.assertRaises(ValueError):
+            service._parse_money("")
+        with self.assertRaises(ValueError):
+            service._parse_money(None)
+        with self.assertRaises(ValueError):
+            service._parse_money("-")
+
+    def test_statement_decimal_places_drive_parse_and_format(self) -> None:
+        self.assertEqual(service._parse_money("1234.567", 3), 1234567)
+        self.assertEqual(service._money(1234567, 3), "1,234.567")
+        self.assertEqual(service._parse_money("123456", 0), 123456)
+        self.assertEqual(service._money(123456, 0), "123,456")
+        self.assertEqual(service._money(None, 2), "")
+
+
 @unittest.skipUnless(V3_DB.is_file(), "operational v3 DB not available")
 class ApiTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -62,11 +98,14 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(summary.json()["db_path"], str(V3_DB))
 
     def test_adopt_requires_adopter_role(self) -> None:
-        held = self.client.get("/api/statements?status=held&limit=1")
-        self.assertEqual(held.status_code, 200)
-        if not held.json():
+        queue = self.client.get("/api/review/queue").json()
+        candidate = next(
+            (item for item in queue if item["review_bucket"] != "ready_for_adoption"),
+            queue[0] if queue else None,
+        )
+        if candidate is None:
             self.skipTest("no held statement")
-        statement_id = held.json()[0]["statement_id"]
+        statement_id = candidate["statement_id"]
         response = self.client.post(
             f"/api/statements/{statement_id}/adopt",
             headers={"X-Workbench-Role": "viewer"},
@@ -119,6 +158,23 @@ class ApiTests(unittest.TestCase):
         detail = self.client.get(f"/review/{statement_id}")
         self.assertEqual(detail.status_code, 200)
 
+    def test_review_detail_uses_per_row_dirty_guard_and_field_checks(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        statement_id = queue[0]["statement_id"]
+        page = self.client.get(f"/review/{statement_id}")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("dirtyRows", page.text)
+        self.assertIn("beforeunload", page.text)
+        self.assertIn('data-field="debit_minor"', page.text)
+        self.assertIn("verified_fields", page.text)
+
+    def test_catalogue_page_lists_items(self) -> None:
+        page = self.client.get("/catalogue?role=admin")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Standard list", page.text)
+        self.assertIn("澳門特區負債證明書", page.text)
+        self.assertIn("Add a draft standard item", page.text)
+
 
 @unittest.skipUnless(V3_DB.is_file(), "operational v3 DB not available")
 class ReviewWriteTests(unittest.TestCase):
@@ -139,6 +195,45 @@ class ReviewWriteTests(unittest.TestCase):
             item for item in self.client.get("/api/review/queue").json()
             if item["review_status"] != "reviewed"
         ]
+
+    def _ready_candidate(self) -> dict | None:
+        """Return a statement that passes every adoption-readiness gate.
+
+        The operational fixture may already have reviewed statements without a
+        review-extraction binding, so readiness is recomputed from the row and
+        mapping metrics and a reviewed candidate is reopened first.
+        """
+        queue = self.client.get("/api/review/queue").json()
+        candidates = [
+            item for item in queue
+            if item["mapping_ready"]
+            and item["row_count"]
+            and item["debit_credit_equal"]
+            and not item["missing_labels"]
+            and not item["issue_rows"]
+            and not item["invalid_mapping_rows"]
+            and not item["duplicate_mapping_items"]
+        ]
+        if not candidates:
+            return None
+        item = candidates[0]
+        if item["review_status"] == "reviewed":
+            reopened = self.client.post(
+                f"/api/review/{item['statement_id']}/review",
+                json={"review_status": "needs_rework", "note": "prepare ready fixture"},
+                headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+            )
+            if reopened.status_code != 200:
+                return None
+            refreshed = next(
+                (
+                    row for row in self.client.get("/api/review/queue").json()
+                    if row["statement_id"] == item["statement_id"]
+                ),
+                None,
+            )
+            return refreshed
+        return item
 
     def test_verify_requires_reviewer_role(self) -> None:
         queue = self.client.get("/api/review/queue").json()
@@ -178,15 +273,23 @@ class ReviewWriteTests(unittest.TestCase):
                 "credit": "",
                 "debit_state": "amount",
                 "credit_state": "blank",
+                "verified_fields": ["label_normalized"],
                 "note": "test correction",
             },
             headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        # The ticked unchanged label plus fields whose value changed.
+        self.assertIn("label_normalized", body["verified_fields"])
+        self.assertIn("debit_minor", body["verified_fields"])
+        self.assertLess(len(body["verified_fields"]), 5)
         conn = sqlite3.connect(self.db)
         self.assertEqual(
-            conn.execute("SELECT COUNT(*) FROM field_verifications WHERE verified_by='tester'").fetchone()[0],
-            5,
+            conn.execute(
+                "SELECT COUNT(*) FROM field_verifications WHERE verified_by='tester'"
+            ).fetchone()[0],
+            len(body["verified_fields"]),
         )
         self.assertEqual(
             conn.execute("SELECT COUNT(*) FROM audit_events WHERE event_type='workbench_row_verified'").fetchone()[0],
@@ -195,14 +298,10 @@ class ReviewWriteTests(unittest.TestCase):
         conn.close()
 
     def test_mark_reviewed_then_adopt(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
-        ready = [
-            item for item in queue
-            if item["review_bucket"] == "ready_for_adoption" and item["mapping_ready"]
-        ]
-        if not ready:
+        ready = self._ready_candidate()
+        if ready is None:
             self.skipTest("no ready held statement")
-        statement_id = ready[0]["statement_id"]
+        statement_id = ready["statement_id"]
         reviewed = self.client.post(
             f"/api/review/{statement_id}/review",
             json={"review_status": "reviewed", "note": "reviewed in test"},
@@ -226,7 +325,7 @@ class ReviewWriteTests(unittest.TestCase):
         conn.close()
 
     def test_reviewed_statement_is_read_only_until_reopened(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
+        queue = self._pending_queue()
         ready = next((item for item in queue if item["mapping_ready"]), None)
         if ready is None:
             self.skipTest("no mapping-ready held statement")
@@ -423,7 +522,7 @@ class ReviewWriteTests(unittest.TestCase):
         return response.json()
 
     def test_inserted_row_appears_and_counts_as_mapped(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
+        queue = self._pending_queue()
         ready = next(item for item in queue if item["mapping_ready"])
         statement_id = ready["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
@@ -479,7 +578,7 @@ class ReviewWriteTests(unittest.TestCase):
         )
 
     def test_inserted_row_without_mapping_blocks_review(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
+        queue = self._pending_queue()
         ready = next(item for item in queue if item["mapping_ready"])
         statement_id = ready["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
@@ -513,7 +612,7 @@ class ReviewWriteTests(unittest.TestCase):
         self.assertTrue(unblocked["mapping_ready"])
 
     def test_excluded_ocr_row_can_be_restored(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
+        queue = self._pending_queue()
         ready = next(item for item in queue if item["mapping_ready"])
         statement_id = ready["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
@@ -546,7 +645,7 @@ class ReviewWriteTests(unittest.TestCase):
         )
 
     def test_row_adjustments_require_unreviewed_statement(self) -> None:
-        queue = self.client.get("/api/review/queue").json()
+        queue = self._pending_queue()
         ready = next(item for item in queue if item["mapping_ready"])
         statement_id = ready["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
@@ -762,6 +861,334 @@ class ReviewWriteTests(unittest.TestCase):
             self.skipTest("no duplicate standard item")
         self.assertFalse(duplicate["mapping_ready"])
         self.assertIn("duplicate_standard_item", duplicate["mapping_blockers"])
+
+    def _add_completed_extraction(self, statement_id: str, *, suffix: str) -> str:
+        conn = sqlite3.connect(self.db)
+        try:
+            source_document_id = conn.execute(
+                "SELECT source_document_id FROM statements WHERE statement_id=?",
+                (statement_id,),
+            ).fetchone()[0]
+            run_id = f"test-run-{suffix}"
+            extraction_id = f"test-extraction-{suffix}"
+            conn.execute(
+                "INSERT INTO extraction_runs("
+                "run_id, source_document_id, run_status, started_at, completed_at"
+                ") VALUES (?, ?, 'completed', ?, ?)",
+                (run_id, source_document_id, service.now(), service.now()),
+            )
+            conn.execute(
+                "INSERT INTO statement_extractions("
+                "statement_extraction_id, statement_id, run_id, source_document_id, "
+                "extraction_status, created_at"
+                ") VALUES (?, ?, ?, ?, 'completed', ?)",
+                (
+                    extraction_id, statement_id, run_id, source_document_id,
+                    "2999-01-01T00:00:00+00:00",
+                ),
+            )
+            conn.commit()
+            return extraction_id
+        finally:
+            conn.close()
+
+    def test_review_binds_extraction_and_stale_extraction_blocks_adoption(self) -> None:
+        ready = self._ready_candidate()
+        if ready is None:
+            self.skipTest("no ready pending statement")
+        statement_id = ready["statement_id"]
+        before_rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        reviewed = self.client.post(
+            f"/api/review/{statement_id}/review",
+            json={"review_status": "reviewed", "note": "bind extraction"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        extraction_id = reviewed.json()["statement_extraction_id"]
+        self.assertTrue(extraction_id)
+
+        conn = sqlite3.connect(self.db)
+        binding = conn.execute(
+            "SELECT statement_extraction_id FROM statement_review_bindings "
+            "WHERE statement_id=? AND binding_status='active'",
+            (statement_id,),
+        ).fetchone()
+        conn.close()
+        self.assertIsNotNone(binding)
+        self.assertEqual(binding[0], extraction_id)
+
+        detail = self.client.get(f"/api/statements/{statement_id}").json()
+        self.assertEqual(detail["statement_extraction_id"], extraction_id)
+        self.assertEqual(detail["review_binding_statement_extraction_id"], extraction_id)
+        self.assertFalse(detail["review_extraction_outdated"])
+
+        self._add_completed_extraction(statement_id, suffix="newer")
+        queue_row = next(
+            item for item in self.client.get("/api/review/queue").json()
+            if item["statement_id"] == statement_id
+        )
+        self.assertEqual(queue_row["review_bucket"], "review_outdated")
+        self.assertTrue(queue_row["review_extraction_outdated"])
+
+        adopt = self.client.post(
+            f"/api/statements/{statement_id}/adopt",
+            headers={"X-Workbench-Role": "adopter", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(adopt.status_code, 409)
+        self.assertIn("review_outdated", adopt.json()["detail"])
+
+        # Review rows still come from the bound extraction, not the newer empty one.
+        after_rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        self.assertEqual(len(after_rows), len(before_rows))
+
+    def test_amount_state_requires_a_value(self) -> None:
+        queue = self._pending_queue()
+        if not queue:
+            self.skipTest("no pending statement")
+        statement_id = queue[0]["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        row = rows[0]
+        conn = sqlite3.connect(self.db)
+        before = conn.execute(
+            "SELECT COUNT(*) FROM field_verifications WHERE statement_row_id=?",
+            (row["statement_row_id"],),
+        ).fetchone()[0]
+        conn.close()
+        rejected = self.client.post(
+            f"/api/review/{statement_id}/rows/{row['statement_row_id']}/verify",
+            json={
+                "label": row["effective_label"],
+                "debit": "",
+                "credit": "",
+                "debit_state": "amount",
+                "credit_state": "blank",
+                "verified_fields": ["debit_minor"],
+            },
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(rejected.status_code, 400)
+        self.assertIn("required", rejected.json()["detail"].lower())
+        conn = sqlite3.connect(self.db)
+        self.assertEqual(
+            conn.execute(
+                "SELECT COUNT(*) FROM field_verifications WHERE statement_row_id=?",
+                (row["statement_row_id"],),
+            ).fetchone()[0],
+            before,
+        )
+        conn.close()
+
+        accepted = self.client.post(
+            f"/api/review/{statement_id}/rows/{row['statement_row_id']}/verify",
+            json={
+                "label": row["effective_label"],
+                "debit": "0.00",
+                "credit": "",
+                "debit_state": "amount",
+                "credit_state": "blank",
+                "verified_fields": ["debit_minor"],
+            },
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.text)
+        self.assertEqual(accepted.json()["effective_debit_minor"], 0)
+        self.assertEqual(accepted.json()["effective_debit_state"], "amount")
+
+    def test_non_amount_state_stores_null_minor(self) -> None:
+        queue = self._pending_queue()
+        if not queue:
+            self.skipTest("no pending statement")
+        statement_id = queue[0]["statement_id"]
+        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        row = next(
+            (
+                item for item in rows
+                if item["effective_debit_state"] == "amount"
+                and item["effective_debit_minor"] is not None
+            ),
+            None,
+        )
+        if row is None:
+            self.skipTest("no amount row")
+        credit = (
+            row["effective_credit_display"]
+            if row["effective_credit_state"] == "amount" else ""
+        )
+        response = self.client.post(
+            f"/api/review/{statement_id}/rows/{row['statement_row_id']}/verify",
+            json={
+                "label": row["effective_label"],
+                "debit": "",
+                "credit": credit,
+                "debit_state": "blank",
+                "credit_state": row["effective_credit_state"],
+                "verified_fields": ["debit_value_state"],
+            },
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["effective_debit_state"], "blank")
+        self.assertIsNone(body["effective_debit_minor"])
+        conn = sqlite3.connect(self.db)
+        stored = conn.execute(
+            "SELECT verified_value_text FROM field_verifications "
+            "WHERE statement_row_id=? AND field_name='debit_minor'",
+            (row["statement_row_id"],),
+        ).fetchone()
+        conn.close()
+        self.assertIsNotNone(stored)
+        self.assertIsNone(stored[0])
+
+    def test_standard_item_dropdown_excludes_inactive_items(self) -> None:
+        active = self.client.get("/api/standard-items").json()
+        self.assertTrue(active)
+        self.assertTrue(all(item["item_status"] == "approved" for item in active))
+        everything = self.client.get("/api/standard-items?include_inactive=true").json()
+        self.assertTrue(any(item["item_status"] != "approved" for item in everything))
+
+    def test_inactive_standard_items_cannot_be_mapped(self) -> None:
+        queue = self._pending_queue()
+        if not queue:
+            self.skipTest("no pending statement")
+        statement_id = queue[0]["statement_id"]
+        row = self.client.get(f"/api/review/{statement_id}/rows").json()[0]
+        everything = self.client.get("/api/standard-items?include_inactive=true").json()
+        approved = next(item for item in everything if item["item_status"] == "approved")
+        draft = next(
+            (item for item in everything if item["item_status"] == "draft"), None
+        )
+        if draft is None:
+            self.skipTest("no draft standard item")
+        conn = sqlite3.connect(self.db)
+        conn.execute(
+            "INSERT INTO standard_items("
+            "standard_item_id, item_key, item_status, created_at"
+            ") VALUES ('test-retired-item', 'test-retired-item', 'retired', ?)",
+            (service.now(),),
+        )
+        conn.execute(
+            "INSERT INTO standard_items("
+            "standard_item_id, item_key, item_status, merged_into_standard_item_id, created_at"
+            ") VALUES ('test-merged-item', 'test-merged-item', 'merged', ?, ?)",
+            (approved["standard_item_id"], service.now()),
+        )
+        conn.commit()
+        conn.close()
+
+        for item_id, expected in (
+            (draft["standard_item_id"], "only approved"),
+            ("test-retired-item", "only approved"),
+            ("test-merged-item", "merged into"),
+        ):
+            with self.subTest(item_id=item_id):
+                response = self.client.post(
+                    f"/api/review/{statement_id}/rows/{row['statement_row_id']}/map",
+                    json={"standard_item_id": item_id, "note": "inactive item"},
+                    headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+                )
+                self.assertEqual(response.status_code, 409, response.text)
+                self.assertIn(expected, response.json()["detail"])
+
+        inserted = self.client.post(
+            f"/api/review/{statement_id}/rows",
+            json={
+                "label": "inactive insert",
+                "debit_state": "blank",
+                "credit_state": "blank",
+                "standard_item_id": "test-retired-item",
+            },
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(inserted.status_code, 409)
+
+    def test_catalogue_create_approve_retire_reopen(self) -> None:
+        payload = {
+            "canonical_zh": "測試科目",
+            "canonical_pt": "CONTA TESTE",
+            "category": "asset",
+            "note": "created in test",
+        }
+        forbidden = self.client.post(
+            "/api/catalogue/items",
+            json=payload,
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(forbidden.status_code, 403)
+
+        created = self.client.post(
+            "/api/catalogue/items",
+            json=payload,
+            headers={"X-Workbench-Role": "admin", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        item = created.json()
+        item_id = item["standard_item_id"]
+        self.assertEqual(item["item_status"], "draft")
+        self.assertEqual(item["canonical_zh_status"], "draft")
+        self.assertEqual(item["item_key"], "user:測試科目")
+
+        default_items = self.client.get("/api/standard-items").json()
+        self.assertNotIn(item_id, {entry["standard_item_id"] for entry in default_items})
+        all_items = self.client.get("/api/standard-items?include_inactive=true").json()
+        self.assertIn(item_id, {entry["standard_item_id"] for entry in all_items})
+
+        approve_forbidden = self.client.post(
+            f"/api/catalogue/items/{item_id}/approve",
+            json={"note": "no"},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(approve_forbidden.status_code, 403)
+        approved = self.client.post(
+            f"/api/catalogue/items/{item_id}/approve",
+            json={"note": "approved in test"},
+            headers={"X-Workbench-Role": "admin", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(approved.status_code, 200, approved.text)
+        self.assertEqual(approved.json()["item_status"], "approved")
+        self.assertEqual(approved.json()["canonical_zh_status"], "approved")
+        default_items = self.client.get("/api/standard-items").json()
+        self.assertIn(item_id, {entry["standard_item_id"] for entry in default_items})
+
+        retired = self.client.post(
+            f"/api/catalogue/items/{item_id}/retire",
+            json={"note": "retired in test"},
+            headers={"X-Workbench-Role": "admin", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(retired.status_code, 200, retired.text)
+        self.assertEqual(retired.json()["item_status"], "retired")
+        self.assertIn("usage", retired.json())
+        default_items = self.client.get("/api/standard-items").json()
+        self.assertNotIn(item_id, {entry["standard_item_id"] for entry in default_items})
+
+        reopened = self.client.post(
+            f"/api/catalogue/items/{item_id}/reopen",
+            json={"note": "reopened in test"},
+            headers={"X-Workbench-Role": "admin", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(reopened.status_code, 200, reopened.text)
+        self.assertEqual(reopened.json()["item_status"], "draft")
+
+        duplicate = self.client.post(
+            "/api/catalogue/items",
+            json=payload,
+            headers={"X-Workbench-Role": "admin", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertIn("already exists", duplicate.json()["detail"])
+
+        conn = sqlite3.connect(self.db)
+        events = {
+            row[0] for row in conn.execute(
+                "SELECT event_type FROM audit_events WHERE standard_item_id=?",
+                (item_id,),
+            )
+        }
+        conn.close()
+        self.assertTrue({
+            "standard_item_created", "standard_item_approved",
+            "standard_item_retired", "standard_item_reopened",
+        }.issubset(events))
 
 
 if __name__ == "__main__":

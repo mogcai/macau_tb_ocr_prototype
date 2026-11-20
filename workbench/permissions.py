@@ -10,7 +10,7 @@ ROLES = {
     "reviewer": {"read", "verify", "review", "map"},
     "adopter": {"read", "verify", "review", "map", "adopt"},
     "publisher": {"read", "publish"},
-    "admin": {"read", "verify", "review", "map", "adopt", "publish"},
+    "admin": {"read", "verify", "review", "map", "adopt", "publish", "catalogue"},
 }
 DEFAULT_ROLE = "viewer"
 
@@ -37,3 +37,7 @@ def can_adopt(role: str) -> bool:
 
 def can_publish(role: str) -> bool:
     return "publish" in capabilities(role)
+
+
+def can_catalogue(role: str) -> bool:
+    return "catalogue" in capabilities(role)

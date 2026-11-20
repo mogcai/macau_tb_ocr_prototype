@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -23,6 +24,10 @@ class StatementAdoptedError(ValueError):
     """Raised when an adopted statement is edited without returning it to review."""
 
 
+class InactiveStandardItemError(ValueError):
+    """Raised when a mapping targets a draft, merged or retired standard item."""
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -39,6 +44,116 @@ def _count(conn: sqlite3.Connection, sql: str, params: tuple[Any, ...] = ()) -> 
     return int(conn.execute(sql, params).fetchone()[0])
 
 
+def _normalize_places(places: int | None) -> int:
+    if places is None:
+        return 2
+    return max(0, min(6, int(places)))
+
+
+def _current_extraction_sql(alias: str) -> str:
+    """SQL expression selecting the extraction a reader must use.
+
+    Order of precedence:
+    1. the adopted extraction (active statements are immutable);
+    2. the active reviewer binding (what was actually signed off);
+    3. the latest completed extraction (pre-review workbench view).
+    """
+    return f"""COALESCE(
+        (SELECT s.adopted_statement_extraction_id FROM statements s
+          WHERE s.statement_id={alias}.statement_id),
+        (SELECT b.statement_extraction_id FROM statement_review_bindings b
+          WHERE b.statement_id={alias}.statement_id
+            AND b.binding_status='active'
+          ORDER BY b.bound_at DESC, b.binding_id DESC LIMIT 1),
+        (SELECT se.statement_extraction_id FROM statement_extractions se
+          WHERE se.statement_id={alias}.statement_id
+            AND se.extraction_status='completed'
+          ORDER BY se.created_at DESC, se.statement_extraction_id DESC LIMIT 1)
+    )"""
+
+
+def _current_extraction_id(conn: sqlite3.Connection, statement_id: str) -> str | None:
+    row = conn.execute(
+        f"SELECT {_current_extraction_sql('s')} AS extraction_id "
+        "FROM statements s WHERE s.statement_id=?",
+        (statement_id,),
+    ).fetchone()
+    return row["extraction_id"] if row is not None else None
+
+
+def _latest_completed_extraction_id(
+    conn: sqlite3.Connection, statement_id: str
+) -> str | None:
+    row = conn.execute(
+        "SELECT statement_extraction_id FROM statement_extractions "
+        "WHERE statement_id=? AND extraction_status='completed' "
+        "ORDER BY created_at DESC, statement_extraction_id DESC LIMIT 1",
+        (statement_id,),
+    ).fetchone()
+    return row["statement_extraction_id"] if row is not None else None
+
+
+def _active_review_binding(
+    conn: sqlite3.Connection, statement_id: str
+) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM statement_review_bindings "
+        "WHERE statement_id=? AND binding_status='active' "
+        "ORDER BY bound_at DESC, binding_id DESC LIMIT 1",
+        (statement_id,),
+    ).fetchone()
+
+
+def _bind_review_extraction(
+    conn: sqlite3.Connection,
+    statement_id: str,
+    statement_extraction_id: str,
+    *,
+    actor: str,
+    note: str,
+) -> str:
+    conn.execute(
+        "UPDATE statement_review_bindings SET binding_status='void', "
+        "voided_by=?, voided_at=? WHERE statement_id=? AND binding_status='active'",
+        (actor, now(), statement_id),
+    )
+    binding_id = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO statement_review_bindings("
+        "binding_id, statement_id, statement_extraction_id, binding_status, "
+        "bound_by, bound_at, note"
+        ") VALUES (?, ?, ?, 'active', ?, ?, ?)",
+        (binding_id, statement_id, statement_extraction_id, actor, now(), note),
+    )
+    return binding_id
+
+
+def _check_standard_item_usable(conn: sqlite3.Connection, standard_item_id: str) -> sqlite3.Row:
+    item = conn.execute(
+        "SELECT standard_item_id, item_key, item_status, merged_into_standard_item_id "
+        "FROM standard_items WHERE standard_item_id=?",
+        (standard_item_id,),
+    ).fetchone()
+    if item is None:
+        raise LookupError("standard item not found")
+    if item["item_status"] == "merged":
+        target = conn.execute(
+            "SELECT item_key FROM standard_items WHERE standard_item_id=?",
+            (item["merged_into_standard_item_id"],),
+        ).fetchone()
+        target_key = target["item_key"] if target is not None else "another item"
+        raise InactiveStandardItemError(
+            f"standard item {item['item_key']} is merged into {target_key}; "
+            "map the merged target instead"
+        )
+    if item["item_status"] != "approved":
+        raise InactiveStandardItemError(
+            f"standard item {item['item_key']} is {item['item_status']}; "
+            "only approved catalogue items can be mapped"
+        )
+    return item
+
+
 def summary() -> dict[str, Any]:
     conn = connect_v3()
     try:
@@ -50,15 +165,14 @@ def summary() -> dict[str, Any]:
             "held_rows": _count(
                 conn,
                 "SELECT COUNT(*) FROM statement_rows sr JOIN statements s ON s.statement_id=sr.statement_id "
-                "WHERE s.statement_status<>'active'",
+                "WHERE s.statement_status<>'active' "
+                f"AND sr.statement_extraction_id = {_current_extraction_sql('sr')}",
             ),
             "field_verifications": _count(conn, "SELECT COUNT(*) FROM field_verifications"),
             "active_field_verifications": _count(
                 conn,
                 "SELECT COUNT(*) FROM field_verifications fv "
-                "JOIN statement_rows sr ON sr.statement_row_id=fv.statement_row_id "
-                "JOIN statements s ON s.statement_id=sr.statement_id "
-                "WHERE s.statement_status='active'",
+                "JOIN v_current_statement_rows sr ON sr.statement_row_id=fv.statement_row_id",
             ),
             "publications": _count(conn, "SELECT COUNT(*) FROM publication_records"),
             "standard_items": _count(conn, "SELECT COUNT(*) FROM standard_items"),
@@ -107,7 +221,9 @@ def list_statements(status: str = "all", limit: int = 200) -> list[dict[str, Any
                    s.reporting_scope, s.statement_status, s.identity_status,
                    s.adopted_statement_extraction_id,
                    e.canonical_zh AS entity_name, e.entity_key,
-                   (SELECT COUNT(*) FROM statement_rows sr WHERE sr.statement_id=s.statement_id) AS row_count,
+                   (SELECT COUNT(*) FROM statement_rows sr
+                     WHERE sr.statement_id=s.statement_id
+                       AND sr.statement_extraction_id = {_current_extraction_sql('sr')}) AS row_count,
                    (SELECT COUNT(*) FROM statement_pages sp WHERE sp.statement_id=s.statement_id) AS page_count,
                    COALESCE((SELECT rv.review_status FROM statement_reviews rv
                      WHERE rv.statement_id=s.statement_id), 'pending') AS review_status
@@ -130,7 +246,6 @@ def statement_detail(statement_id: str) -> dict[str, Any] | None:
         row = conn.execute(
             """
             SELECT s.*, e.canonical_zh AS entity_name, e.entity_key,
-                   se.extraction_status, se.statement_extraction_id,
                    COALESCE((SELECT rv.review_status FROM statement_reviews rv
                      WHERE rv.statement_id=s.statement_id), 'pending') AS review_status,
                    (SELECT rv.reviewed_by FROM statement_reviews rv
@@ -139,7 +254,6 @@ def statement_detail(statement_id: str) -> dict[str, Any] | None:
                      WHERE rv.statement_id=s.statement_id) AS reviewed_at
             FROM statements s
             JOIN reporting_entities e ON e.entity_id=s.reporting_entity_id
-            LEFT JOIN statement_extractions se ON se.statement_id=s.statement_id
             WHERE s.statement_id=?
             """,
             (statement_id,),
@@ -147,6 +261,29 @@ def statement_detail(statement_id: str) -> dict[str, Any] | None:
         if row is None:
             return None
         result = dict(row)
+        extraction_id = _current_extraction_id(conn, statement_id)
+        extraction = None
+        if extraction_id is not None:
+            extraction = conn.execute(
+                "SELECT statement_extraction_id, extraction_status, run_id, created_at "
+                "FROM statement_extractions WHERE statement_id=? AND statement_extraction_id=?",
+                (statement_id, extraction_id),
+            ).fetchone()
+        result["statement_extraction_id"] = extraction_id
+        result["extraction_status"] = extraction["extraction_status"] if extraction else None
+        result["extraction_run_id"] = extraction["run_id"] if extraction else None
+        result["extraction_created_at"] = extraction["created_at"] if extraction else None
+        binding = _active_review_binding(conn, statement_id)
+        latest_completed = _latest_completed_extraction_id(conn, statement_id)
+        result["review_binding_statement_extraction_id"] = (
+            binding["statement_extraction_id"] if binding is not None else None
+        )
+        result["latest_completed_statement_extraction_id"] = latest_completed
+        result["review_extraction_outdated"] = bool(
+            binding is not None
+            and latest_completed is not None
+            and binding["statement_extraction_id"] != latest_completed
+        )
         result["pages"] = [
             dict(page)
             for page in conn.execute(
@@ -205,15 +342,29 @@ def mark_statement_reviewed(
         if statement["statement_status"] == "active":
             raise ValueError("active statements are already adopted; review state is not applicable")
         readiness = next((item for item in review_queue() if item["statement_id"] == statement_id), None)
-        if (
-            review_status == "reviewed"
-            and readiness is not None
-            and not readiness["mapping_ready"]
-        ):
-            raise ValueError(
-                "resolve mapping conflict/unmatched before marking reviewed: "
-                f"{readiness['mapping_blockers']}"
-            )
+        current_review = conn.execute(
+            "SELECT review_status FROM statement_reviews WHERE statement_id=?",
+            (statement_id,),
+        ).fetchone()
+        extraction_id: str | None = None
+        binding_id: str | None = None
+        voided_binding_id: str | None = None
+        if review_status == "reviewed":
+            if current_review is not None and current_review["review_status"] == "reviewed":
+                raise ValueError(
+                    "statement is already reviewed; reopen it before signing off extraction data"
+                )
+            if (
+                readiness is not None
+                and not readiness["mapping_ready"]
+            ):
+                raise ValueError(
+                    "resolve mapping conflict/unmatched before marking reviewed: "
+                    f"{readiness['mapping_blockers']}"
+                )
+            extraction_id = _latest_completed_extraction_id(conn, statement_id)
+            if extraction_id is None:
+                raise ValueError("statement has no completed extraction to review")
         conn.execute(
             """
             INSERT INTO statement_reviews(
@@ -228,22 +379,48 @@ def mark_statement_reviewed(
             """,
             (statement_id, review_status, actor, now(), note, now()),
         )
+        if review_status == "reviewed" and extraction_id is not None:
+            binding_id = _bind_review_extraction(
+                conn, statement_id, extraction_id, actor=actor, note=note
+            )
+        else:
+            previous_binding = _active_review_binding(conn, statement_id)
+            voided_binding_id = (
+                previous_binding["binding_id"] if previous_binding is not None else None
+            )
+            conn.execute(
+                "UPDATE statement_review_bindings SET binding_status='void', "
+                "voided_by=?, voided_at=? WHERE statement_id=? AND binding_status='active'",
+                (actor, now(), statement_id),
+            )
         event_id = stable_id("workbench_statement_review", statement_id, review_status, now())
         conn.execute(
             "INSERT INTO audit_events("
-            "audit_event_id, event_type, statement_id, actor_id, after_json, "
-            "details_json, reason, created_at"
-            ") VALUES (?, 'workbench_statement_reviewed', ?, ?, ?, ?, ?, ?)",
+            "audit_event_id, event_type, statement_id, statement_extraction_id, actor_id, "
+            "after_json, details_json, reason, created_at"
+            ") VALUES (?, 'workbench_statement_reviewed', ?, ?, ?, ?, ?, ?, ?)",
             (
-                event_id, statement_id, actor,
-                json.dumps({"review_status": review_status, "note": note}, ensure_ascii=False),
+                event_id, statement_id, extraction_id, actor,
+                json.dumps({
+                    "review_status": review_status,
+                    "note": note,
+                    "statement_extraction_id": extraction_id,
+                    "review_binding_id": binding_id,
+                    "voided_review_binding_id": voided_binding_id,
+                }, ensure_ascii=False),
                 json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
                 note or "Statement reviewed in Workbench",
                 now(),
             ),
         )
         conn.commit()
-        return {"statement_id": statement_id, "review_status": review_status, "reviewed_by": actor}
+        return {
+            "statement_id": statement_id,
+            "review_status": review_status,
+            "reviewed_by": actor,
+            "statement_extraction_id": extraction_id,
+            "review_binding_id": binding_id,
+        }
     except Exception:
         conn.rollback()
         raise
@@ -268,13 +445,25 @@ def adopt_statement(statement_id: str, actor: str) -> dict[str, Any]:
             raise LookupError("statement not found")
         if statement["statement_status"] == "active" or statement["adopted_statement_extraction_id"]:
             raise ValueError("statement is already adopted")
+        binding = _active_review_binding(conn, statement_id)
+        if binding is None:
+            raise ValueError(
+                "reviewer sign-off is not bound to an extraction; reopen and mark reviewed again"
+            )
+        extraction_id = binding["statement_extraction_id"]
+        latest_completed = _latest_completed_extraction_id(conn, statement_id)
+        if latest_completed is not None and latest_completed != extraction_id:
+            raise ValueError(
+                "a newer completed extraction exists since this sign-off; "
+                "reopen and mark the current extraction reviewed before adoption"
+            )
         extraction = conn.execute(
             "SELECT statement_extraction_id, extraction_status FROM statement_extractions "
-            "WHERE statement_id=? ORDER BY created_at DESC LIMIT 1",
-            (statement_id,),
+            "WHERE statement_id=? AND statement_extraction_id=?",
+            (statement_id, extraction_id),
         ).fetchone()
         if extraction is None or extraction["extraction_status"] != "completed":
-            raise ValueError("statement has no completed extraction")
+            raise ValueError("the reviewed extraction is no longer completed")
         if conn.execute(
             "SELECT 1 FROM publication_records WHERE statement_id=? AND publication_status='published'",
             (statement_id,),
@@ -297,6 +486,7 @@ def adopt_statement(statement_id: str, actor: str) -> dict[str, Any]:
                 json.dumps({
                     "statement_status": "active",
                     "adopted_statement_extraction_id": extraction["statement_extraction_id"],
+                    "review_binding_id": binding["binding_id"],
                 }, ensure_ascii=False),
                 json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
                 "Adopted via Workbench",
@@ -307,6 +497,7 @@ def adopt_statement(statement_id: str, actor: str) -> dict[str, Any]:
         return {
             "statement_id": statement_id,
             "adopted_statement_extraction_id": extraction["statement_extraction_id"],
+            "review_binding_id": binding["binding_id"],
             "statement_status": "active",
         }
     except Exception:
@@ -328,40 +519,57 @@ def publish_statement(statement_id: str, actor: str) -> dict[str, Any]:
     )
 
 
+_MONEY_RE = re.compile(r"^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.(\d+))?$")
+
+
 def _money(minor: int | None, places: int | None) -> str:
     if minor is None:
         return ""
     from decimal import Decimal
-    scale = places if places is not None else 2
-    value = Decimal(minor) / (Decimal(10) ** scale)
-    return format(value, ",.2f")
+    decimal_places = _normalize_places(places)
+    value = Decimal(minor) / (Decimal(10) ** decimal_places)
+    return format(value, f",.{decimal_places}f")
 
 
-def _parse_money(value: str | None) -> int:
+def _parse_money(value: str | None, places: int | None = 2) -> int:
+    """Parse a canonical Workbench amount into minor units.
+
+    Input contract: optional sign, digits or comma thousands groups, and an
+    optional dot decimal point (for example ``1234.56`` or ``1,234.56``).
+    Decimal commas are deliberately rejected because they are ambiguous
+    without page-level evidence; use the value-state fields for dash/blank.
+    """
     if value is None or str(value).strip() == "":
-        return 0
-    raw = str(value).strip().replace(",", "")
+        raise ValueError("amount is required when state is 'amount'")
+    raw = str(value).strip()
     if raw in {"-", "–", "—", "−"}:
-        return 0
-    try:
-        from decimal import Decimal
-        amount = Decimal(raw)
-    except Exception as exc:  # noqa: BLE001
-        raise ValueError(f"invalid amount: {value!r}") from exc
-    scaled = amount * 100
+        raise ValueError("dash is not an amount; use state 'dash' instead")
+    match = _MONEY_RE.fullmatch(raw)
+    if match is None:
+        raise ValueError(
+            f"invalid amount {value!r}; use dot decimals such as 1234.56 "
+            "(comma is a thousands separator, not a decimal point)"
+        )
+    from decimal import Decimal
+    amount = Decimal(raw.replace(",", ""))
+    decimal_places = _normalize_places(places)
+    scaled = amount * (Decimal(10) ** decimal_places)
     integral = scaled.to_integral_value()
     if scaled != integral:
-        raise ValueError(f"amount has more than two decimal places: {value!r}")
+        raise ValueError(
+            f"amount has more than {decimal_places} decimal places: {value!r}"
+        )
     return int(integral)
 
 
-EFFECTIVE_ROW_SQL = """
+EFFECTIVE_ROW_SQL = f"""
 SELECT
     sr.statement_id,
     sr.statement_row_id,
     sr.statement_order,
     sr.row_type,
     sr.parent_context_status,
+    sr.statement_extraction_id,
     er.label_raw,
     er.debit_raw,
     er.credit_raw,
@@ -374,15 +582,23 @@ SELECT
     COALESCE((SELECT fv.verified_value_text FROM field_verifications fv
       WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='label_normalized'
         AND fv.verification_status='verified'), sr.label_normalized) AS effective_label,
-    COALESCE((SELECT CAST(fv.verified_value_text AS INTEGER) FROM field_verifications fv
+    CASE WHEN EXISTS (SELECT 1 FROM field_verifications fv
       WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='debit_minor'
-        AND fv.verification_status='verified'), sr.debit_minor) AS effective_debit_minor,
+        AND fv.verification_status='verified')
+      THEN (SELECT CAST(fv.verified_value_text AS INTEGER) FROM field_verifications fv
+             WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='debit_minor'
+               AND fv.verification_status='verified')
+      ELSE sr.debit_minor END AS effective_debit_minor,
     COALESCE((SELECT fv.verified_value_text FROM field_verifications fv
       WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='debit_value_state'
         AND fv.verification_status='verified'), sr.debit_value_state) AS effective_debit_state,
-    COALESCE((SELECT CAST(fv.verified_value_text AS INTEGER) FROM field_verifications fv
+    CASE WHEN EXISTS (SELECT 1 FROM field_verifications fv
       WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='credit_minor'
-        AND fv.verification_status='verified'), sr.credit_minor) AS effective_credit_minor,
+        AND fv.verification_status='verified')
+      THEN (SELECT CAST(fv.verified_value_text AS INTEGER) FROM field_verifications fv
+             WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='credit_minor'
+               AND fv.verification_status='verified')
+      ELSE sr.credit_minor END AS effective_credit_minor,
     COALESCE((SELECT fv.verified_value_text FROM field_verifications fv
       WHERE fv.statement_row_id=sr.statement_row_id AND fv.field_name='credit_value_state'
         AND fv.verification_status='verified'), sr.credit_value_state) AS effective_credit_state,
@@ -391,7 +607,8 @@ SELECT
 FROM statement_rows sr
 JOIN extracted_rows er ON er.extracted_row_id=sr.extracted_row_id
 JOIN document_pages dp ON dp.document_page_id=er.document_page_id
-WHERE NOT EXISTS (
+WHERE sr.statement_extraction_id = {_current_extraction_sql('sr')}
+  AND NOT EXISTS (
     SELECT 1 FROM statement_row_adjustments a
     WHERE a.adjustment_type='exclude'
       AND a.adjustment_status='active'
@@ -404,6 +621,7 @@ SELECT
     a.display_order AS statement_order,
     a.row_type,
     'unknown' AS parent_context_status,
+    NULL AS statement_extraction_id,
     NULL AS label_raw,
     NULL AS debit_raw,
     NULL AS credit_raw,
@@ -426,16 +644,7 @@ WHERE a.adjustment_type='insert'
 """
 
 
-def standard_items() -> list[dict[str, Any]]:
-    conn = connect_v3()
-    try:
-        rows = [dict(row) for row in conn.execute(
-            "SELECT standard_item_id, item_key, canonical_zh, canonical_pt, "
-            "parent_standard_item_id, item_status FROM standard_items "
-            "ORDER BY item_key"
-        )]
-    finally:
-        conn.close()
+def _standard_item_paths(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_id = {row["standard_item_id"]: row for row in rows}
 
     def path_for(row: dict[str, Any]) -> str:
@@ -444,7 +653,11 @@ def standard_items() -> list[dict[str, Any]]:
         seen = set()
         while current and current["standard_item_id"] not in seen:
             seen.add(current["standard_item_id"])
-            label = text(current.get("canonical_zh")) or text(current.get("canonical_pt")) or current["item_key"]
+            label = (
+                text(current.get("canonical_zh"))
+                or text(current.get("canonical_pt"))
+                or current["item_key"]
+            )
             parts.append(label)
             current = by_id.get(current.get("parent_standard_item_id"))
         return " > ".join(reversed(parts))
@@ -454,13 +667,343 @@ def standard_items() -> list[dict[str, Any]]:
     return rows
 
 
+def standard_items(*, include_inactive: bool = False) -> list[dict[str, Any]]:
+    conn = connect_v3()
+    try:
+        rows = [dict(row) for row in conn.execute(
+            "SELECT standard_item_id, item_key, canonical_zh, canonical_pt, "
+            "parent_standard_item_id, item_status, merged_into_standard_item_id "
+            "FROM standard_items "
+            "ORDER BY item_key"
+        )]
+    finally:
+        conn.close()
+    rows = _standard_item_paths(rows)
+    if include_inactive:
+        return rows
+    return [row for row in rows if row["item_status"] == "approved"]
+
+
+def standard_item_admin_rows(*, db_path: Path | None = None) -> list[dict[str, Any]]:
+    """All catalogue items with lifecycle and usage counts for maintenance."""
+    conn = connect_v3(db_path)
+    try:
+        rows = [dict(row) for row in conn.execute(
+            """
+            SELECT si.standard_item_id, si.item_key, si.canonical_zh,
+                   si.canonical_zh_status, si.canonical_pt,
+                   si.canonical_pt_status, si.canonical_en,
+                   si.canonical_en_status, si.parent_standard_item_id,
+                   si.category, si.item_status, si.merged_into_standard_item_id,
+                   si.created_at, si.notes,
+                   parent.item_key AS merged_into_item_key,
+                   (SELECT COUNT(*) FROM statement_row_mappings m
+                     WHERE m.standard_item_id=si.standard_item_id
+                       AND m.mapping_status='approved') AS approved_mapping_rows,
+                   (SELECT COUNT(*) FROM statement_row_mappings m
+                     WHERE m.standard_item_id=si.standard_item_id
+                       AND m.mapping_status='proposed') AS proposed_mapping_rows,
+                   (SELECT COUNT(*) FROM statement_row_adjustments a
+                     WHERE a.standard_item_id=si.standard_item_id
+                       AND a.adjustment_type='insert'
+                       AND a.adjustment_status='active') AS manual_rows
+            FROM standard_items si
+            LEFT JOIN standard_items parent
+              ON parent.standard_item_id=si.merged_into_standard_item_id
+            ORDER BY si.item_key
+            """
+        )]
+    finally:
+        conn.close()
+    return _standard_item_paths(rows)
+
+
+def _get_standard_item(
+    conn: sqlite3.Connection, identifier: str
+) -> sqlite3.Row:
+    row = conn.execute(
+        "SELECT * FROM standard_items WHERE standard_item_id=?",
+        (identifier,),
+    ).fetchone()
+    if row is None:
+        row = conn.execute(
+            "SELECT * FROM standard_items WHERE item_key=?",
+            (identifier,),
+        ).fetchone()
+    if row is None:
+        raise LookupError("standard item not found")
+    return row
+
+
+def _standard_item_usage(conn: sqlite3.Connection, standard_item_id: str) -> dict[str, int]:
+    return {
+        "approved_mapping_rows": _count(
+            conn,
+            "SELECT COUNT(*) FROM statement_row_mappings "
+            "WHERE standard_item_id=? AND mapping_status='approved'",
+            (standard_item_id,),
+        ),
+        "proposed_mapping_rows": _count(
+            conn,
+            "SELECT COUNT(*) FROM statement_row_mappings "
+            "WHERE standard_item_id=? AND mapping_status='proposed'",
+            (standard_item_id,),
+        ),
+        "manual_rows": _count(
+            conn,
+            "SELECT COUNT(*) FROM statement_row_adjustments "
+            "WHERE standard_item_id=? AND adjustment_type='insert' "
+            "AND adjustment_status='active'",
+            (standard_item_id,),
+        ),
+    }
+
+
+def _standard_item_audit(
+    conn: sqlite3.Connection,
+    *,
+    event_type: str,
+    before: dict[str, Any] | None,
+    after: dict[str, Any],
+    actor: str,
+    note: str,
+    source: str,
+) -> None:
+    conn.execute(
+        "INSERT INTO audit_events("
+        "audit_event_id, event_type, standard_item_id, actor_id, "
+        "before_json, after_json, details_json, reason, created_at"
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            str(uuid.uuid4()), event_type, after["standard_item_id"], actor,
+            json.dumps(before, ensure_ascii=False, default=str) if before else None,
+            json.dumps(after, ensure_ascii=False, default=str),
+            json.dumps({"source": source, "version": VERSION}, ensure_ascii=False),
+            note,
+            now(),
+        ),
+    )
+
+
+def approve_standard_item(
+    identifier: str,
+    *,
+    actor: str,
+    note: str = "",
+    source: str = "workbench",
+    db_path: Path | None = None,
+) -> dict[str, Any]:
+    """Approve a draft catalogue item; merged/retired items are refused."""
+    conn = connect_v3(db_path, write=True)
+    try:
+        row = _get_standard_item(conn, identifier)
+        if row["item_status"] == "approved":
+            return {**dict(row), "changed": False}
+        if row["item_status"] == "merged":
+            target = conn.execute(
+                "SELECT item_key FROM standard_items WHERE standard_item_id=?",
+                (row["merged_into_standard_item_id"],),
+            ).fetchone()
+            raise InactiveStandardItemError(
+                "standard item is merged into "
+                f"{target['item_key'] if target else 'another item'}; "
+                "approve the target instead"
+            )
+        if row["item_status"] == "retired":
+            raise ValueError("retired standard item must be reopened before approval")
+        if not text(row["canonical_zh"]) and not text(row["canonical_pt"]):
+            raise ValueError(
+                "at least one canonical Chinese or Portuguese name is required"
+            )
+        for name_field, status_field in (
+            ("canonical_zh", "canonical_zh_status"),
+            ("canonical_pt", "canonical_pt_status"),
+            ("canonical_en", "canonical_en_status"),
+        ):
+            if text(row[name_field]) and row[status_field] == "rejected":
+                raise ValueError(
+                    f"{name_field} is rejected; clear or correct it before approval"
+                )
+        before = dict(row)
+        zh_status = "approved" if text(row["canonical_zh"]) else row["canonical_zh_status"]
+        pt_status = "approved" if text(row["canonical_pt"]) else row["canonical_pt_status"]
+        en_status = "approved" if text(row["canonical_en"]) else row["canonical_en_status"]
+        conn.execute(
+            "UPDATE standard_items SET item_status='approved', "
+            "canonical_zh_status=?, canonical_pt_status=?, canonical_en_status=? "
+            "WHERE standard_item_id=?",
+            (zh_status, pt_status, en_status, row["standard_item_id"]),
+        )
+        after = dict(_get_standard_item(conn, row["standard_item_id"]))
+        _standard_item_audit(
+            conn, event_type="standard_item_approved", before=before, after=after,
+            actor=actor, note=note or "Standard item approved", source=source,
+        )
+        conn.commit()
+        return {
+            **after,
+            "changed": True,
+            "usage": _standard_item_usage(conn, row["standard_item_id"]),
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def retire_standard_item(
+    identifier: str,
+    *,
+    actor: str,
+    note: str = "",
+    source: str = "workbench",
+    db_path: Path | None = None,
+) -> dict[str, Any]:
+    """Retire an item. Existing mappings stay as evidence but become invalid."""
+    conn = connect_v3(db_path, write=True)
+    try:
+        row = _get_standard_item(conn, identifier)
+        if row["item_status"] == "merged":
+            raise ValueError("merged standard items cannot be retired")
+        if row["item_status"] == "retired":
+            return {**dict(row), "changed": False}
+        before = dict(row)
+        conn.execute(
+            "UPDATE standard_items SET item_status='retired' WHERE standard_item_id=?",
+            (row["standard_item_id"],),
+        )
+        after = dict(_get_standard_item(conn, row["standard_item_id"]))
+        _standard_item_audit(
+            conn, event_type="standard_item_retired", before=before, after=after,
+            actor=actor, note=note or "Standard item retired", source=source,
+        )
+        conn.commit()
+        return {
+            **after,
+            "changed": True,
+            "usage": _standard_item_usage(conn, row["standard_item_id"]),
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def reopen_standard_item(
+    identifier: str,
+    *,
+    actor: str,
+    note: str = "",
+    source: str = "workbench",
+    db_path: Path | None = None,
+) -> dict[str, Any]:
+    """Move a retired item back to draft so it can be corrected and approved."""
+    conn = connect_v3(db_path, write=True)
+    try:
+        row = _get_standard_item(conn, identifier)
+        if row["item_status"] != "retired":
+            if row["item_status"] == "draft":
+                return {**dict(row), "changed": False}
+            raise ValueError("only retired standard items can be reopened")
+        before = dict(row)
+        conn.execute(
+            "UPDATE standard_items SET item_status='draft' WHERE standard_item_id=?",
+            (row["standard_item_id"],),
+        )
+        after = dict(_get_standard_item(conn, row["standard_item_id"]))
+        _standard_item_audit(
+            conn, event_type="standard_item_reopened", before=before, after=after,
+            actor=actor, note=note or "Standard item reopened", source=source,
+        )
+        conn.commit()
+        return {**after, "changed": True}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def create_standard_item(
+    *,
+    actor: str,
+    canonical_zh: str | None = None,
+    canonical_pt: str | None = None,
+    canonical_en: str | None = None,
+    item_key: str | None = None,
+    parent_standard_item_id: str | None = None,
+    category: str | None = None,
+    note: str = "",
+    source: str = "workbench",
+    db_path: Path | None = None,
+) -> dict[str, Any]:
+    """Create a draft catalogue item. Approval is a separate explicit action."""
+    zh = text(canonical_zh)
+    pt = text(canonical_pt)
+    en = text(canonical_en)
+    if not zh and not pt and not en:
+        raise ValueError("at least one canonical name (zh, pt or en) is required")
+    key = text(item_key) or f"user:{zh or pt or en}"
+    key = re.sub(r"\s+", "", key)
+    conn = connect_v3(db_path, write=True)
+    try:
+        if conn.execute(
+            "SELECT 1 FROM standard_items WHERE item_key=?", (key,)
+        ).fetchone():
+            raise ValueError(f"standard item key already exists: {key}")
+        if parent_standard_item_id:
+            parent = conn.execute(
+                "SELECT standard_item_id, item_status FROM standard_items "
+                "WHERE standard_item_id=?",
+                (parent_standard_item_id,),
+            ).fetchone()
+            if parent is None:
+                raise LookupError("parent standard item not found")
+            if parent["item_status"] in {"merged", "retired"}:
+                raise ValueError("parent standard item is not active; choose an approved or draft parent")
+        item_id = str(uuid.uuid4())
+        conn.execute(
+            """
+            INSERT INTO standard_items(
+                standard_item_id, item_key, canonical_zh, canonical_zh_status,
+                canonical_pt, canonical_pt_status, canonical_en,
+                canonical_en_status, parent_standard_item_id, category,
+                item_status, created_at, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+            """,
+            (
+                item_id, key,
+                zh or None, "draft" if zh else "missing",
+                pt or None, "draft" if pt else "missing",
+                en or None, "draft" if en else "missing",
+                parent_standard_item_id or None, text(category) or None,
+                now(), note or None,
+            ),
+        )
+        after = dict(_get_standard_item(conn, item_id))
+        _standard_item_audit(
+            conn, event_type="standard_item_created", before=None, after=after,
+            actor=actor, note=note or "Standard item created as draft", source=source,
+        )
+        conn.commit()
+        return {**after, "created": True}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+
 def _mapping_info(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, Any]:
     statement_row_id = row["statement_row_id"]
     if row.get("row_origin") == "manual":
         item_id = row.get("standard_item_id") or ""
         if item_id:
             item = conn.execute(
-                "SELECT standard_item_id, item_key, canonical_zh, canonical_pt "
+                "SELECT standard_item_id, item_key, canonical_zh, canonical_pt, item_status "
                 "FROM standard_items WHERE standard_item_id=?",
                 (item_id,),
             ).fetchone()
@@ -477,11 +1020,13 @@ def _mapping_info(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, An
                     "item_key": item["item_key"],
                     "canonical_zh": item["canonical_zh"],
                     "canonical_pt": item["canonical_pt"],
+                    "item_status": item["item_status"],
                 }
                 return {
                     "mapping_status": "approved",
                     "standard_item_id": item["standard_item_id"],
                     "standard_item_key": item["item_key"],
+                    "standard_item_status": item["item_status"],
                     "standardised_label": text(item["canonical_zh"]) or text(item["canonical_pt"]),
                     "mapping_candidates": [candidate],
                     "row_origin": "manual",
@@ -490,6 +1035,7 @@ def _mapping_info(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, An
             "mapping_status": "unmatched",
             "standard_item_id": "",
             "standard_item_key": "",
+            "standard_item_status": "",
             "standardised_label": "",
             "mapping_candidates": [],
             "row_origin": "manual",
@@ -500,7 +1046,7 @@ def _mapping_info(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, An
         SELECT m.mapping_id, m.statement_row_id, m.standard_item_id,
                m.mapping_status, m.conflict_group_id, m.match_method,
                m.match_score, m.mapping_version,
-               si.item_key, si.canonical_zh, si.canonical_pt
+               si.item_key, si.canonical_zh, si.canonical_pt, si.item_status
         FROM statement_row_mappings m
         JOIN standard_items si ON si.standard_item_id=m.standard_item_id
         WHERE m.statement_row_id=?
@@ -528,6 +1074,7 @@ def _mapping_info(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, An
         "mapping_status": status,
         "standard_item_id": selected["standard_item_id"] if selected else "",
         "standard_item_key": selected["item_key"] if selected else "",
+        "standard_item_status": selected["item_status"] if selected else "",
         "standardised_label": (
             text(selected.get("canonical_zh")) or text(selected.get("canonical_pt"))
             if selected else ""
@@ -568,8 +1115,18 @@ def review_queue() -> list[dict[str, Any]]:
                 SUM(CASE WHEN er.effective_debit_state='amount' THEN er.effective_debit_minor ELSE 0 END) AS debit_total_minor,
                 SUM(CASE WHEN er.effective_credit_state='amount' THEN er.effective_credit_minor ELSE 0 END) AS credit_total_minor,
                 (SELECT COUNT(*) FROM field_verifications fv
-                  JOIN statement_rows sr2 ON sr2.statement_row_id=fv.statement_row_id
-                  WHERE sr2.statement_id=s.statement_id) AS field_verifications,
+                  JOIN effective er3 ON er3.statement_row_id=fv.statement_row_id
+                  WHERE er3.statement_id=s.statement_id) AS field_verifications,
+                {_current_extraction_sql('s')} AS review_statement_extraction_id,
+                (SELECT b.statement_extraction_id FROM statement_review_bindings b
+                  WHERE b.statement_id=s.statement_id AND b.binding_status='active'
+                  ORDER BY b.bound_at DESC, b.binding_id DESC LIMIT 1) AS bound_statement_extraction_id,
+                (SELECT se.extraction_status FROM statement_extractions se
+                  WHERE se.statement_extraction_id = {_current_extraction_sql('s')}) AS extraction_status,
+                (SELECT se.statement_extraction_id FROM statement_extractions se
+                  WHERE se.statement_id=s.statement_id AND se.extraction_status='completed'
+                  ORDER BY se.created_at DESC, se.statement_extraction_id DESC LIMIT 1)
+                  AS latest_completed_statement_extraction_id,
                 COALESCE((SELECT rv.review_status FROM statement_reviews rv
                   WHERE rv.statement_id=s.statement_id), 'pending') AS review_status,
                 (SELECT rv.reviewed_by FROM statement_reviews rv
@@ -594,6 +1151,29 @@ def review_queue() -> list[dict[str, Any]]:
                                  WHERE m.statement_row_id=er2.statement_row_id
                                    AND m.conflict_group_id IS NOT NULL
                                    AND m.mapping_status IN ('proposed','approved'))) AS mapping_conflict_rows,
+                (SELECT COUNT(*) FROM effective er2
+                  WHERE er2.statement_id=s.statement_id
+                    AND (
+                      (er2.standard_item_id IS NOT NULL
+                       AND NOT EXISTS (SELECT 1 FROM standard_items si
+                                       WHERE si.standard_item_id=er2.standard_item_id
+                                         AND si.item_status='approved'))
+                      OR
+                      (er2.standard_item_id IS NULL
+                       AND EXISTS (
+                         SELECT 1 FROM statement_row_mappings m
+                         JOIN standard_items si ON si.standard_item_id=m.standard_item_id
+                         WHERE m.statement_row_id=er2.statement_row_id
+                           AND m.mapping_status IN ('proposed','approved')
+                           AND si.item_status <> 'approved'
+                           AND (m.mapping_status='approved'
+                                OR NOT EXISTS (
+                                  SELECT 1 FROM statement_row_mappings m2
+                                  WHERE m2.statement_row_id=er2.statement_row_id
+                                    AND m2.mapping_status='approved'
+                                ))
+                       ))
+                    )) AS invalid_mapping_rows,
                 (SELECT COUNT(*) FROM (
                     SELECT ai2.standard_item_id
                     FROM approved_items ai2
@@ -622,6 +1202,7 @@ def review_queue() -> list[dict[str, Any]]:
                 int(data["row_count"] or 0) > 0
                 and int(data["mapping_conflict_rows"] or 0) == 0
                 and int(data["duplicate_mapping_items"] or 0) == 0
+                and int(data["invalid_mapping_rows"] or 0) == 0
                 and data["unmapped_rows"] == 0
             )
             data["mapping_blockers"] = ";".join(
@@ -629,12 +1210,15 @@ def review_queue() -> list[dict[str, Any]]:
                     f"mapping_conflict={data['mapping_conflict_rows']}" if data["mapping_conflict_rows"] else "",
                     f"mapping_unmatched={data['unmapped_rows']}" if data["unmapped_rows"] else "",
                     f"duplicate_standard_item={data['duplicate_mapping_items']}" if data["duplicate_mapping_items"] else "",
+                    f"invalid_standard_item={data['invalid_mapping_rows']}" if data["invalid_mapping_rows"] else "",
                 ) if part
             )
             if not data["row_count"]:
                 bucket = "no_rows"
             elif data["mapping_conflict_rows"]:
                 bucket = "mapping_conflict"
+            elif data["invalid_mapping_rows"]:
+                bucket = "invalid_mapping"
             elif data["unmapped_rows"]:
                 bucket = "mapping_unmatched"
             elif difference != 0:
@@ -643,10 +1227,22 @@ def review_queue() -> list[dict[str, Any]]:
                 bucket = "row_issues"
             else:
                 bucket = "ready_for_adoption"
+            data["review_extraction_outdated"] = bool(
+                data["bound_statement_extraction_id"]
+                and data["latest_completed_statement_extraction_id"]
+                and data["bound_statement_extraction_id"]
+                != data["latest_completed_statement_extraction_id"]
+            )
+            if data["review_status"] == "reviewed":
+                if not data["bound_statement_extraction_id"]:
+                    bucket = "review_binding_missing"
+                elif data["review_extraction_outdated"]:
+                    bucket = "review_outdated"
             data["review_bucket"] = bucket
             data["priority"] = {
-                "mapping_conflict": 1, "mapping_unmatched": 1,
-                "unbalanced": 1, "no_rows": 1, "row_issues": 2,
+                "mapping_conflict": 1, "mapping_unmatched": 1, "invalid_mapping": 1,
+                "unbalanced": 1, "no_rows": 1, "review_binding_missing": 1,
+                "review_outdated": 1, "row_issues": 2,
             }.get(bucket, 3)
             data["debit_total_display"] = _money(data["debit_total_minor"], data["amount_decimal_places"])
             data["credit_total_display"] = _money(data["credit_total_minor"], data["amount_decimal_places"])
@@ -683,11 +1279,26 @@ def review_rows(statement_id: str, limit: int = 1000) -> list[dict[str, Any]]:
             if data["effective_credit_state"] in ("ambiguous", "unreadable"):
                 issues.append("credit_" + data["effective_credit_state"])
             data["row_issues"] = ";".join(issues)
+            data["verified_fields"] = [
+                verified["field_name"]
+                for verified in conn.execute(
+                    "SELECT field_name FROM field_verifications "
+                    "WHERE statement_row_id=? AND verification_status='verified' "
+                    "ORDER BY field_name",
+                    (data["statement_row_id"],),
+                )
+            ]
             data.update(_mapping_info(conn, data))
             result.append(data)
         return result
     finally:
         conn.close()
+
+
+VERIFICATION_FIELDS = {
+    "label_normalized", "debit_minor", "debit_value_state",
+    "credit_minor", "credit_value_state",
+}
 
 
 def verify_row(
@@ -701,16 +1312,30 @@ def verify_row(
     credit_state: str,
     note: str,
     actor: str,
+    verified_fields: list[str] | None = None,
 ) -> dict[str, Any]:
     if debit_state not in {"amount", "dash", "blank", "unreadable", "not_applicable", "ambiguous"}:
         raise ValueError("invalid debit state")
     if credit_state not in {"amount", "dash", "blank", "unreadable", "not_applicable", "ambiguous"}:
         raise ValueError("invalid credit state")
-    debit_minor = _parse_money(debit) if debit_state == "amount" else 0
-    credit_minor = _parse_money(credit) if credit_state == "amount" else 0
+    requested_fields: set[str] | None = None
+    if verified_fields is not None:
+        requested_fields = set(verified_fields)
+        unknown = requested_fields - VERIFICATION_FIELDS
+        if unknown:
+            raise ValueError(f"unknown verification field(s): {', '.join(sorted(unknown))}")
     conn = connect_v3(write=True)
     try:
         _check_editable(conn, statement_id)
+        statement = conn.execute(
+            "SELECT amount_decimal_places FROM statements WHERE statement_id=?",
+            (statement_id,),
+        ).fetchone()
+        if statement is None:
+            raise LookupError("statement not found")
+        places = _normalize_places(statement["amount_decimal_places"])
+        debit_minor = _parse_money(debit, places) if debit_state == "amount" else None
+        credit_minor = _parse_money(credit, places) if credit_state == "amount" else None
 
         adjustment = conn.execute(
             "SELECT * FROM statement_row_adjustments "
@@ -726,8 +1351,8 @@ def verify_row(
                 "WHERE adjustment_id=?",
                 (
                     "" if label is None else text(label),
-                    debit_minor if debit_state == "amount" else None, debit_state,
-                    credit_minor if credit_state == "amount" else None, credit_state,
+                    debit_minor, debit_state,
+                    credit_minor, credit_state,
                     statement_row_id,
                 ),
             )
@@ -746,6 +1371,8 @@ def verify_row(
                         "label": label, "debit_minor": debit_minor,
                         "debit_state": debit_state, "credit_minor": credit_minor,
                         "credit_state": credit_state,
+                        "verified_fields": sorted(requested_fields or []),
+                        "row_origin": "manual",
                     }, ensure_ascii=False),
                     json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
                     note or "Workbench manual row edit",
@@ -767,14 +1394,40 @@ def verify_row(
         if row is None or row["statement_id"] != statement_id:
             raise LookupError("statement row not found")
         before = dict(row)
-        fields = [
-            ("label_normalized", before["label_normalized"], "" if label is None else label),
-            ("debit_minor", before["debit_minor"], str(debit_minor)),
-            ("debit_value_state", before["debit_value_state"], debit_state),
-            ("credit_minor", before["credit_minor"], str(credit_minor)),
-            ("credit_value_state", before["credit_value_state"], credit_state),
-        ]
-        for field_name, original, proposed in fields:
+        effective = conn.execute(
+            f"SELECT * FROM ({EFFECTIVE_ROW_SQL}) WHERE statement_row_id=?",
+            (statement_row_id,),
+        ).fetchone()
+        if effective is None:
+            raise LookupError("statement row is not part of the current extraction")
+        proposed: dict[str, Any] = {
+            "label_normalized": "" if label is None else text(label),
+            "debit_minor": debit_minor,
+            "debit_value_state": debit_state,
+            "credit_minor": credit_minor,
+            "credit_value_state": credit_state,
+        }
+        current: dict[str, Any] = {
+            "label_normalized": effective["effective_label"],
+            "debit_minor": effective["effective_debit_minor"],
+            "debit_value_state": effective["effective_debit_state"],
+            "credit_minor": effective["effective_credit_minor"],
+            "credit_value_state": effective["effective_credit_state"],
+        }
+        # A changed value is an explicit human edit and must become effective.
+        # Untouched fields are only recorded when the reviewer ticks them.
+        changed_fields = {
+            field_name for field_name in VERIFICATION_FIELDS
+            if proposed[field_name] != current[field_name]
+        }
+        selected_fields = (
+            changed_fields
+            if requested_fields is None
+            else requested_fields | changed_fields
+        )
+        for field_name in sorted(selected_fields):
+            original = before[field_name]
+            value = proposed[field_name]
             verification_id = stable_id("workbench_verification", statement_row_id, field_name, VERSION)
             conn.execute(
                 """
@@ -794,7 +1447,8 @@ def verify_row(
                 (
                     verification_id, statement_row_id, field_name,
                     str(original) if original is not None else None,
-                    proposed, actor, now(), note or "Workbench row verification", now(),
+                    None if value is None else str(value),
+                    actor, now(), note or "Workbench row verification", now(),
                 ),
             )
         event_id = stable_id("workbench_verify_event", statement_row_id, VERSION, now())
@@ -809,6 +1463,8 @@ def verify_row(
                 json.dumps({
                     "label": label, "debit_minor": debit_minor, "debit_state": debit_state,
                     "credit_minor": credit_minor, "credit_state": credit_state,
+                    "verified_fields": sorted(selected_fields),
+                    "changed_fields": sorted(changed_fields),
                 }, ensure_ascii=False),
                 json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
                 note or "Workbench row verification",
@@ -903,12 +1559,7 @@ def approve_mapping(
         ).fetchone()
         if row is not None and row["statement_id"] != statement_id:
             raise LookupError("statement row not found")
-        item = conn.execute(
-            "SELECT standard_item_id, item_key FROM standard_items WHERE standard_item_id=?",
-            (standard_item_id,),
-        ).fetchone()
-        if item is None:
-            raise LookupError("standard item not found")
+        item = _check_standard_item_usable(conn, standard_item_id)
         _check_editable(conn, statement_id)
         conflict = _standard_item_conflict(
             conn, statement_id, standard_item_id,
@@ -1175,24 +1826,22 @@ def insert_row(
         raise ValueError("invalid credit state")
     if not text(label):
         raise ValueError("label is required for an inserted row")
-    debit_minor = _parse_money(debit) if debit_state == "amount" else None
-    credit_minor = _parse_money(credit) if credit_state == "amount" else None
 
     conn = connect_v3(write=True)
     try:
         statement = conn.execute(
-            "SELECT statement_id, statement_status FROM statements WHERE statement_id=?",
+            "SELECT statement_id, statement_status, amount_decimal_places "
+            "FROM statements WHERE statement_id=?",
             (statement_id,),
         ).fetchone()
         if statement is None:
             raise LookupError("statement not found")
         _check_editable(conn, statement_id)
+        places = _normalize_places(statement["amount_decimal_places"])
+        debit_minor = _parse_money(debit, places) if debit_state == "amount" else None
+        credit_minor = _parse_money(credit, places) if credit_state == "amount" else None
         if standard_item_id:
-            if conn.execute(
-                "SELECT 1 FROM standard_items WHERE standard_item_id=?",
-                (standard_item_id,),
-            ).fetchone() is None:
-                raise LookupError("standard item not found")
+            _check_standard_item_usable(conn, standard_item_id)
             conflict = _standard_item_conflict(conn, statement_id, standard_item_id)
             if conflict is not None:
                 raise ValueError(
@@ -1453,7 +2102,7 @@ def adopted_statements() -> list[dict[str, Any]]:
                    (SELECT COUNT(*) FROM v_current_statement_rows sr
                      WHERE sr.statement_id=s.statement_id) AS row_count,
                    (SELECT COUNT(*) FROM field_verifications fv
-                     JOIN statement_rows sr ON sr.statement_row_id=fv.statement_row_id
+                     JOIN v_current_statement_rows sr ON sr.statement_row_id=fv.statement_row_id
                      WHERE sr.statement_id=s.statement_id) AS field_verifications,
                    (SELECT COUNT(*) FROM v_current_statement_rows sr
                      WHERE sr.statement_id=s.statement_id
@@ -1488,6 +2137,35 @@ def adopted_statements() -> list[dict[str, Any]]:
                        ) WHERE item IS NOT NULL
                        GROUP BY item HAVING COUNT(*) > 1
                    )) AS duplicate_mapping_items,
+                   (SELECT COUNT(*) FROM v_current_statement_rows sr
+                     WHERE sr.statement_id=s.statement_id
+                       AND (
+                         EXISTS (
+                           SELECT 1 FROM statement_row_adjustments a
+                           WHERE a.adjustment_id=sr.statement_row_id
+                             AND a.adjustment_type='insert'
+                             AND a.adjustment_status='active'
+                             AND a.standard_item_id IS NOT NULL
+                             AND NOT EXISTS (
+                               SELECT 1 FROM standard_items si
+                               WHERE si.standard_item_id=a.standard_item_id
+                                 AND si.item_status='approved'
+                             )
+                         )
+                         OR EXISTS (
+                           SELECT 1 FROM statement_row_mappings m
+                           JOIN standard_items si ON si.standard_item_id=m.standard_item_id
+                           WHERE m.statement_row_id=sr.statement_row_id
+                             AND m.mapping_status IN ('proposed','approved')
+                             AND si.item_status <> 'approved'
+                             AND (m.mapping_status='approved'
+                                  OR NOT EXISTS (
+                                    SELECT 1 FROM statement_row_mappings m2
+                                    WHERE m2.statement_row_id=sr.statement_row_id
+                                      AND m2.mapping_status='approved'
+                                  ))
+                         )
+                       )) AS invalid_mapping_rows,
                    (SELECT COUNT(*) FROM v_effective_statement_rows er
                      WHERE er.statement_id=s.statement_id
                        AND (er.effective_label_normalized IS NULL
@@ -1523,6 +2201,7 @@ def adopted_statements() -> list[dict[str, Any]]:
                 int(data["row_count"] or 0) > 0
                 and int(data["mapping_conflict_rows"] or 0) == 0
                 and int(data["duplicate_mapping_items"] or 0) == 0
+                and int(data["invalid_mapping_rows"] or 0) == 0
                 and data["unmapped_rows"] == 0
             )
             data["mapping_blockers"] = ";".join(
@@ -1530,6 +2209,7 @@ def adopted_statements() -> list[dict[str, Any]]:
                     f"mapping_conflict={data['mapping_conflict_rows']}" if data["mapping_conflict_rows"] else "",
                     f"mapping_unmatched={data['unmapped_rows']}" if data["unmapped_rows"] else "",
                     f"duplicate_standard_item={data['duplicate_mapping_items']}" if data["duplicate_mapping_items"] else "",
+                    f"invalid_standard_item={data['invalid_mapping_rows']}" if data["invalid_mapping_rows"] else "",
                 ) if part
             )
             data["review_bucket"] = "adopted"
@@ -1595,6 +2275,10 @@ def return_to_review(
                 note or "Returned from adoption to reviewed status", now(),
             ),
         )
+        _bind_review_extraction(
+            conn, statement_id, extraction_id, actor=actor,
+            note=note or "Returned from adoption to reviewed status",
+        )
         conn.execute(
             "INSERT INTO audit_events("
             "audit_event_id, event_type, statement_id, statement_extraction_id, "
@@ -1613,6 +2297,7 @@ def return_to_review(
                     "statement_status": "proposed",
                     "adopted_statement_extraction_id": None,
                     "review_status": "reviewed",
+                    "review_binding_statement_extraction_id": extraction_id,
                 }, ensure_ascii=False),
                 json.dumps({"source": "workbench", "version": VERSION}, ensure_ascii=False),
                 note or "Returned from adoption to reviewed status",
@@ -1625,6 +2310,7 @@ def return_to_review(
             "statement_status": "proposed",
             "review_status": "reviewed",
             "released_statement_extraction_id": extraction_id,
+            "review_binding_statement_extraction_id": extraction_id,
         }
     except Exception:
         conn.rollback()

@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Standard list · Macau Banking Workbench{% endblock %}
+{% block content %}
+<h1>Standard list</h1>
+<p class="muted">
+  The catalogue is the shared account list used by row mappings. Draft items are
+  not offered in the mapping dropdown; approve an item when its Chinese and/or
+  Portuguese canonical name has been confirmed. Retiring an item does not delete
+  mappings or OCR evidence, but it invalidates mappings that point to it.
+</p>
+
+<section class="panel">
+  <div class="filters">
+    <a class="{% if status == 'all' %}active{% endif %}" href="/catalogue?status=all">All {{ counts.all }}</a>
+    <a class="{% if status == 'draft' %}active{% endif %}" href="/catalogue?status=draft">Draft {{ counts.draft }}</a>
+    <a class="{% if status == 'approved' %}active{% endif %}" href="/catalogue?status=approved">Approved {{ counts.approved }}</a>
+    <a class="{% if status == 'merged' %}active{% endif %}" href="/catalogue?status=merged">Merged {{ counts.merged }}</a>
+    <a class="{% if status == 'retired' %}active{% endif %}" href="/catalogue?status=retired">Retired {{ counts.retired }}</a>
+  </div>
+  <form class="catalogue-search" method="get" action="/catalogue">
+    <input type="hidden" name="status" value="{{ status }}">
+    <input name="q" value="{{ q }}" placeholder="Search Chinese, Portuguese, key or path">
+    <button type="submit" class="secondary">Search</button>
+    {% if q %}<a class="button secondary" href="/catalogue?status={{ status }}">Clear</a>{% endif %}
+  </form>
+</section>
+
+{% if can_catalogue %}
+<section class="panel">
+  <h2>Add a draft standard item</h2>
+  <p class="muted">New items start as <strong>draft</strong>. They only appear in the mapping dropdown after approval.</p>
+  <div class="insert-form catalogue-form">
+    <label class="wide">Chinese canonical name
+      <input class="catalogue-zh" placeholder="e.g. 澳門特區負債證明書">
+    </label>
+    <label class="wide">Portuguese canonical name
+      <input class="catalogue-pt" placeholder="e.g. CERTIFICADOS DE DIVIDA...">
+    </label>
+    <label>English canonical name (optional)
+      <input class="catalogue-en" placeholder="optional">
+    </label>
+    <label>Item key (optional)
+      <input class="catalogue-key" placeholder="generated from the name">
+    </label>
+    <label>Parent item (optional)
+      <select class="catalogue-parent">
+        <option value="">— no parent —</option>
+        {% for item in parents %}
+        <option value="{{ item.standard_item_id }}">{{ item.path }} · {{ item.item_status }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Category (optional)
+      <input class="catalogue-category" placeholder="asset / liability / income ...">
+    </label>
+    <label class="wide">Note
+      <input class="catalogue-note" placeholder="source / confirmation note">
+    </label>
+    <div class="insert-actions">
+      <button class="create-item" data-role="{{ role }}">Create draft item</button>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Items <span class="muted">({{ rows|length }})</span></h2>
+  <div class="table-scroll">
+  <table class="data compact catalogue-table">
+    <thead>
+      <tr>
+        <th>Status</th><th>Chinese</th><th>Portuguese</th><th>Path / key</th>
+        <th>Usage</th><th>Note</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr data-item="{{ row.standard_item_id }}">
+        <td>
+          <span class="pill {{ row.item_status }}">{{ row.item_status }}</span>
+          {% if row.item_status == 'merged' and row.merged_into_item_key %}
+          <div class="sub">→ {{ row.merged_into_item_key }}</div>
+          {% endif %}
+        </td>
+        <td>
+          {{ row.canonical_zh or "—" }}
+          {% if row.canonical_zh and row.canonical_zh_status != 'approved' %}
+          <div class="sub">name: {{ row.canonical_zh_status }}</div>
+          {% endif %}
+        </td>
+        <td>
+          {{ row.canonical_pt or "—" }}
+          {% if row.canonical_pt and row.canonical_pt_status != 'approved' %}
+          <div class="sub">name: {{ row.canonical_pt_status }}</div>
+          {% endif %}
+        </td>
+        <td>
+          <div>{{ row.path }}</div>
+          <div class="sub"><code>{{ row.item_key }}</code></div>
+        </td>
+        <td class="sub">
+          approved {{ row.approved_mapping_rows }}<br>
+          proposed {{ row.proposed_mapping_rows }}<br>
+          manual {{ row.manual_rows }}
+        </td>
+        <td class="sub">{{ row.notes or "—" }}</td>
+        <td class="actions-cell">
+          {% if can_catalogue %}
+            {% if row.item_status == 'draft' %}
+            <div class="row-actions">
+              <button class="catalogue-action" data-item="{{ row.standard_item_id }}" data-action="approve" data-role="{{ role }}">Approve</button>
+              <button class="catalogue-action secondary" data-item="{{ row.standard_item_id }}" data-action="retire" data-role="{{ role }}" data-usage="approved {{ row.approved_mapping_rows }}, proposed {{ row.proposed_mapping_rows }}, manual {{ row.manual_rows }}">Retire</button>
+            </div>
+            {% elif row.item_status == 'approved' %}
+            <button class="catalogue-action secondary" data-item="{{ row.standard_item_id }}" data-action="retire" data-role="{{ role }}" data-usage="approved {{ row.approved_mapping_rows }}, proposed {{ row.proposed_mapping_rows }}, manual {{ row.manual_rows }}">Retire</button>
+            {% elif row.item_status == 'retired' %}
+            <button class="catalogue-action secondary" data-item="{{ row.standard_item_id }}" data-action="reopen" data-role="{{ role }}">Reopen as draft</button>
+            {% else %}
+            <span class="muted">—</span>
+            {% endif %}
+          {% else %}
+          <span class="muted">admin only</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="muted">No standard items match this filter.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+{% if can_catalogue %}
+<script>
+document.querySelectorAll(".catalogue-action").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const action = button.dataset.action;
+    let note = "Workbench catalogue " + action;
+    if (action === "retire") {
+      const message = [
+        "Retire this standard item?",
+        "Existing mappings stay as evidence but become invalid for review/adoption.",
+        "Usage: " + (button.dataset.usage || "unknown") + ".",
+        "Continue?"
+      ].join("\n");
+      if (!window.confirm(message)) {
+        return;
+      }
+      note = "Retired in Workbench catalogue; usage " + (button.dataset.usage || "unknown");
+    }
+    if (action === "approve" && !window.confirm("Approve this standard item? It will become available in mapping dropdowns.")) {
+      return;
+    }
+    button.disabled = true;
+    const response = await fetch(`/api/catalogue/items/${button.dataset.item}/${action}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      },
+      body: JSON.stringify({note})
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Catalogue update failed");
+      button.disabled = false;
+    }
+  });
+});
+const createButton = document.querySelector(".create-item");
+if (createButton) {
+  createButton.addEventListener("click", async () => {
+    const payload = {
+      canonical_zh: document.querySelector(".catalogue-zh").value || null,
+      canonical_pt: document.querySelector(".catalogue-pt").value || null,
+      canonical_en: document.querySelector(".catalogue-en").value || null,
+      item_key: document.querySelector(".catalogue-key").value || null,
+      parent_standard_item_id: document.querySelector(".catalogue-parent").value || null,
+      category: document.querySelector(".catalogue-category").value || null,
+      note: document.querySelector(".catalogue-note").value || "Created in Workbench catalogue"
+    };
+    if (!payload.canonical_zh && !payload.canonical_pt && !payload.canonical_en) {
+      alert("Enter at least one Chinese, Portuguese or English canonical name.");
+      return;
+    }
+    createButton.disabled = true;
+    const response = await fetch("/api/catalogue/items", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Workbench-Role": createButton.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      },
+      body: JSON.stringify(payload)
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Create failed");
+      createButton.disabled = false;
+    }
+  });
+}
+</script>
+{% endif %}
+{% endblock %}

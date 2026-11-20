@@ -24,6 +24,7 @@
       <tr><th>Mapping coverage</th><td>{{ summary.mapped_rows }} mapped · {{ summary.unmapped_rows }} unmatched · {{ summary.mapping_conflict_rows }} conflict · {{ summary.duplicate_mapping_items }} duplicate{% if summary.mapping_ready %} · <span class="ok">ready</span>{% else %} · <span class="bad">resolve mapping first</span>{% endif %}</td></tr>
       <tr><th>Row adjustments</th><td>{{ adjustments|length }} active{% if excluded_adjustments %} · {{ excluded_adjustments|length }} excluded row(s){% endif %}</td></tr>
       <tr><th>Reviewer status</th><td>{{ summary.review_status }}{% if summary.reviewed_by %} · {{ summary.reviewed_by }}{% endif %}</td></tr>
+      <tr><th>Reviewed extraction</th><td>{% if summary.bound_statement_extraction_id %}<code>{{ summary.bound_statement_extraction_id }}</code>{% else %}<span class="muted">not bound</span>{% endif %}{% if summary.review_extraction_outdated %} · <span class="bad">newer completed extraction exists</span>{% endif %}</td></tr>
     </tbody>
   </table>
 </section>
@@ -130,7 +131,7 @@
   {% elif reviewed %}
   <p class="muted">This statement is <strong>reviewed</strong>. Rows are read-only; use Reopen for editing.</p>
   {% else %}
-  <p class="muted">Raw OCR is read-only. Saving writes a field verification; Delete hides an over-read row without deleting OCR evidence.</p>
+  <p class="muted">Raw OCR is read-only. A changed value is recorded as verified; tick <em>verified</em> for fields you checked but did not change. Amounts use dot decimals (<code>1234.56</code>); commas are thousands separators and decimal-comma input is rejected. Manual rows are stored as row adjustments. Delete hides an over-read row without deleting OCR evidence.</p>
   {% endif %}
   <div class="table-scroll">
   <table class="data compact">
@@ -147,23 +148,28 @@
         <td>{{ row.statement_order }}{% if row.row_origin == 'manual' %} <span class="pill manual">manual</span>{% endif %}</td>
         <td>{{ row.pdf_page or "—" }}</td>
         <td><code>{{ row.label_raw or "—" }}</code></td>
-        <td><input class="cell label" value="{{ row.effective_label or '' }}" placeholder="corrected label" {% if not editable %}disabled{% endif %}></td>
+        <td><input class="cell label" value="{{ row.effective_label or '' }}" placeholder="corrected label" {% if not editable %}disabled{% endif %}>
+          <label class="verify-toggle"><input type="checkbox" class="verify-field" data-field="label_normalized" {% if 'label_normalized' in row.verified_fields %}checked{% endif %} {% if not editable or row.row_origin == 'manual' %}disabled{% endif %}> verified</label></td>
         <td class="muted"><code>{{ row.debit_raw or "—" }} / {{ row.credit_raw or "—" }}</code></td>
-        <td><input class="cell debit" value="{{ row.effective_debit_display if row.effective_debit_state == 'amount' else '' }}" placeholder="0.00" {% if not editable %}disabled{% endif %}></td>
+        <td><input class="cell debit" value="{{ row.effective_debit_display if row.effective_debit_state == 'amount' else '' }}" placeholder="1234.56" {% if not editable %}disabled{% endif %}>
+          <label class="verify-toggle"><input type="checkbox" class="verify-field" data-field="debit_minor" {% if 'debit_minor' in row.verified_fields %}checked{% endif %} {% if not editable or row.row_origin == 'manual' %}disabled{% endif %}> verified</label></td>
         <td>
           <select class="cell debit-state" {% if not editable %}disabled{% endif %}>
             {% for state in ["amount", "blank", "dash", "unreadable", "not_applicable", "ambiguous"] %}
             <option value="{{ state }}" {% if row.effective_debit_state == state %}selected{% endif %}>{{ state }}</option>
             {% endfor %}
           </select>
+          <label class="verify-toggle"><input type="checkbox" class="verify-field" data-field="debit_value_state" {% if 'debit_value_state' in row.verified_fields %}checked{% endif %} {% if not editable or row.row_origin == 'manual' %}disabled{% endif %}> verified</label>
         </td>
-        <td><input class="cell credit" value="{{ row.effective_credit_display if row.effective_credit_state == 'amount' else '' }}" placeholder="0.00" {% if not editable %}disabled{% endif %}></td>
+        <td><input class="cell credit" value="{{ row.effective_credit_display if row.effective_credit_state == 'amount' else '' }}" placeholder="1234.56" {% if not editable %}disabled{% endif %}>
+          <label class="verify-toggle"><input type="checkbox" class="verify-field" data-field="credit_minor" {% if 'credit_minor' in row.verified_fields %}checked{% endif %} {% if not editable or row.row_origin == 'manual' %}disabled{% endif %}> verified</label></td>
         <td>
           <select class="cell credit-state" {% if not editable %}disabled{% endif %}>
             {% for state in ["amount", "blank", "dash", "unreadable", "not_applicable", "ambiguous"] %}
             <option value="{{ state }}" {% if row.effective_credit_state == state %}selected{% endif %}>{{ state }}</option>
             {% endfor %}
           </select>
+          <label class="verify-toggle"><input type="checkbox" class="verify-field" data-field="credit_value_state" {% if 'credit_value_state' in row.verified_fields %}checked{% endif %} {% if not editable or row.row_origin == 'manual' %}disabled{% endif %}> verified</label>
         </td>
         <td class="standard-cell">
           {% if row.mapping_status == 'approved' %}
@@ -175,6 +181,9 @@
             <span class="muted">{{ row.mapping_candidates|length }} candidates</span>
           {% else %}
             <span class="pill blocked">unmatched</span>
+          {% endif %}
+          {% if row.standard_item_status and row.standard_item_status != 'approved' %}
+            <span class="pill blocked">item {{ row.standard_item_status }}</span>
           {% endif %}
           {% if row.mapping_candidates %}
           <div class="muted candidates">{{ row.mapping_candidates | map(attribute='item_key') | join(' | ') }}</div>
@@ -198,9 +207,10 @@
           {% endif %}
         </td>
         <td class="actions-cell">
+          <div class="row-error" role="alert"></div>
           {% if editable %}
           <div class="row-actions">
-            <button class="save-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Save</button>
+            <button class="save-row" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}">Save &amp; verify</button>
             <button class="delete-row secondary" data-statement="{{ statement.statement_id }}" data-row="{{ row.statement_row_id }}" data-role="{{ role }}" data-origin="{{ row.row_origin }}">{% if row.row_origin == 'manual' %}Remove{% else %}Delete{% endif %}</button>
           </div>
           {% endif %}
@@ -245,22 +255,129 @@
 {% endif %}
 
 <script>
-let dirty = false;
-document.querySelectorAll(".cell").forEach((input) => {
-  if (!input.disabled) {
-    input.addEventListener("input", () => { dirty = true; });
-    input.addEventListener("change", () => { dirty = true; });
+const dirtyRows = new Set();
+let insertDirty = false;
+
+function rowDirtyCount() {
+  return dirtyRows.size + (insertDirty ? 1 : 0);
+}
+function markRowDirty(tr) {
+  if (!tr) {
+    return;
+  }
+  dirtyRows.add(tr.dataset.row);
+  tr.classList.add("dirty-row");
+}
+function clearRowDirty(tr) {
+  if (!tr) {
+    return;
+  }
+  dirtyRows.delete(tr.dataset.row);
+  tr.classList.remove("dirty-row");
+}
+function showRowError(tr, message) {
+  const box = tr.querySelector(".row-error");
+  if (!box) {
+    return;
+  }
+  box.textContent = message;
+  box.classList.add("visible");
+  tr.classList.add("row-invalid");
+}
+function clearRowError(tr) {
+  const box = tr.querySelector(".row-error");
+  if (box) {
+    box.textContent = "";
+    box.classList.remove("visible");
+  }
+  tr.classList.remove("row-invalid");
+}
+function guardUnsaved(message, includeInsert = true) {
+  const dirty = dirtyRows.size > 0 || (includeInsert && insertDirty);
+  if (!dirty) {
+    return false;
+  }
+  alert(message || "Save or discard the changed rows before continuing.");
+  return true;
+}
+window.addEventListener("beforeunload", (event) => {
+  if (rowDirtyCount() > 0) {
+    event.preventDefault();
+    event.returnValue = "";
   }
 });
+
+document.querySelectorAll("tr[data-row] .cell").forEach((input) => {
+  if (!input.disabled) {
+    const mark = () => markRowDirty(input.closest("tr"));
+    const clear = () => clearRowError(input.closest("tr"));
+    input.addEventListener("input", () => { mark(); clear(); });
+    input.addEventListener("change", () => { mark(); clear(); });
+  }
+});
+document.querySelectorAll(".insert-form input, .insert-form select").forEach((input) => {
+  const mark = () => { insertDirty = true; };
+  input.addEventListener("input", mark);
+  input.addEventListener("change", mark);
+});
+document.querySelectorAll(".debit-state").forEach((select) => {
+  select.addEventListener("change", () => {
+    if (select.value !== "amount") {
+      const debit = select.closest("tr").querySelector(".debit");
+      if (debit) {
+        debit.value = "";
+      }
+    }
+  });
+});
+document.querySelectorAll(".credit-state").forEach((select) => {
+  select.addEventListener("change", () => {
+    if (select.value !== "amount") {
+      const credit = select.closest("tr").querySelector(".credit");
+      if (credit) {
+        credit.value = "";
+      }
+    }
+  });
+});
+
+function checkedVerificationFields(tr) {
+  return Array.from(tr.querySelectorAll(".verify-field:checked")).map((box) => box.dataset.field);
+}
+function applySavedRow(tr, row) {
+  tr.querySelector(".label").value = row.effective_label || "";
+  tr.querySelector(".debit").value = row.effective_debit_state === "amount" ? (row.effective_debit_display || "") : "";
+  tr.querySelector(".credit").value = row.effective_credit_state === "amount" ? (row.effective_credit_display || "") : "";
+  tr.querySelector(".debit-state").value = row.effective_debit_state;
+  tr.querySelector(".credit-state").value = row.effective_credit_state;
+  const verified = new Set(row.verified_fields || []);
+  tr.querySelectorAll(".verify-field").forEach((box) => {
+    box.checked = verified.has(box.dataset.field);
+  });
+}
+
 document.querySelectorAll(".save-row").forEach((button) => {
   button.addEventListener("click", async () => {
     const tr = button.closest("tr");
+    const debitState = tr.querySelector(".debit-state").value;
+    const creditState = tr.querySelector(".credit-state").value;
+    const debitValue = tr.querySelector(".debit").value.trim();
+    const creditValue = tr.querySelector(".credit").value.trim();
+    if (debitState === "amount" && !debitValue) {
+      showRowError(tr, "Debit amount is required when state is amount.");
+      return;
+    }
+    if (creditState === "amount" && !creditValue) {
+      showRowError(tr, "Credit amount is required when state is amount.");
+      return;
+    }
     const payload = {
       label: tr.querySelector(".label").value,
       debit: tr.querySelector(".debit").value,
       credit: tr.querySelector(".credit").value,
-      debit_state: tr.querySelector(".debit-state").value,
-      credit_state: tr.querySelector(".credit-state").value,
+      debit_state: debitState,
+      credit_state: creditState,
+      verified_fields: checkedVerificationFields(tr),
       note: "Workbench UI verification"
     };
     button.disabled = true;
@@ -274,16 +391,24 @@ document.querySelectorAll(".save-row").forEach((button) => {
       body: JSON.stringify(payload)
     });
     if (response.ok) {
-      window.location.reload();
+      clearRowError(tr);
+      applySavedRow(tr, await response.json());
+      clearRowDirty(tr);
+      tr.classList.add("saved-row");
+      setTimeout(() => tr.classList.remove("saved-row"), 1200);
+      button.disabled = false;
     } else {
       const body = await response.json().catch(() => ({}));
-      alert(body.detail || "Verification failed");
+      showRowError(tr, body.detail || "Verification failed");
       button.disabled = false;
     }
   });
 });
 document.querySelectorAll(".return-review-button").forEach((button) => {
   button.addEventListener("click", async () => {
+    if (guardUnsaved("Save the changed rows before returning this statement.")) {
+      return;
+    }
     if (!window.confirm("Return this adopted statement to reviewed status? It will leave the current adopted dataset until adopted again.")) {
       return;
     }
@@ -306,6 +431,9 @@ document.querySelectorAll(".return-review-button").forEach((button) => {
 });
 document.querySelectorAll(".delete-row").forEach((button) => {
   button.addEventListener("click", async () => {
+    if (guardUnsaved("Save the changed rows before deleting or removing another row.")) {
+      return;
+    }
     const manual = button.dataset.origin === "manual";
     const message = manual
       ? "Remove this manually inserted row?"
@@ -334,6 +462,9 @@ document.querySelectorAll(".delete-row").forEach((button) => {
 });
 document.querySelectorAll(".restore-adjustment").forEach((button) => {
   button.addEventListener("click", async () => {
+    if (guardUnsaved("Save the changed rows before restoring another row.")) {
+      return;
+    }
     button.disabled = true;
     const response = await fetch(`/api/review/${button.dataset.statement}/adjustments/${button.dataset.adjustment}/restore`, {
       method: "POST",
@@ -354,6 +485,9 @@ document.querySelectorAll(".restore-adjustment").forEach((button) => {
   });
 });
 document.querySelector(".insert-row")?.addEventListener("click", async () => {
+  if (guardUnsaved("Save the changed rows before inserting another row.", false)) {
+    return;
+  }
   const button = document.querySelector(".insert-row");
   const position = document.querySelector(".insert-after").value;
   const payload = {
@@ -384,6 +518,7 @@ document.querySelector(".insert-row")?.addEventListener("click", async () => {
     body: JSON.stringify(payload)
   });
   if (response.ok) {
+    insertDirty = false;
     window.location.reload();
   } else {
     const body = await response.json().catch(() => ({}));
@@ -393,6 +528,9 @@ document.querySelector(".insert-row")?.addEventListener("click", async () => {
 });
 document.querySelectorAll(".map-row").forEach((button) => {
   button.addEventListener("click", async () => {
+    if (guardUnsaved("Save the changed rows before changing a standard-item mapping.")) {
+      return;
+    }
     const tr = button.closest("tr");
     const itemId = tr.querySelector(".standard-item").value;
     if (!itemId) {
@@ -420,8 +558,7 @@ document.querySelectorAll(".map-row").forEach((button) => {
 });
 document.querySelectorAll(".review-button").forEach((button) => {
   button.addEventListener("click", async () => {
-    if (button.dataset.status === "reviewed" && dirty) {
-      alert("Save the changed rows before marking the statement reviewed.");
+    if (guardUnsaved("Save the changed rows before changing review status.")) {
       return;
     }
     button.disabled = true;

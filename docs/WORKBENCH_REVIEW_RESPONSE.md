@@ -1,5 +1,8 @@
 # Workbench Review Report — Resolution
 
+> Superseded for Workbench v2 by
+> `docs/WORKBENCH_REVIEW_V2_RESPONSE.md` (2026-11-20).
+
 **Date:** 2026-11-19
 **Report addressed:** `docs/WORKBENCH_REVIEW_REPORT_2026-11-19.md`
 **Scope:** Workbench v1 source review and fixes

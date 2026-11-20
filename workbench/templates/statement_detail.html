@@ -16,6 +16,8 @@
       <tr><th>Scope</th><td>{{ statement.reporting_scope }}</td></tr>
       <tr><th>Currency / unit</th><td>{{ statement.currency or "—" }} / {{ statement.unit_scale if statement.unit_scale is not none else "—" }}</td></tr>
       <tr><th>Extraction</th><td>{{ statement.extraction_status or "—" }} · <code>{{ statement.statement_extraction_id or "—" }}</code></td></tr>
+      <tr><th>Review binding</th><td>{% if statement.review_binding_statement_extraction_id %}<code>{{ statement.review_binding_statement_extraction_id }}</code>{% if statement.review_extraction_outdated %} · <span class="bad">newer completed extraction exists</span>{% endif %}{% else %}<span class="muted">not bound</span>{% endif %}</td></tr>
+      <tr><th>Latest completed</th><td><code>{{ statement.latest_completed_statement_extraction_id or "—" }}</code></td></tr>
       <tr><th>Adopted extraction</th><td><code>{{ statement.adopted_statement_extraction_id or "—" }}</code></td></tr>
       <tr><th>Row count</th><td>{{ rows|length }}</td></tr>
       {% if adoption_row %}

@@ -12,7 +12,8 @@ from pydantic import BaseModel
 
 from workbench import service
 from workbench.permissions import (
-    DEFAULT_ROLE, ROLES, can_adopt, can_map, can_publish, can_review_statement, can_verify,
+    DEFAULT_ROLE, ROLES, can_adopt, can_catalogue, can_map, can_publish,
+    can_review_statement, can_verify,
 )
 
 
@@ -22,6 +23,7 @@ class RowVerificationPayload(BaseModel):
     credit: str | None = None
     debit_state: str = "blank"
     credit_state: str = "blank"
+    verified_fields: list[str] | None = None
     note: str = ""
 
 
@@ -50,6 +52,20 @@ class RowInsertPayload(BaseModel):
 
 
 class RowAdjustmentPayload(BaseModel):
+    note: str = ""
+
+
+class StandardItemCreatePayload(BaseModel):
+    canonical_zh: str | None = None
+    canonical_pt: str | None = None
+    canonical_en: str | None = None
+    item_key: str | None = None
+    parent_standard_item_id: str | None = None
+    category: str | None = None
+    note: str = ""
+
+
+class StandardItemLifecyclePayload(BaseModel):
     note: str = ""
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -86,6 +102,7 @@ def template_context(request: Request, **extra: Any) -> dict[str, Any]:
         "can_publish": can_publish(role),
         "can_review_statement": can_review_statement(role),
         "can_map": can_map(role),
+        "can_catalogue": can_catalogue(role),
         **extra,
     }
 
@@ -186,8 +203,105 @@ def api_publish(
 
 
 @app.get("/api/standard-items")
-def api_standard_items() -> list[dict[str, Any]]:
-    return service.standard_items()
+def api_standard_items(include_inactive: bool = False) -> list[dict[str, Any]]:
+    return service.standard_items(include_inactive=include_inactive)
+
+
+@app.get("/api/catalogue/items")
+def api_catalogue_items() -> list[dict[str, Any]]:
+    return service.standard_item_admin_rows()
+
+
+@app.post("/api/catalogue/items")
+def api_catalogue_create(
+    payload: StandardItemCreatePayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_catalogue(role):
+        raise HTTPException(status_code=403, detail="catalogue capability is required")
+    try:
+        return service.create_standard_item(
+            actor=actor_from(request),
+            canonical_zh=payload.canonical_zh,
+            canonical_pt=payload.canonical_pt,
+            canonical_en=payload.canonical_en,
+            item_key=payload.item_key,
+            parent_standard_item_id=payload.parent_standard_item_id,
+            category=payload.category,
+            note=payload.note,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/catalogue/items/{standard_item_id}/approve")
+def api_catalogue_approve(
+    standard_item_id: str,
+    payload: StandardItemLifecyclePayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_catalogue(role):
+        raise HTTPException(status_code=403, detail="catalogue capability is required")
+    try:
+        return service.approve_standard_item(
+            standard_item_id,
+            actor=actor_from(request),
+            note=payload.note,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/catalogue/items/{standard_item_id}/retire")
+def api_catalogue_retire(
+    standard_item_id: str,
+    payload: StandardItemLifecyclePayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_catalogue(role):
+        raise HTTPException(status_code=403, detail="catalogue capability is required")
+    try:
+        return service.retire_standard_item(
+            standard_item_id,
+            actor=actor_from(request),
+            note=payload.note,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/catalogue/items/{standard_item_id}/reopen")
+def api_catalogue_reopen(
+    standard_item_id: str,
+    payload: StandardItemLifecyclePayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_catalogue(role):
+        raise HTTPException(status_code=403, detail="catalogue capability is required")
+    try:
+        return service.reopen_standard_item(
+            standard_item_id,
+            actor=actor_from(request),
+            note=payload.note,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/api/review/{statement_id}/rows/{statement_row_id}/map")
@@ -214,6 +328,8 @@ def api_map_row(
     except service.StatementReviewedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except service.StatementAdoptedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except service.InactiveStandardItemError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -258,6 +374,8 @@ def api_insert_row(
     except service.StatementReviewedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except service.StatementAdoptedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except service.InactiveStandardItemError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -352,6 +470,7 @@ def api_verify_row(
             credit=payload.credit,
             debit_state=payload.debit_state,
             credit_state=payload.credit_state,
+            verified_fields=payload.verified_fields,
             note=payload.note,
             actor=actor_from(request),
         )
@@ -386,6 +505,52 @@ def api_review_statement(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/catalogue", response_class=HTMLResponse)
+def catalogue_page(
+    request: Request,
+    status: str = Query("all", pattern="^(all|draft|approved|merged|retired)$"),
+    q: str = "",
+) -> HTMLResponse:
+    rows = service.standard_item_admin_rows()
+    counts = {
+        "all": len(rows),
+        "draft": sum(1 for row in rows if row["item_status"] == "draft"),
+        "approved": sum(1 for row in rows if row["item_status"] == "approved"),
+        "merged": sum(1 for row in rows if row["item_status"] == "merged"),
+        "retired": sum(1 for row in rows if row["item_status"] == "retired"),
+    }
+    if status != "all":
+        rows = [row for row in rows if row["item_status"] == status]
+    needle = q.strip().casefold()
+    if needle:
+        rows = [
+            row for row in rows
+            if needle in " ".join(
+                part for part in (
+                    row.get("item_key"), row.get("canonical_zh"),
+                    row.get("canonical_pt"), row.get("canonical_en"),
+                    row.get("path"),
+                ) if part
+            ).casefold()
+        ]
+    parents = [
+        row for row in service.standard_items(include_inactive=True)
+        if row["item_status"] in {"approved", "draft"}
+    ]
+    return templates.TemplateResponse(
+        request,
+        "catalogue.html",
+        template_context(
+            request,
+            rows=rows,
+            counts=counts,
+            status=status,
+            q=q,
+            parents=parents,
+        ),
+    )
 
 
 @app.get("/review", response_class=HTMLResponse)
