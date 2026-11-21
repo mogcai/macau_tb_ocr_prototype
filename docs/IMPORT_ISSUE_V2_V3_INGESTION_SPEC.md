@@ -1,11 +1,12 @@
-# Import Issue V2 — V3 Ingestion Upgrade Specification (v1.1)
+# Import Issue V2 — V3 Ingestion Upgrade Specification (V2.0)
 
 **Project:** Macau Gazette Balancete OCR  
 **Primary target:** `tools/import_issue.py`  
 **Related components:** `tools/replay_runs_to_v3.py`, `tools/build_v3_db.py`  
-**Status:** Proposed implementation specification, revision 2  
+**Version:** V2.0  
+**Status:** Implementation baseline  
 **Date:** 2026-11-21  
-**Supersedes:** v1.0 of this document
+**Supersedes:** v1.0 and v1.1 of this document
 
 ---
 
@@ -37,16 +38,16 @@ These facts were checked against the repository and the operational V3 database 
 
 ```text
 data/macau_balancete_v3.sqlite
-  gazette_issues        14   (issue keys 2026-16 .. 2026-19, 2026-29 .. 2026-33, 2026-42 .. 2026-46)
-  source_documents      14
-  document_pages        118
-  extraction_runs       14
-  page_extractions      118
-  extracted_rows        7,156
-  statements            113
-  statement_rows        7,046
-  statement_row_mappings 7,251
-  statement_reviews     68
+  gazette_issues          14   (issue keys 2026-16 .. 2026-19, 2026-29 .. 2026-33, 2026-42 .. 2026-46)
+  source_documents        14
+  document_pages          118
+  extraction_runs         14
+  page_extractions        118
+  extracted_rows          7,156
+  statements              113
+  statement_rows          7,046
+  statement_row_mappings  7,251
+  statement_reviews       68
 ```
 
 All 14 `gazette_issues.source_url` and all 14 `source_documents.source_url` values are currently `NULL`.
@@ -77,6 +78,7 @@ The 6 runs without a manifest must not be rejected by replay, and their source U
 - `idx_source_documents_sha256` already exists, so duplicate lookup by full hash needs no new index.
 - `source_documents.document_key` is currently `issue_key + ":" + sha256[:16]`; it is a uniqueness key, not a full content-identity check.
 - `source_documents` has **no file-size column**.
+- `extraction_runs.config_json` is an unrestricted text column and is the appropriate place for additional provenance metadata in V2.0.
 - `source_documents.storage_uri` currently stores an absolute local path, not a URI.
 - `extraction_runs.run_report_uri` currently stores the absolute path to `run_report.json`; replay can use it to resolve an existing V3 run identity.
 - The V3 database already contains statements, statement rows, mappings and reviews. Any new import must not alter them.
@@ -90,14 +92,16 @@ The 6 runs without a manifest must not be rejected by replay, and their source U
 - It optionally reads the legacy V5 `runs` table to reuse a V5 run ID.
 - It sets `gazette_issues.source_url` and `source_documents.source_url` to `NULL`.
 - It uses `INSERT`-if-absent, so an existing `gazette_issues` row is never updated.
+- Its only changed-row guard is a per-page row-count comparison. A same-count change to one amount is silently skipped.
 
 ### 2.5 Current importer behaviour that must not regress
 
-- `--db` defaults to `data/macau_balancete.sqlite` and is resolved against the current working directory.
-- `--input-dir` defaults to `input`; `--outdir` defaults to `outputs/runs/issueNN_YYYY` when the filename matches the Gazette pattern, otherwise `outputs/runs/<stem>`.
+- `--db` defaults to `data/macau_balancete.sqlite` and is resolved against the **current working directory**.
+- `--input-dir` defaults to `input`; `--outdir` defaults to `outputs/runs/issueNN_YYYY` when the filename matches the Gazette pattern, otherwise `outputs/runs/<stem>`. These relative paths are also cwd-based.
 - Local PDF paths and `http://` URLs are currently supported for V5.
 - `tests/test_import_issue.py` uses a local HTTP server at `127.0.0.1:0`.
 - A failed early stage writes a shared `output_import_failed/import_manifest.json`.
+- The V5 path-resolution behaviour above is part of the compatibility contract. Do not change it as part of the V3 upgrade.
 
 ---
 
@@ -136,7 +140,7 @@ python tools/replay_runs_to_v3.py \
 - `--v3-db` is the V3 target option.
 - V3 target must not invoke `tools/build_database.py`.
 - V3 target must not run V5 bank refresh, V5 name mapping, or V5 publication steps.
-- V3 target must not read or write the V5 database by default. It passes `--no-v5-lookup` to replay.
+- V3 target must not read or write the V5 database. It passes `--no-v5-lookup` to replay, and replay must actually skip the legacy lookup code path.
 - Never pass the V3 database path to `tools/build_database.py`.
 - Never use `data/macau_balancete_v3.sqlite` as the argument to the legacy `--db` option.
 - Never write to a frozen/read-only V3 snapshot under `data/baseline/`.
@@ -146,6 +150,22 @@ python tools/replay_runs_to_v3.py \
 The V3 replay tool must accept `--v3-db` as the primary V3 database option. The existing `--db` spelling is a deprecated alias for compatibility; new code and documentation use `--v3-db`.
 
 This rule exists so that "`--db` means the legacy V5 database" remains unambiguous across the project.
+
+### 3.3 Required replay-tool changes
+
+Passing a new flag from the importer is not enough. The replay tool must implement these changes and prove them with tests.
+
+| Capability | Status | Requirement |
+|---|---|---|
+| `--v3-db` | New | Primary V3 database option; `--db` remains a deprecated alias |
+| `--no-v5-lookup` | New | Skip `load_legacy_runs()` entirely; do not open the V5 database |
+| Run identity by `run_report_uri` | New | Reuse an existing V3 `extraction_runs` row before creating a new run ID |
+| Evidence fingerprint | New | Store and verify a fingerprint of `run_report.json`, `documents.csv`, `tb_rows.csv` |
+| Stable single-run result | New contract | When invoked with one `--run-dir`, stdout is exactly one JSON object; no extra text |
+| Source URL / PDF provenance | New | Persist `gazette_issues.source_url`, `source_documents.source_url`, and size metadata |
+| `--runs-dir`, `--run-dir`, `--log`, `--v5-db` | Existing | Preserve behaviour when `--no-v5-lookup` is not supplied |
+
+Isolation is proven by a test that makes the V5 database path unreadable or nonexistent and asserts that the V3 replay still succeeds without opening it.
 
 ---
 
@@ -175,7 +195,7 @@ Add:
 --v3-db PATH
 ```
 
-Default (resolved against the project root, not the current working directory):
+Default for the V3 target (resolved against the project root):
 
 ```text
 data/macau_balancete_v3.sqlite
@@ -187,7 +207,7 @@ This option is only valid with `--target v3` (including `--replay-only`).
 
 ```text
 --replay-only            Reuse an existing OCR run directory; do not download or OCR.
---reprocess              Allow a second OCR run for the same PDF content.
+--reprocess              Allow repeated processing of the same PDF content.
 --new-version            Allow the same issue key with different PDF content.
 --reason TEXT            Required with --reprocess or --new-version; recorded in the manifest.
 --issue-key YYYY-NN      Explicit canonical issue key; otherwise derived from URL/filename.
@@ -195,6 +215,10 @@ This option is only valid with `--target v3` (including `--replay-only`).
 --allow-outside-output   Trusted CLI override for an --outdir outside the managed output area.
 --json                   Print one machine-readable final result object to stdout.
 ```
+
+`--reprocess` and `--new-version` are mutually exclusive. See §8 for the exact decision table.
+
+`--no-v5-lookup` is a replay-tool option, not an importer option. The V3 importer always passes it and does not expose it to the user.
 
 ### 4.4 Full option compatibility matrix
 
@@ -226,8 +250,8 @@ This option is only valid with `--target v3` (including `--replay-only`).
 | `--reuse-output` | Preserve current semantics | Reject; use `--replay-only` | Preserve current semantics | Reject |
 | `--dry-run` | Preserve current semantics | Preflight + plan only; no download, OCR or V3 writes | No DB writes; plan only | Preflight + plan only |
 | `--replay-only` | Reject | Supported | Reject | Supported (required) |
-| `--reprocess` | Reject | Conditional; requires `--reason` | Reject | Reject |
-| `--new-version` | Reject | Conditional; requires `--reason` | Reject | Reject |
+| `--reprocess` | Reject | Conditional; requires `--reason`; same PDF content only | Reject | Reject |
+| `--new-version` | Reject | Conditional; requires `--reason`; same issue with different content only | Reject | Reject |
 | `--reason` | Reject | Required with `--reprocess`/`--new-version` | Reject | Reject |
 | `--issue-key` | Reject | Supported; must match `YYYY-NN` | Supported | Conditional; must match manifest/run |
 | `--allow-local-source` | Reject (local is already supported) | Conditional; required for local PDF | Supported as no-op | Reject |
@@ -236,24 +260,34 @@ This option is only valid with `--target v3` (including `--replay-only`).
 
 Do not remove existing options just to simplify the new interface. If an option is not meaningful for a target, fail with a clear message.
 
-Implementation note: `--db` and `--v3-db` must use `default=None` in `argparse` and resolve their defaults per target. If `--db` keeps its current non-None default, the V3 target cannot distinguish "the user omitted `--db`" from "the user explicitly supplied the legacy database", and the reject rule becomes unenforceable.
+Implementation notes:
 
-Implementation note: the positional `source` must become optional at the `argparse` level (`nargs="?"`) so that `--replay-only` can omit it. Enforce "source is required" for every other mode with an explicit preflight error.
+- `--db` and `--v3-db` must use `default=None` in `argparse` and resolve their defaults per target. If `--db` keeps its current non-None default, the V3 target cannot distinguish "the user omitted `--db`" from "the user explicitly supplied the legacy database", and the reject rule becomes unenforceable.
+- The positional `source` must become optional at the `argparse` level (`nargs="?"`) so that `--replay-only` can omit it. Enforce "source is required" for every other mode with an explicit preflight error.
 
-### 4.5 Default paths and working directory
+### 4.5 Path resolution and V5 compatibility
 
-All default paths are resolved against the project root:
+Path behaviour is target-specific:
+
+| Target | Default paths | Explicit relative paths |
+|---|---|---|
+| V5 | Preserve the current cwd-based behaviour exactly | Resolve against cwd |
+| V3 | Resolve defaults against `ROOT` | Resolve against cwd; Workbench should pass absolute paths |
+| OCR-only | Preserve V5-compatible cwd behaviour | Resolve against cwd |
+
+Examples:
 
 ```text
-ROOT/data/macau_balancete.sqlite       (V5 --db default)
-ROOT/data/macau_balancete_v3.sqlite    (V3 --v3-db default)
-ROOT/input                              (default input)
-ROOT/outputs/runs                       (default run output)
+V5 default:        <cwd>/data/macau_balancete.sqlite
+V5 input default:  <cwd>/input
+V3 default:        <ROOT>/data/macau_balancete_v3.sqlite
+V3 input default:  <ROOT>/input
+V3 run output:     <ROOT>/outputs/runs/...
 ```
 
-An explicitly supplied relative path keeps the current CLI meaning and is resolved against the current working directory. This preserves existing V5 workflows while making defaults independent of where the command is launched.
+Do not unify V5 path resolution with V3 in this upgrade. A V5 path change is a separate behaviour change and would violate the backward-compatibility rule.
 
-The importer and replay subprocesses must run with `cwd=ROOT`. A Workbench child process must not rely on its own working directory for defaults, and should pass absolute paths.
+The importer and replay subprocesses run with `cwd=ROOT`. This is existing importer behaviour and remains unchanged. A Workbench child process must pass absolute paths and must not rely on its own working directory for defaults.
 
 ### 4.6 Examples
 
@@ -321,12 +355,11 @@ The V3 target executes these stages in order. A stage failure stops the pipeline
 Before any network request or database mutation:
 
 1. Parse the target and all options; reject incompatible combinations per §4.4.
-2. Resolve all default paths against `ROOT`, not the current working directory.
+2. Resolve paths according to §4.5.
 3. Validate the V3 database:
    - it exists and opens read/write;
    - it is not under `data/baseline/`;
-   - it contains the expected V3 tables;
-   - it contains `source_documents.file_size_bytes` (migration 016, §7.4). If missing, abort with the migration command.
+   - it contains the expected V3 tables.
 4. Derive the canonical issue key:
    - accept `--issue-key` if supplied;
    - otherwise derive `YYYY-NN` from the URL filename or the local filename, using the known Gazette naming pattern (for example `anotariais-33-2026.pdf` → `2026-33`);
@@ -338,12 +371,28 @@ Before any network request or database mutation:
    - reject `..` traversal and symlink escape;
    - reject a symlink as the final output path.
 6. Validate the source:
-   - for a URL, apply §9.1 before any request;
+   - for a URL, apply §9.2 before any request;
    - for a local path, require `--allow-local-source`, reject non-files and symlink escape, and require a `.pdf` filename.
 7. Validate `--name`: sanitized basename, `.pdf` suffix, and issue-key parseability.
-8. `--dry-run`: print the complete planned command sequence and exit 0 without downloading, OCR or V3 writes.
+8. For `--replay-only`, perform the integrity checks in §5.1.
+9. `--dry-run`: print the complete planned command sequence and exit 0 without downloading, OCR or V3 writes.
 
 No network request or database mutation occurs before preflight succeeds. Read-only V3 queries are allowed.
+
+### 5.1 Replay-only integrity gate
+
+`--replay-only` is a V3 retry mode for runs created by this importer. Before replay:
+
+1. `import_manifest.json` must exist in the run directory, be valid JSON, and have `manifest_version: 2` and `target: v3`.
+2. The manifest `issue_key` must equal the run-directory issue key or the explicit `--issue-key`.
+3. `run_report.json` must exist and contain `source_pdf_sha256`.
+4. The `run_report.json` hash must equal the manifest `pdf_sha256`.
+5. The manifest `pdf_path` must exist, be a regular file, and its recomputed SHA-256 must equal the manifest `pdf_sha256`. If the original PDF is missing or has changed, stop and require the operator to restore the PDF or rerun OCR. Do not replay from unverified evidence.
+6. `documents.csv` and `tb_rows.csv` must exist and be regular files.
+7. `run_report.json`, `documents.csv`, `tb_rows.csv` and `import_manifest.json` must resolve inside the run directory; reject symlinks and `..` escape.
+8. The `--v3-db` is authoritative. The manifest `v3_db` is informational; if it differs, record a warning in the manifest and log.
+
+Legacy runs without a v2 manifest are not eligible for `import_issue.py --replay-only`. Use `tools/replay_runs_to_v3.py` directly for controlled legacy backfill; it reconstructs provenance per §6.8.
 
 ### Stage 1 — Download PDF
 
@@ -362,30 +411,20 @@ Requirements:
 - if the destination filename already exists with the same bytes, reuse it and record `download_status = reused`;
 - if the destination filename exists with different bytes, write the new PDF as `<stem>__<sha256[:8]>.pdf` for V3. The original file is preserved.
 
-### Stage 1b — Content duplicate gate
+### Stage 1b — Content duplicate and version gate
 
 This gate applies to a normal V3 import that will run OCR and replay. Skip it for `--download-only` and `--inspect-only`; those modes do not create V3 records and must keep the downloaded file.
 
-If `--reprocess --reason` is supplied, skip steps 2–4 and proceed to step 5.
+After the download is complete and hashed, but **before OCR**, apply the decision table and precedence in §8.2–§8.3.
 
-After the download is complete and hashed, but **before OCR**:
+The short version:
 
-1. Look up the full SHA-256 in `source_documents.sha256` (index `idx_source_documents_sha256`). Do not use the truncated `document_key` for content identity.
-2. If the same hash exists for the same issue key:
-   - return `status = already_imported`, `already_present = true`, with the existing issue/document/run references;
-   - do not run OCR;
-   - exit code 0.
-3. If the same hash exists for a different issue key:
-   - return `status = already_imported_content_conflict` and require an explicit operator decision;
-   - do not run OCR;
-   - exit code 3.
-4. If the same issue key exists with a different hash:
-   - return `status = new_source_version_required`;
-   - require `--new-version` and `--reason`;
-   - do not overwrite the existing document or run;
-   - exit code 3 unless `--new-version` is supplied.
-5. If `--reprocess` is supplied with `--reason`, allow a second OCR run for the same content. Create a new run directory and preserve the previous run.
-6. Discard the temporary download when the result is `already_imported` and no reprocess is requested. Do not promote it to `input/`.
+1. If the same issue has documents but none with this hash, the source is a new version. `--reprocess` does not bypass this check. Require `--new-version --reason`.
+2. If the same issue has a document with this hash, it is already imported. Return `already_imported`, or with `--reprocess --reason` reuse that source document and create a new extraction run.
+3. If this issue has no documents but another issue has this hash, it is a cross-issue content conflict. Return `already_imported_content_conflict`, or with `--reprocess --reason` create a new source document under this issue.
+4. If no document for this issue and no document with this hash exists, proceed normally.
+
+Discard the temporary download when the result is `already_imported`, `already_imported_content_conflict`, or `new_source_version_required` and no explicit decision is supplied. Do not promote it to `input/`.
 
 The duplicate result must be machine-readable and must not be reported as a financial verification or a new ingestion.
 
@@ -407,7 +446,7 @@ Reuse the existing OCR/parser command and output format.
 
 ### Stage 3 — Write the complete pre-replay manifest
 
-Before calling V3 replay, write `import_manifest.json` in the run directory with the schema in §11.
+Before calling V3 replay, write `import_manifest.json` in the run directory with the schema in §11. Use the atomic writer in §10.4.
 
 Requirements:
 
@@ -424,22 +463,23 @@ Invoke the existing replay tool as a subprocess using an argument array (never `
 python tools/replay_runs_to_v3.py \
   --v3-db <v3-db-path> \
   --run-dir <run-dir> \
-  --no-v5-lookup \
-  --json
+  --no-v5-lookup
 ```
 
 Requirements:
 
 - pass only the V3 database to `replay_runs_to_v3.py`;
 - do not call `tools/build_database.py` in this target;
-- do not read the V5 database; `--no-v5-lookup` is mandatory for the V3 target;
+- do not read the V5 database; `--no-v5-lookup` is mandatory for the V3 target and must actually skip the legacy lookup;
 - capture stdout/stderr and preserve the replay log;
+- when invoked with one `--run-dir`, replay writes exactly one JSON object to stdout and no other text; parse and validate that object;
 - treat a non-zero exit code or an invalid replay result as failure;
 - validate the replay result fields defined in §6.3;
+- verify the evidence fingerprint defined in §6.5;
 - record the replay result/run identifier in the manifest;
 - update the manifest to `completed` only after replay has succeeded and its result has been validated.
 
-If the replay tool emits JSON Lines on stdout, parse the single object for this `--run-dir` and validate it. Prefer adding `--json` for a single top-level object; do not parse human-readable text.
+Do not parse human-readable log text and do not add a second, competing JSON mode. Stabilise the existing single-run JSON object.
 
 ### Stage 5 — Final result
 
@@ -454,13 +494,13 @@ On success, print a concise summary and exit code `0`, including:
 - replay result/run ID;
 - next step: page classification is still required.
 
-With `--json`, print exactly one JSON object to stdout and keep logs on stderr. The object must contain the final manifest path and status.
+With `--json`, stdout is exactly one JSON object per §10.3. All progress, child-process output and human-readable messages go to stderr and `import.log`.
 
 A V3 import success must be described as **raw OCR evidence imported into V3**, not as a completed or reviewed financial statement.
 
 ---
 
-## 6. Data boundary, replay contract and provenance
+## 6. Data boundary, identity and replay contract
 
 ### 6.1 What V3 import does and does not create
 
@@ -523,7 +563,8 @@ Do not treat a filename or directory name as a unique source identity.
   "page_extractions": 11,
   "rows_inserted": 64,
   "rows_skipped": 0,
-  "already_present": false
+  "already_present": false,
+  "evidence_fingerprint": "..."
 }
 ```
 
@@ -531,7 +572,7 @@ Status values: `ok`, `already_present`, `failed`.
 
 Rules:
 
-- `already_present = true` and `rows_inserted = 0` means the same run identity was already replayed; this is a successful idempotent result, not a failure.
+- `already_present = true` and `rows_inserted = 0` means the same run identity with the same evidence fingerprint was already replayed; this is a successful idempotent result, not a failure.
 - `status = failed` includes `error_type` and `error_message`.
 - Exit code 0 for `ok` and `already_present`; 1 for `failed`; 2 for usage errors.
 - The importer must not infer success from `rows_inserted = 0` alone; it must use `status` and `already_present`.
@@ -546,7 +587,36 @@ Before creating a new extraction run, replay resolves the run identity in this o
 
 This order is mandatory because new V3 run directories have a `__job_<id>` suffix and do not match legacy V5 run-directory names. Without step 1, `--replay-only --no-v5-lookup` on an existing V3 run would create a new run ID and duplicate extracted rows.
 
-### 6.5 Source provenance
+### 6.5 Evidence fingerprint
+
+The current replay guard only compares row counts. To prevent a same-count change from being silently skipped, replay must compute and store an evidence fingerprint.
+
+Version 1 algorithm:
+
+```text
+parts = ["import-evidence-v1"]
+for name in ("run_report.json", "documents.csv", "tb_rows.csv"):
+    if file exists and is a regular file:
+        parts.append(name + "\0" + sha256_hex(file bytes))
+    else:
+        parts.append(name + "\0MISSING")
+evidence_fingerprint = sha256_hex("\0".join(parts).encode("utf-8"))
+```
+
+`sha256_hex` returns lowercase hexadecimal. Rules:
+
+- Store `evidence_fingerprint` and `evidence_fingerprint_version: 1` in `extraction_runs.config_json`, preserving existing keys.
+- On a new run, compute and store the fingerprint when the run row is created.
+- On an existing run:
+  - if the stored fingerprint exists and matches: proceed idempotently;
+  - if the stored fingerprint exists and differs: raise a distinct `EvidenceChangedError`, roll back the transaction, exit non-zero, and leave a failed manifest; never skip silently;
+  - if no stored fingerprint exists (legacy run): compute and store it on the first replay, then proceed. Do not refuse a legacy run solely because the key was added later.
+- If `config_json` is invalid JSON, fail rather than overwrite it.
+- A changed row count still fails through the existing page-count check; the fingerprint additionally catches same-count changes.
+- `import_manifest.json` is not part of the fingerprint. Updating the manifest does not make a run replay-different.
+- A genuinely new OCR run must use a new run directory and therefore a new run ID; it must not rewrite the evidence of an existing run.
+
+### 6.6 Source provenance
 
 The original Gazette URL must not be lost.
 
@@ -556,7 +626,7 @@ The original Gazette URL must not be lost.
 | Issue-level source URL | `gazette_issues.source_url` | Set at insert; update only when currently `NULL` (`COALESCE`); never overwrite a non-NULL value |
 | Document-level source URL | `source_documents.source_url` | Exact PDF URL; set at insert; backfill only when `NULL`; never overwrite |
 | PDF SHA-256 | `source_documents.sha256` | Full 64-hex hash; content identity |
-| PDF byte size | `source_documents.file_size_bytes` | Added by migration 016 (§7.4) |
+| PDF byte size | `extraction_runs.config_json.source_pdf_bytes` and manifest `pdf_bytes` | No V3 schema change in V2.0; SQL-level size queries are a documented gap |
 | PDF storage path | `source_documents.storage_uri` | Absolute local path; not a network URI |
 | Original filename | `source_documents.original_filename` | Sanitized basename |
 | Download time | `source_documents.acquired_at` | Manifest `download_finished_at` when present; otherwise replay time for legacy runs |
@@ -565,19 +635,30 @@ The original Gazette URL must not be lost.
 | Import manifest location | `extraction_runs.config_json.import_manifest` | Absolute path or `null` for reconstructed legacy runs |
 | Manifest origin | `extraction_runs.config_json.manifest_origin` | `written` or `reconstructed` |
 | Run directory | `extraction_runs.config_json.run_dir` | Absolute path; helps future retries |
+| Evidence fingerprint | `extraction_runs.config_json.evidence_fingerprint` | Versioned per §6.5 |
 
 Do not put secrets or URL query values in any of these fields.
 
-### 6.6 Legacy manifest compatibility
+### 6.7 V2.0 does not add a file-size column
+
+The importer does not modify the V3 schema in V2.0. `pdf_bytes` is preserved in:
+
+- `import_manifest.json` (`pdf_bytes`);
+- `run_report.json` (`source_pdf_size`);
+- `extraction_runs.config_json.source_pdf_bytes`.
+
+If a future feature needs SQL-level size filtering or reporting, add a dedicated migration in a separate change after reviewing `DATABASE.md`. Do not add an ad-hoc column during this upgrade.
+
+### 6.8 Legacy manifest compatibility
 
 - The replay tool must accept the legacy manifest key `"source"` as the source URL.
 - A missing `import_manifest.json` must not fail replay when the core artifacts exist; reconstruct provenance from `run_report.json` and mark `manifest_origin = reconstructed`.
 - Do not write a fabricated `import_manifest.json` into an old run directory. Store reconstruction metadata in V3 only.
 - For the 6 existing runs without a manifest, leave `source_url` `NULL`. The known Gazette URL pattern is not evidence and must not be guessed.
 - For the 8 existing runs with a legacy manifest, `source` supplies the URL during a deliberate backfill replay.
-- `source_pdf_size` from every existing `run_report.json` can backfill `file_size_bytes` for all 14 existing documents.
+- `source_pdf_size` from every existing `run_report.json` can backfill `config_json.source_pdf_bytes` for all 14 existing documents.
 
-### 6.7 Currency and unit rule
+### 6.9 Currency and unit rule
 
 For in-scope Macau bank statements, the project rule remains:
 
@@ -590,7 +671,7 @@ The Importer must not use this rule to infer or approve statement identity. Curr
 
 ---
 
-## 7. Output directory, run identity and schema change
+## 7. Output directory and run identity
 
 ### 7.1 Run directory
 
@@ -620,40 +701,29 @@ For a replay-only retry, reuse the exact completed OCR run directory and do not 
 
 For a reprocess, use a new run directory and preserve the previous run.
 
-### 7.3 Failure fallback directory
+### 7.3 Failure and result directories
 
 Early failures and operator-decision results may occur before the run directory exists. Write those manifests to unique paths:
 
 ```text
-output_import_failed/<job-id>/import_manifest.json       # stage failure
-output_import_results/<job-id>/import_manifest.json      # already_imported / conflict / decision required
+ROOT/output_import_failed/<job-id>/import_manifest.json   # stage failure
+ROOT/output_import_results/<job-id>/import_manifest.json  # already_imported / conflict / decision required / import_locked
 ```
 
 Do not reuse a single shared `output_import_failed/import_manifest.json`, because concurrent or consecutive failures would overwrite each other.
 
-For `already_imported` and operator-decision results, do not create the requested run directory. This keeps the `--outdir` namespace free for a later explicit `--reprocess` or `--new-version` run. If `--outdir` was supplied, include it in the result manifest but do not create it.
+For `already_imported`, operator-decision and `import_locked` results, do not create the requested run directory. This keeps the `--outdir` namespace free for a later explicit `--reprocess` or `--new-version` run. If `--outdir` was supplied, include it in the result manifest but do not create it.
 
-### 7.4 Migration 016 — source document file size
+### 7.4 Provenance backfill for existing runs
 
-The V3 schema has no file-size field. Add the smallest justified migration:
+After the replay-tool changes are deployed, a deliberate replay of the existing 14 run directories can backfill:
 
-```sql
--- database/v3/016_source_document_file_size.sql
-ALTER TABLE source_documents ADD COLUMN file_size_bytes INTEGER;
+- `gazette_issues.source_url` from the 8 legacy manifest `source` values;
+- `source_documents.source_url` from the same values;
+- `extraction_runs.config_json.source_pdf_bytes` from every `run_report.json`;
+- `extraction_runs.config_json.evidence_fingerprint` and `manifest_origin`.
 
-INSERT OR REPLACE INTO schema_meta(key, value, updated_at)
-VALUES ('migration_016_source_document_file_size', 'applied', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
-```
-
-Rules:
-
-- New databases built by `tools/build_v3_db.py` apply the file in sorted order automatically.
-- Existing operational databases must be migrated once, after a backup, using a small idempotent helper `tools/migrate_v3_db.py` that checks `PRAGMA table_info(source_documents)` and `schema_meta` before applying.
-- Do not run `apply_schema()` against an existing database; `ALTER TABLE` is not idempotent.
-- Backfill existing rows by re-running replay over the existing run directories after the migration. Replay updates `source_url` and `file_size_bytes` only when the current value is `NULL`, and inserts no new rows.
-- Existing `document_key` values are not changed by this migration.
-
-If the project decides not to change the schema, the fallback is to store `pdf_bytes` only in the manifest and `extraction_runs.config_json`, and to document the missing SQL-level query capability. That fallback must be decided in Phase 0, before implementation.
+The backfill must insert no new rows and must not overwrite non-NULL values. The 6 runs without a manifest keep `source_url = NULL`. Run the backfill while no importer is active; the direct replay tool does not take the importer's advisory lock.
 
 ---
 
@@ -663,30 +733,77 @@ Duplicate handling distinguishes content identity from Gazette issue identity.
 
 ### 8.0 Operator decisions
 
-`--reprocess` and `--new-version` are mutually exclusive. Both require a non-empty `--reason`, which is recorded in the manifest as `decision_reason` and in the replay log. Neither flag may be used to overwrite an existing PDF, source document, run or extracted row.
+`--reprocess` and `--new-version` are mutually exclusive. Both require a non-empty `--reason`, which is recorded in the manifest as `decision_reason` and in the replay log.
+
+- `--reprocess` only authorises repeated processing of the **same PDF content**. It never authorises a different PDF under the same issue.
+- `--new-version` only authorises **different PDF content for the same issue**. It never authorises a second run for identical content.
+- Neither flag may be used to overwrite an existing PDF, source document, run or extracted row.
 
 ### 8.1 Content identity
 
 Content identity is the full PDF SHA-256. Lookup uses `source_documents.sha256` and the existing `idx_source_documents_sha256` index. Do not use the truncated `document_key` for duplicate detection.
 
-An explicit `--reprocess` or `--new-version` can legitimately produce more than one `source_documents` row for the same hash. Duplicate resolution therefore returns all matching rows, prefers a row with the same issue key when reporting `already_imported`, and never deletes or merges existing rows.
+Multiple `source_documents` rows with the same hash are possible only when:
 
-### 8.2 Same PDF bytes, same issue
+- an operator explicitly uses `--reprocess` to import the same PDF under a **different issue**; or
+- a legacy/manual import already created such rows.
+
+They are not created by a same-issue reprocess. A same-issue reprocess reuses the existing source document.
+
+Duplicate resolution returns all matching rows, prefers a row with the same issue key when reporting `already_imported`, and never deletes or merges existing rows.
+
+### 8.2 Decision table
+
+| Existing state for the target issue | Hash relation | Default result | Explicit approval |
+|---|---|---|---|
+| Same issue has a document with this hash | same | `already_imported` | `--reprocess --reason`: reuse the existing `source_documents` row, create a new extraction run |
+| No document for this issue; same hash exists under another issue | same | `already_imported_content_conflict` | `--reprocess --reason`: create a new `source_documents` row under this issue, create a new run |
+| Same issue has document(s), none with this hash | different | `new_source_version_required` | `--new-version --reason`: create a new `source_documents` row, preserve the old version |
+| No document for this issue and no document with this hash anywhere | none | normal import | not applicable |
+
+Cross-issue `--reprocess` is the only legitimate way to create a second `source_documents` row with the same hash. A same-issue `--reprocess` must not increase the `source_documents` count.
+
+### 8.3 Algorithm and precedence
+
+Apply these checks in order. The same-issue different-hash check has precedence over cross-issue content matching.
+
+1. Compute the full SHA-256.
+2. Query all `source_documents` rows with this hash.
+3. Query all `source_documents` rows for the target issue.
+4. If the target issue has at least one document and none has this hash:
+   - this is a new source version;
+   - `--reprocess` does **not** bypass this check;
+   - without `--new-version`: return `new_source_version_required` with exit code 3;
+   - with `--new-version --reason`: proceed and create a new source document; preserve the old version.
+5. If a document with this hash exists for the target issue:
+   - without `--reprocess`: return `already_imported` with exit code 0;
+   - with `--reprocess --reason`: reuse that source document and create a new extraction run;
+   - with `--new-version`: reject, because the content is identical; tell the operator to use `--reprocess`.
+6. If this issue has no documents, but another issue has this hash:
+   - without `--reprocess`: return `already_imported_content_conflict` with exit code 3;
+   - with `--reprocess --reason`: create a new source document under the target issue and proceed;
+   - with `--new-version`: reject, because this is not a same-issue version change; tell the operator to use `--reprocess`.
+7. If no document for this issue and no document with this hash exists: proceed with a normal import.
+8. Record the decision in the manifest (`decision_type`, `decision_reason`) and in the replay log.
+
+### 8.4 Same PDF, same issue
 
 - Return `already_imported` with the existing issue/document/run references.
 - Do not create a second logical source document or replay record.
 - Do not run OCR.
 - Exit code 0 unless an explicit reprocess is requested.
+- With `--reprocess --reason`, reuse the existing `source_documents` row and create a new extraction run in a new run directory. The source-document count must not change.
 
-### 8.3 Same PDF bytes, different issue
+### 8.5 Same PDF, different issue
 
 - Return `already_imported_content_conflict`.
 - Do not silently create a second source document.
-- Require `--reprocess --reason` for an intentional second ingestion.
+- Require `--reprocess --reason` for an intentional cross-issue import.
 - Exit code 3 when no explicit decision is supplied.
 - The manifest records the conflicting existing issue key and document ID.
+- With `--reprocess --reason`, create a new `source_documents` row under the target issue and proceed. This is the only expected same-hash multi-row case.
 
-### 8.4 Same issue key, different PDF bytes
+### 8.6 Same issue, different PDF
 
 Treat this as a new source version:
 
@@ -695,25 +812,30 @@ Treat this as a new source version:
 - report `new_source_version_required`;
 - require `--new-version --reason`;
 - create a new `source_documents` row with its own `document_key`, hash and storage path;
-- exit code 3 when no explicit decision is supplied.
+- exit code 3 when no explicit decision is supplied;
+- `--reprocess` is not a valid substitute.
 
 V3 can represent multiple documents under one issue because `source_documents.document_key` is unique per issue+content. V3 has no "current version" flag; the Importer must not pick one. Page classification and statement confirmation must choose the document to review.
 
-### 8.5 Replay idempotency
+### 8.7 Replay idempotency
 
-Keep `tools/replay_runs_to_v3.py` idempotent for the same run identity:
+Keep `tools/replay_runs_to_v3.py` idempotent for the same run identity and the same evidence:
 
 - replaying the same completed run must not create duplicate pages, page extractions or extracted rows;
 - `already_present = true` with `rows_inserted = 0` is a successful result;
-- a changed row set for an existing run must fail instead of overwriting raw evidence.
+- a changed row count for an existing run must fail;
+- a same-count change to any label, amount, status or other evidence field must fail through the evidence fingerprint;
+- a changed row set for an existing run must fail instead of overwriting raw evidence;
+- a genuinely new OCR run must use a new run directory and a new run ID.
 
-A new run directory containing the same PDF is not automatically the same run identity. Duplicate-content handling in §8.2–§8.4 must run before a second logical ingestion is created.
+A new run directory containing the same PDF is not automatically the same run identity. Duplicate-content handling in §8.2–§8.6 must run before a second logical ingestion is created.
 
-### 8.6 Retry stages
+### 8.8 Retry stages
 
 | Failure point | Correct retry behaviour |
 |---|---|
 | Preflight failed | Fix the flag, path, URL or database; no run artifacts exist |
+| Import lock held | Wait for the other import to finish; retry |
 | Download failed | Retry download; no OCR/V3 replay exists |
 | Duplicate gate returned `already_imported` | No retry; use `--reprocess` only with a justified reason |
 | Duplicate gate requires a version decision | Re-run with `--new-version --reason` or stop |
@@ -725,11 +847,11 @@ The Workbench job table and UI are designed later. The CLI importer must expose 
 
 ---
 
-## 9. URL, download and filesystem security
+## 9. URL, download, filesystem, process and concurrency safety
 
 ### 9.1 Scope
 
-- The hardened policy applies to `--target v3` URL sources.
+- The hardened URL policy applies to `--target v3` URL sources.
 - The V5 target preserves its current download behaviour, including `http://`, local paths and the existing `127.0.0.1` test fixture.
 - The OCR-only target preserves V5 download behaviour; it is not the Workbench-facing ingestion path.
 - Do not harden the shared `fetch_pdf()` in a way that breaks V5 tests. Use a target-aware policy object or a separate V3 download function.
@@ -764,8 +886,8 @@ DNS rebinding is a residual risk for a local trusted tool. At minimum, re-resolv
 
 ### 9.4 Filesystem safety
 
-- Store downloaded PDFs only under the configured managed input directory (`ROOT/input` by default).
-- Store run output only under the configured managed output directory (`ROOT/outputs/runs` by default) for normal Workbench use.
+- Store downloaded PDFs only under the configured managed input directory (`ROOT/input` by default for V3).
+- Store run output only under the configured managed output directory (`ROOT/outputs/runs` by default for V3).
 - Resolve and validate paths to prevent `..` traversal and symlink escape.
 - Reject a symlink as the final destination path.
 - Never use the URL path as a raw local path.
@@ -792,18 +914,35 @@ Workbench may later upload a PDF instead of supplying a URL. Define the behaviou
 - Record exit codes and stage names.
 - Pass `--no-v5-lookup` to replay for the V3 target.
 
+### 9.7 Import lock and concurrency
+
+Two simultaneous CLI imports must not both pass the duplicate gate and create two OCR runs for the same content.
+
+Implement a V3 database import lock:
+
+- acquire an exclusive advisory lock with `fcntl.flock(LOCK_EX | LOCK_NB)` on `<v3-db>.import.lock`;
+- acquire it after preflight and before download; hold it through duplicate checking, OCR, replay and final manifest writing;
+- release it in a `finally` block on every exit path;
+- if the lock is already held, return `status = import_locked` and exit code 3 without downloading or OCR-ing;
+- write an `import_locked` result manifest under `output_import_results/<job-id>/`;
+- keep the lock file next to the V3 database; it is not part of the schema and may remain on disk after release.
+
+The lock is advisory. It protects cooperating importer processes, not arbitrary external writers. Workbench should still run one import at a time.
+
+This is a POSIX/macOS design. If the project later supports Windows, replace `fcntl` with a cross-platform lock library rather than silently weakening the guarantee.
+
 ---
 
-## 10. Failure handling and manifest state
+## 10. Failure handling, exit codes and result contract
 
 ### 10.1 Exit codes
 
 | Code | Meaning |
 |---:|---|
-| 0 | Success, `already_imported`, `download_only`, or `inspect_only` |
-| 1 | A required stage failed (download, OCR, replay, manifest write) |
+| 0 | Success, `already_imported`, `download_only`, `inspect_only`, or `planned` |
+| 1 | A required stage failed (download, OCR, replay, fingerprint, manifest write) |
 | 2 | Usage or preflight error |
-| 3 | Operator decision required (`already_imported_content_conflict`, `new_source_version_required`) |
+| 3 | Operator decision required: content conflict, new version required, or import lock held |
 
 ### 10.2 Manifest stage statuses
 
@@ -830,13 +969,76 @@ Requirements:
 - Do not delete the downloaded PDF or OCR output after a replay failure.
 - Keep error text useful but avoid exposing credentials, URL query values or other secrets.
 - Make it possible to identify whether a run is safe to retry at download, OCR or replay stage.
-- Write failed manifests to the unique per-job location in §7.3.
+- Write failed and decision manifests to the unique per-job locations in §7.3.
 
 Do not claim durable background-job support at this stage. The CLI is a synchronous command-line orchestrator; Workbench wraps it in its own persistent worker/job mechanism later.
 
+### 10.3 `--json` result contract
+
+`--json` is a strict output mode:
+
+- stdout contains exactly one JSON object and nothing else;
+- all progress, OCR output, replay output and human-readable errors go to stderr and `import.log`;
+- the same contract applies to success, stage failure, duplicate, decision-required, lock-held and preflight errors detected after argument parsing;
+- argparse-level usage errors before `--json` is parsed may use the normal stderr usage message and exit code 2;
+- `--help` is exempt and prints normal help;
+- `manifest_path` is `null` only when preflight fails before a result directory can be created; `issue_key` is `null` when it cannot be derived.
+
+Recommended object:
+
+```json
+{
+  "status": "completed",
+  "exit_code": 0,
+  "target": "v3",
+  "issue_key": "2026-33",
+  "run_dir": "/abs/outputs/runs/issue33_2026__job_abc123",
+  "manifest_path": "/abs/outputs/runs/issue33_2026__job_abc123/import_manifest.json",
+  "pdf_sha256": "2d51dd30a19e8383f63a836dbe6a57efc8becb1b49378bd229e4be44f6d1c627",
+  "v3": {
+    "gazette_issue_id": "...",
+    "source_document_id": "...",
+    "run_id": "...",
+    "already_present": false,
+    "evidence_fingerprint": "..."
+  },
+  "error": null
+}
+```
+
+`status` values:
+
+```text
+completed
+failed
+already_imported
+already_imported_content_conflict
+new_source_version_required
+import_locked
+usage_error
+planned
+download_only
+inspect_only
+```
+
+On failure, `error` is `{"type": "...", "message": "..."}` and `exit_code` is non-zero.
+
+Implementation note: `run_command()` currently prints command lines and merges child stderr into stdout. In `--json` mode it must route those messages to stderr and `import.log`; stdout is reserved for the final object.
+
+### 10.4 Atomic manifest writing
+
+`write_manifest()` must never truncate a live manifest. Implement:
+
+1. serialise the complete manifest to a temporary file in the same directory;
+2. `flush()` and `os.fsync()`;
+3. `os.replace(temp, final)`;
+4. optionally fsync the containing directory.
+
+Use a unique temp name such as `.<name>.<pid>.<uuid>.tmp`. Remove the temp file on failure. A process crash must leave either the previous valid manifest or the new complete manifest, never a half-written JSON file.
+
 ---
 
-## 11. Import manifest schema v2
+## 11. Import manifest schema V2.0
 
 ### 11.1 Canonical example
 
@@ -862,6 +1064,7 @@ Do not claim durable background-job support at this stage. The CLI is a synchron
   "started_at": "2026-11-21T00:00:00+00:00",
   "download_finished_at": null,
   "finished_at": null,
+  "decision_type": null,
   "decision_reason": null,
   "last_exit_code": null,
   "error_type": null,
@@ -871,6 +1074,7 @@ Do not claim durable background-job support at this stage. The CLI is a synchron
     "source_document_id": null,
     "run_id": null,
     "already_present": false,
+    "evidence_fingerprint": null,
     "pages": null,
     "page_extractions": null,
     "rows_inserted": null,
@@ -891,6 +1095,7 @@ failed
 already_imported
 already_imported_content_conflict
 new_source_version_required
+import_locked
 download_only
 inspect_only
 replay_only
@@ -917,6 +1122,7 @@ not_applicable
 - `already_present = true` with `rows_inserted = 0` is a successful idempotent replay.
 - `pdf_sha256` is the full 64-character hash.
 - `decision_reason` is non-empty whenever `--reprocess` or `--new-version` was used.
+- `decision_type` is `reprocess` or `new_version` when applicable.
 - No secrets or URL query values.
 
 ### 11.4 Legacy aliases
@@ -940,18 +1146,20 @@ Do not require existing consumers to understand v2 fields, and do not remove the
 
 ## 12. Testing requirements
 
-### 12.1 Backward compatibility tests
+### 12.1 V5 backward compatibility
 
 - Existing `tests/test_import_issue.py` must continue passing unchanged.
 - The `http://127.0.0.1` download fixture must still work for V5.
 - Existing V5 CLI defaults and option behaviours must remain unchanged.
 - V5 target still invokes the existing V5 database pipeline with the legacy DB only.
+- V5 path resolution remains cwd-based: a test must invoke the V5 path helper from a temporary cwd and assert the default DB/input paths remain cwd-relative.
 - Existing `--no-db`, `--download-only`, `--no-ocr`, `--inspect-only`, `--dry-run`, `--overwrite-pdf` and `--reuse-output` behaviours must be preserved or have explicitly tested compatibility mappings.
 - `--target` omitted behaves exactly like `--target v5`.
+- OCR-only preserves V5-compatible path behaviour.
 
-### 12.2 V3 target tests
+### 12.2 V3 target and isolation
 
-- V3 target downloads and OCRs, then invokes `replay_runs_to_v3.py` with `--v3-db`, `--run-dir`, `--no-v5-lookup` and `--json`.
+- V3 target downloads and OCRs, then invokes `replay_runs_to_v3.py` with `--v3-db`, `--run-dir`, `--no-v5-lookup`.
 - V3 target never invokes `tools/build_database.py`, `name_registry.py refresh-banks`, or `import_user_standard.py map`.
 - V3 target rejects incompatible `--db`, `--publish`, `--force-publish`, `--published-by`, `--no-name-map` and `--no-bank-refresh`.
 - `--no-db` with V3 is rejected with a message pointing to `--target ocr-only`.
@@ -961,14 +1169,27 @@ Do not require existing consumers to understand v2 fields, and do not remove the
 - V3 replay failure returns non-zero and leaves an accurate failed manifest.
 - Successful V3 target writes manifest status only after replay is confirmed.
 - Successful result clearly states that raw OCR evidence is imported and page classification remains outstanding.
+- Isolation proof: point `--v5-db` at a nonexistent or unreadable path and assert replay still succeeds without opening it.
 - Exit codes 0/1/2/3 are covered.
+- V3 default paths resolve against `ROOT`, including when the process is launched from another cwd.
 
-### 12.3 Manifest and provenance tests
+### 12.3 Replay-only integrity
+
+- Missing `import_manifest.json` is rejected.
+- Wrong manifest `target` is rejected.
+- Manifest `issue_key` mismatch is rejected.
+- `run_report.source_pdf_sha256` mismatch with manifest is rejected.
+- Modified or missing PDF is rejected.
+- Missing `documents.csv` or `tb_rows.csv` is rejected.
+- Artifact symlink or `..` escape is rejected.
+- Valid replay-only run succeeds and is idempotent.
+
+### 12.4 Manifest and provenance
 
 - A new V3 import writes `manifest_version: 2`, canonical `issue_key`, source URL, SHA-256 and byte size.
 - The source URL is written into `gazette_issues.source_url` and `source_documents.source_url`.
-- PDF SHA-256 and byte size are recorded correctly in V3.
-- `source_documents.file_size_bytes` exists after migration 016 and is backfilled from `run_report.json`.
+- PDF SHA-256 is recorded in `source_documents.sha256`.
+- PDF byte size is recorded in `import_manifest.json` and `extraction_runs.config_json.source_pdf_bytes`; no V3 schema change is required.
 - Legacy manifests using `"source"` are read correctly.
 - Missing manifests do not fail replay; `manifest_origin = reconstructed`.
 - Existing non-NULL `source_url` is never overwritten.
@@ -976,20 +1197,37 @@ Do not require existing consumers to understand v2 fields, and do not remove the
 - Replaying the existing 14 runs inserts no new rows and fills available provenance.
 - Issue key, source document, OCR run and replay run ID are traceable to each other.
 - Existing issue/document/run identity is reused for replay-only retries.
+- Atomic manifest writing leaves the previous manifest intact when `os.replace` fails.
 
-### 12.4 Duplicate and retry tests
+### 12.5 Duplicate and retry decisions
 
 - Same PDF hash, same issue returns `already_imported` and does not create a second ingestion.
+- Same PDF hash, same issue with `--reprocess` reuses the existing source document and creates a new extraction run; `source_documents` count is unchanged.
 - Same PDF hash, different issue returns `already_imported_content_conflict` and exit code 3.
+- Same PDF hash, different issue with `--reprocess` creates a second source document under the target issue.
 - Same issue key, different hash returns `new_source_version_required` and exit code 3.
-- `--new-version --reason` creates a second source document and preserves the first.
-- `--reprocess --reason` creates a new run directory and preserves the first run.
+- Same issue key, different hash with `--new-version` creates a second source document and preserves the first.
+- Same issue key, different hash with `--reprocess` still returns `new_source_version_required`; reprocess must not bypass the version check.
+- Same PDF hash with `--new-version` is rejected with guidance to use `--reprocess`.
+- Different issue, same hash with `--new-version` is rejected with guidance to use `--reprocess`.
+- `--reprocess` and `--new-version` together are rejected.
+- Missing or empty `--reason` is rejected.
 - OCR retry receives a new run directory.
 - Replay-only retry reuses the existing OCR run directory and does not duplicate rows.
 - Replaying the exact same run is idempotent.
 - A changed row set for an existing run fails instead of overwriting.
 
-### 12.5 Security tests
+### 12.6 Evidence fingerprint
+
+- Replaying unchanged artifacts returns `already_present` and inserts zero rows.
+- Changing one amount while keeping the same row count fails with `EvidenceChangedError`.
+- Changing a label or parse status while keeping the same row count fails.
+- Changing only `import_manifest.json` does not fail the fingerprint check.
+- A legacy run with no stored fingerprint gets one on first replay.
+- A run with a stored fingerprint and changed evidence fails; the transaction rolls back.
+- `config_json` existing keys are preserved when the fingerprint is added.
+
+### 12.7 Security
 
 - HTTP URL rejected for V3.
 - Non-allowlisted hostname rejected.
@@ -1006,7 +1244,21 @@ Do not require existing consumers to understand v2 fields, and do not remove the
 - Subprocess arguments are passed as an array; no shell invocation is used.
 - V5 `http://127.0.0.1` test remains green.
 
-### 12.6 Regression isolation test
+### 12.8 Concurrency
+
+- A second V3 import fails with `import_locked` and exit code 3 while the first holds the lock.
+- The lock is released when the first process exits successfully or fails.
+- `--replay-only` also respects the lock.
+- V5 and OCR-only imports do not take the V3 lock.
+
+### 12.9 JSON output
+
+- With `--json`, stdout contains exactly one JSON object.
+- No `PDF:`, `$ command`, OCR progress or replay progress text appears on stdout.
+- Successful, failed, duplicate, decision-required, lock-held and preflight-error paths all emit the JSON contract.
+- `manifest_path` is present and points to the actual manifest, including failure/result manifests.
+
+### 12.10 Regression isolation
 
 Use a copy of the operational V3 database and assert that importing one new issue does not alter:
 
@@ -1027,55 +1279,59 @@ Record the baseline counts listed in §2.1 before and after the test.
 
 Implement in this order. Do not start with Workbench UI.
 
-### Phase 0 — Verify current contracts
+### Phase 0 — Contract verification
 
 1. Re-read the current `tools/import_issue.py`, its tests and every CLI caller.
 2. Inventory all existing options and the exact V5 stage order.
-3. Inspect the current V3 DDL/migrations and `tools/replay_runs_to_v3.py` result contract.
-4. Confirm official Gazette PDF hostnames from real project source URLs.
-5. Confirm the facts in §2 against the current database and run directories.
-6. Decide whether to apply migration 016 or use the documented fallback.
-7. Identify every place where source URL, hash and file size can be stored without violating the V3 data model.
+3. Confirm the V5 cwd-based path behaviour and record it as a compatibility contract.
+4. Inspect the current V3 DDL/migrations and `tools/replay_runs_to_v3.py` result contract.
+5. Confirm official Gazette PDF hostnames from real project source URLs.
+6. Confirm the facts in §2 against the current database and run directories.
+7. Decide explicitly that V2.0 does not change the V3 schema; document the `config_json` provenance fallback.
+8. Identify every place where source URL, hash and file size can be stored without violating the V3 data model.
 
 **Deliverable:** a short implementation note in the PR/commit describing compatibility and V3 provenance decisions.
 
-### Phase 1 — Refactor importer into explicit stages
+### Phase 1 — V5-safe refactor
 
 1. Refactor download, OCR, V5 import and manifest writing into testable functions without changing their behaviour.
 2. Add target parsing with `v5` as the default.
 3. Add a target-aware download policy; keep V5 behaviour intact.
 4. Add consistent stage results, exit codes and manifest updates.
-5. Make all default paths resolve against `ROOT`.
+5. Keep V5 path resolution cwd-based; do not unify it with V3.
+6. Put manifest writes behind a single writer function so Phase 3 can make it atomic.
 
 **Deliverable:** refactored importer with no functional regression in V5 mode.
 
-### Phase 2 — Add V3 orchestration and provenance
+### Phase 2 — V3 raw ingestion
 
 1. Add `--target v3`, `--v3-db`, `--replay-only`, `--reprocess`, `--new-version`, `--reason`, `--issue-key`, `--allow-local-source`, `--allow-outside-output` and `--json`.
 2. Run download + OCR without the V5 DB import steps.
-3. Add the content duplicate gate before OCR.
+3. Add the content duplicate and version gate per §8.2–§8.3.
 4. Write manifest schema v2 with legacy aliases.
-5. Update replay to accept `--v3-db` and `--no-v5-lookup`.
+5. Update replay to accept `--v3-db` and implement `--no-v5-lookup` for real.
 6. Add the run-identity lookup by `run_report_uri` in replay.
-7. Add the replay result contract and `--json` mode.
-8. Add migration 016 and `tools/migrate_v3_db.py`.
-9. Persist source URL, hash, file size and run identity in V3.
-10. Add duplicate handling and replay-only retry support.
-11. Add a deliberate provenance backfill replay for existing runs.
+7. Stabilise the single-run replay JSON result.
+8. Persist source URL, SHA-256 and size metadata in V3 without a schema change.
+9. Add replay-only retry support with §5.1 integrity checks.
+10. Add a deliberate provenance backfill replay for existing runs.
 
 **Deliverable:** one CLI command can safely import a Gazette issue's raw OCR evidence into V3, and a replay-only retry can repair a failed manifest without duplicating data.
 
-### Phase 3 — Harden network and filesystem boundaries
+**Gate:** until Phase 3 is complete, the V3 target is for controlled single-operator testing only. Do not expose it to Workbench.
 
-1. Add the official-host allowlist and redirect validation.
-2. Enforce HTTPS, destination-address checks, bounded streaming and PDF validation.
-3. Enforce managed output paths and atomic file promotion.
-4. Add security regression tests.
-5. Keep V5 download tests green.
+### Phase 3 — Replay integrity, security and concurrency
 
-**Deliverable:** safe URL-based V3 ingestion suitable for a local Workbench to call.
+1. Add the evidence fingerprint and same-count change protection.
+2. Add the official-host allowlist and redirect validation.
+3. Enforce HTTPS, destination-address checks, bounded streaming and PDF validation.
+4. Enforce managed output paths and atomic file promotion.
+5. Make manifest writes atomic.
+6. Add the V3 import lock.
+7. Add security, fingerprint, atomic-write and lock tests.
+8. Keep V5 download tests green.
 
-**Gate:** Workbench must not call the V3 target until Phase 3 and Phase 4 are complete.
+**Deliverable:** safe V3 ingestion suitable for a local Workbench to call, with evidence-integrity and concurrency guarantees.
 
 ### Phase 4 — Real Gazette integration test
 
@@ -1092,6 +1348,8 @@ Verify:
 7. Running the same command again follows the duplicate policy and does not silently duplicate or overwrite data.
 8. Replay-only retry does not duplicate rows.
 9. Existing statements, reviews, mappings and publications in the copy are unchanged.
+10. A second concurrent import receives `import_locked`.
+11. `--json` stdout parses cleanly as one object.
 
 **Deliverable:** recorded integration-test result with issue key, hash, page/row counts and V3 replay reference.
 
@@ -1101,16 +1359,16 @@ Verify:
 
 | File | Expected work |
 |---|---|
-| `tools/import_issue.py` | Add targets, V3 orchestration, duplicate gate, staged manifest v2, exit codes, safe download policy, `--json` |
-| `tools/replay_runs_to_v3.py` | Accept `--v3-db` and `--no-v5-lookup`; persist source URL/PDF provenance; resolve run identity by `run_report_uri`; stable `--json` result; retain idempotency |
-| `tools/migrate_v3_db.py` | New idempotent helper for migration 016 on existing databases |
-| `database/v3/016_source_document_file_size.sql` | Add `source_documents.file_size_bytes` and record `schema_meta` |
-| `tests/test_import_issue.py` | Expand CLI, V5 compatibility, V3 target, failure, security and duplicate tests |
-| `tests/test_import_issue_v3.py` | Focused V3 orchestration, provenance and exit-code tests (new file; or extend the existing file) |
-| `tests/database/test_v3_replay_idempotency.py` | Extend run-identity, `--no-v5-lookup`, legacy manifest, backfill and result-contract tests |
+| `tools/import_issue.py` | Add targets, V3 orchestration, duplicate/version gate, staged manifest v2, atomic writer, exit codes, safe download policy, import lock, `--json` |
+| `tools/replay_runs_to_v3.py` | Accept `--v3-db` and implement `--no-v5-lookup`; persist source URL/PDF provenance; resolve run identity by `run_report_uri`; add evidence fingerprint; stabilise single-run JSON result; retain idempotency |
+| `tests/test_import_issue.py` | Expand CLI, V5 compatibility (including cwd paths), V3 target, failure, security and duplicate tests |
+| `tests/test_import_issue_v3.py` | Focused V3 orchestration, replay-only integrity, JSON, lock and exit-code tests (new file; or extend the existing file) |
+| `tests/database/test_v3_replay_idempotency.py` | Extend run-identity, `--no-v5-lookup`, legacy manifest, fingerprint, backfill and result-contract tests |
 | `README.md` / `IMPORT_ISSUE.md` | Document V5, V3, OCR-only, replay-only and the different database paths |
-| `DATABASE.md` | Document migration 016 and the provenance fields |
+| `DATABASE.md` | Document `extraction_runs.config_json` provenance keys; do not change the V3 schema |
 | `CHANGELOG.md` | Record the importer upgrade |
+
+No `database/v3/*.sql` change and no migration tool are required in V2.0.
 
 Avoid modifying Workbench routes/templates in this phase, except for a small interface note if needed. Do not add the Workbench import-job table as part of this importer upgrade unless the current architecture demonstrates a concrete reason it belongs in the shared ingestion layer. Persistent Workbench job tracking is a separate follow-on task.
 
@@ -1126,17 +1384,18 @@ Expected call pattern:
 python tools/import_issue.py \
   "https://images.bo.dsaj.gov.mo/bo/ii/2026/33/anotariais-33-2026.pdf" \
   --target v3 \
-  --v3-db data/macau_balancete_v3.sqlite \
-  --outdir "outputs/runs/issue33_2026__job_${WORKBENCH_JOB_ID}" \
+  --v3-db /abs/data/macau_balancete_v3.sqlite \
+  --outdir "/abs/outputs/runs/issue33_2026__job_${WORKBENCH_JOB_ID}" \
   --json
 ```
 
 Workbench must:
 
 - run the child process with `cwd=ROOT`;
-- pass an explicit `--outdir` derived from its job ID;
+- pass absolute paths;
 - treat exit code 0 with `status = already_imported` as a non-error;
-- surface exit code 3 as "operator decision required";
+- surface exit code 3 as "operator decision required" or "import locked";
+- parse stdout as exactly one JSON object;
 - read the manifest path from the JSON result;
 - implement retry controls based on the last completed stage;
 - never infer financial review from a successful import.
@@ -1169,6 +1428,8 @@ This specification does not include:
 - review, adoption or publication;
 - replacing the OCR engine or amount parser;
 - changing the V5 schema or removing the legacy V5 workflow;
+- changing V5 path-resolution behaviour;
+- changing the V3 schema or adding a file-size column;
 - deploying the Workbench to a LAN/public host;
 - introducing Celery, Redis or another distributed job queue;
 - automatic backfill of source URLs by guessing a URL pattern.
@@ -1180,15 +1441,19 @@ This specification does not include:
 The importer upgrade is complete only when all of the following are true:
 
 - [ ] Existing V5 commands and tests still work without users changing their commands.
+- [ ] Existing V5 cwd-based path behaviour is unchanged.
 - [ ] `--target v3` performs download, OCR and V3 raw-evidence replay in one command.
-- [ ] `--replay-only` retries replay without OCR and without duplicating rows.
+- [ ] `--replay-only` retries replay without OCR, validates manifest/PDF/artifact integrity, and does not duplicate rows.
 - [ ] V3 target uses `--v3-db` and never sends the V3 database to the V5 database builder.
-- [ ] V3 target passes `--no-v5-lookup` and does not read or write V5.
-- [ ] Original source URL, PDF SHA-256, file size, issue identity and replay identity are traceable.
-- [ ] Migration 016 is applied and documented; existing rows are backfilled where evidence exists.
+- [ ] V3 target passes `--no-v5-lookup` and a test proves the V5 database is not opened.
+- [ ] Original source URL, PDF SHA-256, byte size, issue identity and replay identity are traceable.
+- [ ] PDF byte size is stored in the manifest and `extraction_runs.config_json`; no V3 schema change is required.
+- [ ] Evidence fingerprint detects a same-row-count change and fails safely.
+- [ ] Manifest writes are atomic.
+- [ ] A second concurrent V3 import is blocked by the import lock.
+- [ ] `--json` stdout is exactly one JSON object for success, failure, duplicate, decision-required, lock-held and preflight-error paths.
 - [ ] V3 raw rows remain unassigned pending page classification.
-- [ ] Duplicate and retry behaviour is explicit, tested and non-destructive.
-- [ ] `already_imported` and operator-decision results are machine-readable with distinct exit codes.
+- [ ] Duplicate and retry behaviour follows the §8.2 decision table, including the precedence rule.
 - [ ] URL, redirect, file-size, PDF, path and local-source safety tests pass.
 - [ ] Existing V3 records/reviews/adoptions/publication are unchanged by importing a new issue.
 - [ ] A real Gazette issue has completed an end-to-end V3 integration test on an isolated database copy.
@@ -1196,26 +1461,33 @@ The importer upgrade is complete only when all of the following are true:
 
 ---
 
-## Appendix A — Changes from v1.0
+## Appendix A — Changes from v1.0/v1.1 to V2.0
 
-| v1.0 issue | v1.1 resolution |
+| Earlier issue | V2.0 resolution |
 |---|---|
 | `--no-ocr` contradicted replay-only retry | Added `--replay-only`; V3 rejects `--no-ocr` with a clear message |
 | `--db` naming collision between V5 and replay | Replay uses `--v3-db`; `--db` is a deprecated alias |
-| Replay silently reads V5 | V3 passes `--no-v5-lookup`; legacy lookup is opt-in |
+| Replay silently reads V5 | V3 passes `--no-v5-lookup`; replay must skip the lookup and a test proves isolation |
 | Duplicate identity used truncated `document_key` | Full `sha256` lookup using the existing index |
+| `--reprocess` could skip the different-PDF version check | Unified §8.2 decision table and §8.3 precedence; reprocess only covers same content |
+| Same-issue reprocess could create a second source document | Same-issue reprocess reuses the existing source document; only cross-issue reprocess creates a second row |
 | Same hash / different issue undefined | `already_imported_content_conflict`, exit code 3 |
 | `issue_key` format inconsistent (`issueNN_YYYY` vs `YYYY-NN`) | Canonical `YYYY-NN`; explicit manifest field and replay argument |
 | Run-directory name was the identity source | Manifest-first identity; replay resolves existing run by `run_report_uri` |
 | Legacy manifests use `"source"` and 6 runs have none | Compatibility rule and reconstructed-provenance rule added |
 | Existing 14 rows have NULL source URLs | `COALESCE` backfill from 8 legacy manifests; 6 stay NULL |
-| No file-size column | Migration 016 plus idempotent migration helper |
+| No file-size column | V2.0 keeps size in manifest and `extraction_runs.config_json`; no migration |
 | `--overwrite-pdf` contradicts V3 preservation | Rejected for V3; versioned filename instead |
 | V3 hardening would break V5 HTTP test | Target-scoped download policy |
-| No byte-size/provenance migration path | `tools/migrate_v3_db.py` and backfill replay |
-| Manifest schema had conflicting shapes | Canonical v2 schema plus legacy aliases |
+| Changed row with same count was silently skipped | Versioned evidence fingerprint stored in `extraction_runs.config_json` |
+| V5 cwd path behaviour could be broken by refactor | V5 path behaviour explicitly preserved; only V3 defaults use `ROOT` |
+| Replay-only did not verify source integrity | Added manifest/target/issue/hash/PDF/artifact checks |
+| `--json` could be polluted by child output | Strict stdout contract; progress and child output go to stderr/log |
+| Manifest writes could leave partial JSON | Atomic temp-file write and `os.replace` |
+| Two concurrent imports could duplicate work | V3 import lock with `fcntl.flock` |
 | Angle-bracket shell placeholders | Replaced with `JOB_ID` |
 | Workbench had no machine-readable result | `--json`, exit codes and manifest path in the result |
 | Integration test could hit the operational DB | Isolated copy required |
 | `unknown_issue` run directory would fail replay | V3 preflight rejects underivable issue keys |
 | Replay `rows_inserted = 0` was ambiguous | Added `already_present` and stable result fields |
+| Version labels were inconsistent | Document version unified as V2.0 |
