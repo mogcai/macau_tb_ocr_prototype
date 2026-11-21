@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Import issue · Macau Banking Workbench{% endblock %}
+{% block content %}
+<h1>Import issue</h1>
+<p class="muted">
+  Downloads a Gazette PDF and replays raw OCR evidence into the V3 operational
+  database. The result is <strong>staging only</strong>: no page classification,
+  statements, mappings, review or publication. Long OCR work runs as a
+  background job, never inside this request.
+</p>
+
+{% if can_import %}
+<section class="panel">
+  <h2>Import from URL</h2>
+  <form id="url-import-form" class="import-form">
+    <label class="wide">Gazette PDF URL
+      <input type="url" name="source" required
+             placeholder="https://images.bo.dsaj.gov.mo/bo/ii/2026/33/anotariais-33-2026.pdf">
+    </label>
+    <label>Issue key (optional)
+      <input type="text" name="issue_key" pattern="\d{4}-\d{2}" placeholder="2026-33">
+    </label>
+    <label class="checkbox">
+      <input type="checkbox" name="dry_run"> Dry run (preflight only)
+    </label>
+    <div class="import-actions">
+      <button type="submit">Start import</button>
+    </div>
+    <div class="import-error" id="url-import-error"></div>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Upload PDF</h2>
+  <form id="upload-import-form" class="import-form">
+    <label class="wide">PDF file
+      <input type="file" name="pdf" accept="application/pdf,.pdf" required>
+    </label>
+    <label>Issue key (optional)
+      <input type="text" name="issue_key" pattern="\d{4}-\d{2}" placeholder="2026-33">
+    </label>
+    <div class="import-actions">
+      <button type="submit">Upload and import</button>
+    </div>
+    <div class="import-error" id="upload-import-error"></div>
+  </form>
+</section>
+{% else %}
+<section class="panel">
+  <p class="muted">Your role is <strong>{{ role }}</strong>. The import capability
+  is required to start an import; switch to reviewer, adopter or admin.</p>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Import jobs</h2>
+  {% if jobs %}
+  <div class="table-scroll">
+    <table class="data compact">
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th>Created</th>
+          <th>Status</th>
+          <th>Operation</th>
+          <th>Issue</th>
+          <th>Source</th>
+          <th>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td><a href="/imports/{{ job.job_id }}"><code>{{ job.job_id[:10] }}</code></a></td>
+          <td>{{ job.created_at }}</td>
+          <td><span class="pill status-{{ job.status }}">{{ job.status }}</span></td>
+          <td>{{ job.operation }}{% if job.dry_run %} <span class="sub">dry run</span>{% endif %}</td>
+          <td>{{ job.issue_key or "—" }}</td>
+          <td class="source-cell"><code>{{ job.source }}</code>
+            <div class="sub">{{ job.created_by }}</div>
+          </td>
+          <td>
+            {% if job.result_status %}<span class="sub">{{ job.result_status }}</span>{% endif %}
+            {% if job.error_message %}<div class="sub bad">{{ job.error_message }}</div>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No import jobs yet.</p>
+  {% endif %}
+</section>
+
+<script>
+(function () {
+  async function postJson(url, body) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || ("HTTP " + response.status));
+    }
+    return data;
+  }
+  function errorBox(id, message) {
+    const box = document.getElementById(id);
+    box.textContent = message || "";
+    box.classList.toggle("visible", Boolean(message));
+  }
+  const urlForm = document.getElementById("url-import-form");
+  if (urlForm) {
+    urlForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorBox("url-import-error", "");
+      const form = new FormData(urlForm);
+      try {
+        const job = await postJson("/api/imports", {
+          source: form.get("source"),
+          issue_key: form.get("issue_key") || null,
+          dry_run: form.get("dry_run") === "on",
+        });
+        window.location.href = "/imports/" + job.job_id;
+      } catch (error) {
+        errorBox("url-import-error", error.message);
+      }
+    });
+  }
+  const uploadForm = document.getElementById("upload-import-form");
+  if (uploadForm) {
+    uploadForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorBox("upload-import-error", "");
+      const form = new FormData(uploadForm);
+      const file = form.get("pdf");
+      try {
+        const response = await fetch("/api/imports/upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/pdf",
+            "X-Filename": file.name,
+            "X-Issue-Key": form.get("issue_key") || "",
+          },
+          body: file,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.detail || ("HTTP " + response.status));
+        }
+        window.location.href = "/imports/" + data.job_id;
+      } catch (error) {
+        errorBox("upload-import-error", error.message);
+      }
+    });
+  }
+  const active = {{ "true" if jobs | selectattr("is_active") | list else "false" }};
+  if (active) {
+    setTimeout(() => window.location.reload(), 5000);
+  }
+})();
+</script>
+{% endblock %}

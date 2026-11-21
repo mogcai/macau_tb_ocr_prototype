@@ -6,6 +6,7 @@
 - **Legacy V5 is explicit and archived:** `--target v5` keeps the old V5 workflow (`build_database.py`, bank refresh, name remap, optional `--publish`), now pointing at the frozen copy `archive/database/macau_balancete.sqlite`. V5-only flags (`--db`, `--publish`, `--no-bank-refresh`, …) fail under the V3 target with a hint to add `--target v5`.
 - **Docs:** `IMPORT_ISSUE.md` rewritten V3-first with a V5 legacy section; `README.md`, `README_zh_HK.md`, `README_AGENT.md` and `SKILL.md` updated; the ingestion spec records the deliberate default change.
 - **Tests:** `tests/test_import_issue.py` covers default V3 routing, explicit V5 routing and V5-flag rejection.
+- **Workbench import page:** `/imports` starts `tools/import_issue.py --target v3` as a background job (URL or single-PDF upload), shows pipeline steps and the job log, and supports retry plus reprocess/new-version decisions with a reason. Jobs are stored in `import_jobs` (`database/v3/016_import_jobs.sql`); publish, bank refresh and name mapping are never invoked, and long OCR never runs inside an HTTP request.
 
 ## v0.7.0
 

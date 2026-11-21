@@ -1,19 +1,21 @@
 """FastAPI Workbench scaffold for the Macau banking v3 database."""
 from __future__ import annotations
 
+import shutil
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from workbench import service
+from workbench import import_jobs, service
 from workbench.permissions import (
-    DEFAULT_ROLE, ROLES, can_adopt, can_catalogue, can_map, can_publish,
-    can_review_statement, can_verify,
+    DEFAULT_ROLE, ROLES, can_adopt, can_catalogue, can_import, can_map,
+    can_publish, can_review_statement, can_verify,
 )
 
 
@@ -68,11 +70,32 @@ class StandardItemCreatePayload(BaseModel):
 class StandardItemLifecyclePayload(BaseModel):
     note: str = ""
 
+
+class ImportJobPayload(BaseModel):
+    source: str
+    issue_key: str | None = None
+    dry_run: bool = False
+
+
+class ImportDecisionPayload(BaseModel):
+    decision: str = "reprocess"
+    reason: str
+
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 STATIC = Path(__file__).resolve().parent / "static"
 
-app = FastAPI(title="Macau Banking Data Workbench", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    import_jobs.recover_stale_jobs()
+    yield
+
+
+app = FastAPI(
+    title="Macau Banking Data Workbench", version="0.1.0", lifespan=lifespan
+)
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES))
 
@@ -103,6 +126,7 @@ def template_context(request: Request, **extra: Any) -> dict[str, Any]:
         "can_review_statement": can_review_statement(role),
         "can_map": can_map(role),
         "can_catalogue": can_catalogue(role),
+        "can_import": can_import(role),
         **extra,
     }
 
@@ -505,6 +529,149 @@ def api_review_statement(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/imports")
+def api_imports(limit: int = Query(50, ge=1, le=200)) -> list[dict[str, Any]]:
+    return import_jobs.list_jobs(limit=limit)
+
+
+@app.post("/api/imports", status_code=202)
+def api_import_create(
+    payload: ImportJobPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> JSONResponse:
+    role = role_from(request, x_workbench_role)
+    if not can_import(role):
+        raise HTTPException(status_code=403, detail="import capability is required")
+    try:
+        job = import_jobs.create_url_job(
+            payload.source,
+            issue_key=payload.issue_key,
+            dry_run=payload.dry_run,
+            created_by=actor_from(request),
+        )
+    except import_jobs.ImportJobNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except import_jobs.ImportJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(job, status_code=202)
+
+
+@app.post("/api/imports/upload", status_code=202)
+async def api_import_upload(
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> JSONResponse:
+    role = role_from(request, x_workbench_role)
+    if not can_import(role):
+        raise HTTPException(status_code=403, detail="import capability is required")
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > import_jobs.MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="uploaded PDF exceeds 250 MB")
+    data = await request.body()
+    staging: Path | None = None
+    try:
+        staging = import_jobs.store_upload(request.headers.get("x-filename", ""), data)
+        job = import_jobs.create_upload_job(
+            staging,
+            issue_key=request.headers.get("x-issue-key"),
+            created_by=actor_from(request),
+        )
+    except import_jobs.ImportJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        if staging is not None:
+            shutil.rmtree(staging.parent, ignore_errors=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(job, status_code=202)
+
+
+@app.get("/api/imports/{job_id}")
+def api_import_detail(job_id: str) -> dict[str, Any]:
+    try:
+        return import_jobs.job_detail(job_id)
+    except import_jobs.ImportJobNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/imports/{job_id}/log", response_class=PlainTextResponse)
+def api_import_log(job_id: str) -> PlainTextResponse:
+    try:
+        return PlainTextResponse(import_jobs.log_text(job_id))
+    except import_jobs.ImportJobNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/imports/{job_id}/retry", status_code=202)
+def api_import_retry(
+    job_id: str,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> JSONResponse:
+    role = role_from(request, x_workbench_role)
+    if not can_import(role):
+        raise HTTPException(status_code=403, detail="import capability is required")
+    try:
+        job = import_jobs.retry_job(job_id, created_by=actor_from(request))
+    except import_jobs.ImportJobNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except import_jobs.ImportJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(job, status_code=202)
+
+
+@app.post("/api/imports/{job_id}/decision", status_code=202)
+def api_import_decision(
+    job_id: str,
+    payload: ImportDecisionPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> JSONResponse:
+    role = role_from(request, x_workbench_role)
+    if not can_import(role):
+        raise HTTPException(status_code=403, detail="import capability is required")
+    try:
+        job = import_jobs.decision_job(
+            job_id,
+            decision=payload.decision,
+            reason=payload.reason,
+            created_by=actor_from(request),
+        )
+    except import_jobs.ImportJobNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except import_jobs.ImportJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(job, status_code=202)
+
+
+@app.get("/imports", response_class=HTMLResponse)
+def imports_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "imports.html",
+        template_context(request, jobs=import_jobs.list_jobs(limit=100)),
+    )
+
+
+@app.get("/imports/{job_id}", response_class=HTMLResponse)
+def import_detail_page(request: Request, job_id: str) -> HTMLResponse:
+    try:
+        detail = import_jobs.job_detail(job_id)
+    except import_jobs.ImportJobNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return templates.TemplateResponse(
+        request,
+        "import_detail.html",
+        template_context(request, **detail),
+    )
 
 
 @app.get("/catalogue", response_class=HTMLResponse)

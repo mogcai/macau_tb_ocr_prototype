@@ -26,6 +26,7 @@ Open <http://127.0.0.1:8000>.
 7. Adoption gate bound to the reviewed extraction
 8. Audit trail
 9. Read-only MVP snapshot visibility
+10. Import issue jobs (background V3 raw ingestion, URL or PDF upload)
 
 The 89-item user catalogue is seeded into `standard_items`; statement rows have
 `proposed` mappings from the first-pass auto-map.  Review Queue rows show
@@ -47,10 +48,10 @@ or public deployment.  Run the service on `127.0.0.1` only.
 | Role | Capabilities |
 |---|---|
 | `viewer` | read |
-| `reviewer` | read, verify, review, map |
-| `adopter` | read, verify, review, map, adopt |
+| `reviewer` | read, verify, review, map, import |
+| `adopter` | read, verify, review, map, import, adopt |
 | `publisher` | read, publish |
-| `admin` | read, verify, review, map, adopt, publish, catalogue |
+| `admin` | read, verify, review, map, import, adopt, publish, catalogue |
 
 Adoption and publish are deliberately separate.  The publish endpoint returns
 `501 Not Implemented` until the publication quality gate is defined.  This is a
@@ -76,6 +77,15 @@ GET  /api/review/{statement_id}/rows
 GET  /api/review/{statement_id}/adjustments
 GET  /api/standard-items?include_inactive=false
 GET  /api/catalogue/items
+GET  /imports                                      # Import job list + forms
+GET  /imports/{job_id}                             # Import job detail + log
+GET  /api/imports?limit=50
+POST /api/imports                                  # start URL import, reviewer+
+POST /api/imports/upload                           # raw PDF body + X-Filename, reviewer+
+GET  /api/imports/{job_id}
+GET  /api/imports/{job_id}/log
+POST /api/imports/{job_id}/retry                   # failed/interrupted only
+POST /api/imports/{job_id}/decision                # reprocess / new_version + reason
 GET  /catalogue                                  # Standard List page
 POST /api/catalogue/items                        # create draft item, admin
 POST /api/catalogue/items/{id}/approve           # admin
@@ -96,6 +106,29 @@ The row `verify` body accepts `verified_fields` (a subset of
 `label_normalized`, `debit_minor`, `debit_value_state`, `credit_minor`,
 `credit_value_state`).  Fields whose submitted value changed are verified
 automatically; omitted unchanged fields are not recorded.
+
+## Import jobs
+
+`/imports` starts `tools/import_issue.py --target v3` as a background
+subprocess.  OCR never runs inside an HTTP request; the page polls the job row
+and the job log tail.
+
+- Only `--target v3` is launched. `--publish`, bank refresh and name mapping are
+  never passed: a job produces raw OCR evidence and stops at staging.
+- Statuses: `queued`, `running`, `completed`, `failed`, `needs_decision`,
+  `interrupted`, `cancelled`. `needs_decision` means the importer returned
+  `new_source_version_required` or `already_imported_content_conflict`; use
+  **Reprocess** or **New version** with a reason.
+- A second queued/running job for the same source is rejected with `409`.
+  Duplicate PDF content is still decided by the importer's own duplicate gate,
+  so `already_imported` comes back as a completed job with that result status.
+- Job rows live in `import_jobs` (`database/v3/016_import_jobs.sql`). The table
+  is ensured on first use; apply the migration explicitly on other databases.
+- Uploaded PDFs are staged under `input/.uploads/<uuid>/<original name>.pdf`
+  (gitignored). Keep them while the job may be retried or reprocessed.
+- Job logs: `outputs/import_jobs/<job_id>.log`.
+- On startup, jobs left `queued`/`running` by a previous process are marked
+  `interrupted`, never silently re-run. **Retry** reruns the stored argv.
 
 ## Important
 
@@ -202,5 +235,6 @@ and review actions are blocked while other rows (or the insert form) have
 unsaved edits, and leaving the page prompts for confirmation.
 
 This is a scaffold, not production authentication.  It does not yet implement
-login, real user accounts, PDF rendering, import-batch upload, or publish
-quality gates.  Those remaining pieces are the next Workbench slices.
+login, real user accounts, PDF rendering, or publish quality gates.  Import
+supports one PDF per job (URL or upload); batch folder import and job
+cancellation are not implemented yet.

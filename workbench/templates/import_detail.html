@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Import job · Macau Banking Workbench{% endblock %}
+{% block content %}
+<p class="sub"><a href="/imports">&larr; All import jobs</a></p>
+<h1>Import job <code>{{ job.job_id[:10] }}</code></h1>
+
+<section class="panel">
+  <table class="kv">
+    <tbody>
+      <tr><th>Full job id</th><td><code>{{ job.job_id }}</code></td></tr>
+      <tr><th>Status</th>
+        <td><span class="pill status-{{ job.status }}">{{ job.status }}</span>
+          {% if job.result_status %}<span class="sub">importer: {{ job.result_status }}</span>{% endif %}
+        </td>
+      </tr>
+      <tr><th>Operation</th><td>{{ job.operation }}{% if job.dry_run %} (dry run){% endif %}</td></tr>
+      <tr><th>Issue key</th><td>{{ job.issue_key or "—" }}</td></tr>
+      <tr><th>Source</th><td><code>{{ job.source }}</code>
+        <div class="sub">{{ job.source_kind }} · requested by {{ job.created_by }}</div>
+      </td></tr>
+      <tr><th>Created</th><td>{{ job.created_at }}</td></tr>
+      <tr><th>Started</th><td>{{ job.started_at or "—" }}</td></tr>
+      <tr><th>Finished</th><td>{{ job.finished_at or "—" }}</td></tr>
+      {% if job.retry_of %}<tr><th>Retry of</th><td><a href="/imports/{{ job.retry_of }}"><code>{{ job.retry_of[:10] }}</code></a></td></tr>{% endif %}
+      {% if job.pdf_sha256 %}<tr><th>PDF SHA-256</th><td><code>{{ job.pdf_sha256 }}</code></td></tr>{% endif %}
+      {% if job.pdf_path %}<tr><th>PDF path</th><td><code>{{ job.pdf_path }}</code></td></tr>{% endif %}
+      {% if job.run_dir %}<tr><th>Run directory</th><td><code>{{ job.run_dir }}</code></td></tr>{% endif %}
+      {% if job.manifest_path %}<tr><th>Manifest</th><td><code>{{ job.manifest_path }}</code></td></tr>{% endif %}
+      {% if job.error_type or job.error_message %}
+      <tr><th>Error</th><td><span class="bad">{{ job.error_type or "Error" }}</span>
+        <div>{{ job.error_message or "" }}</div>
+      </td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>Pipeline</h2>
+  <table class="compact">
+    <thead><tr><th>Stage</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for step in steps %}
+      <tr><td>{{ step.name }}</td><td><span class="pill">{{ step.status }}</span></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if manifest %}
+  <p class="sub">
+    Manifest status: {{ manifest.status or "—" }} ·
+    current stage: {{ manifest.current_stage or "—" }} ·
+    pages: {{ manifest.pdf_pages if manifest.pdf_pages is not none else "—" }} ·
+    rows inserted: {{ (manifest.v3 or {}).get("rows_inserted", "—") }}
+  </p>
+  {% endif %}
+  <p class="sub">V3 import success means raw OCR evidence is imported and awaits
+  Workbench page classification. It is not financial verification.</p>
+</section>
+
+{% if can_import and job.status in ("failed", "interrupted", "completed", "needs_decision") %}
+<section class="panel">
+  <h2>Actions</h2>
+  {% if job.status in ("failed", "interrupted") %}
+  <form id="retry-form" class="actions-form">
+    <button type="submit">Retry this job</button>
+    <span class="sub">Re-runs the same argv; the importer's duplicate gate still applies.</span>
+    <div class="import-error" id="retry-error"></div>
+  </form>
+  {% endif %}
+  {% if job.status in ("completed", "needs_decision", "failed") %}
+  <form id="decision-form" class="import-form">
+    <label>Decision
+      <select name="decision">
+        <option value="reprocess">Reprocess same PDF content</option>
+        <option value="new_version">Different PDF version for the same issue</option>
+      </select>
+    </label>
+    <label class="wide">Reason (required)
+      <input type="text" name="reason" required
+             placeholder="OCR configuration retest / Gazette republished the PDF">
+    </label>
+    <div class="import-actions">
+      <button type="submit" class="secondary">Start new run</button>
+    </div>
+    <div class="import-error" id="decision-error"></div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Log</h2>
+  <p class="sub">Showing the tail of the job log.
+    <a href="/api/imports/{{ job.job_id }}/log">Raw log</a></p>
+  <pre class="job-log">{{ log_tail or "No log output yet." }}</pre>
+</section>
+
+<script>
+(function () {
+  async function post(url, body) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: body === undefined ? {} : {"Content-Type": "application/json"},
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || ("HTTP " + response.status));
+    }
+    return data;
+  }
+  function errorBox(id, message) {
+    const box = document.getElementById(id);
+    if (!box) return;
+    box.textContent = message || "";
+    box.classList.toggle("visible", Boolean(message));
+  }
+  const retry = document.getElementById("retry-form");
+  if (retry) {
+    retry.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorBox("retry-error", "");
+      try {
+        const job = await post("/api/imports/{{ job.job_id }}/retry");
+        window.location.href = "/imports/" + job.job_id;
+      } catch (error) {
+        errorBox("retry-error", error.message);
+      }
+    });
+  }
+  const decision = document.getElementById("decision-form");
+  if (decision) {
+    decision.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorBox("decision-error", "");
+      const form = new FormData(decision);
+      try {
+        const job = await post("/api/imports/{{ job.job_id }}/decision", {
+          decision: form.get("decision"),
+          reason: form.get("reason"),
+        });
+        window.location.href = "/imports/" + job.job_id;
+      } catch (error) {
+        errorBox("decision-error", error.message);
+      }
+    });
+  }
+  {% if job.is_active %}
+  setTimeout(() => window.location.reload(), 5000);
+  {% endif %}
+})();
+</script>
+{% endblock %}
