@@ -229,6 +229,39 @@ class ColumnLayoutTests(unittest.TestCase):
         self.assertGreater(label_x0, 0.15)
         self.assertLess(label_x0, 0.16)
 
+    def test_outer_table_borders_are_not_amount_separators(self):
+        """Issue 5-style frames: left | label/debit | debit/credit | right.
+
+        The right (and left) outer frame must not become sep2/sep1, or the true
+        label|debit rule is misclassified as an account-code trim and every
+        amount lands in the wrong ROI.
+        """
+        try:
+            import cv2  # noqa: F401
+        except ImportError:
+            self.skipTest("opencv not installed")
+        # 800px wide: ~0.10, ~0.46, ~0.66, ~0.90 (4px-wide rules shift centres slightly)
+        path = self._image([80, 370, 530, 720])
+        sep1, sep2, label_x0, source = detect_column_layout(path)
+        self.assertAlmostEqual(sep1, 0.46, delta=0.02)
+        self.assertAlmostEqual(sep2, 0.66, delta=0.02)
+        self.assertEqual(label_x0, 0.005)
+        self.assertEqual(source, "detected_morphology")
+
+    def test_inset_table_frames_are_dropped_before_amount_separators(self):
+        """Frames inside the interior band (whitespace outside the printed table)."""
+        try:
+            import cv2  # noqa: F401
+        except ImportError:
+            self.skipTest("opencv not installed")
+        # 800px: left frame 0.20, label|debit 0.47, debit|credit 0.63, right frame 0.80
+        path = self._image([160, 376, 504, 640])
+        sep1, sep2, label_x0, source = detect_column_layout(path)
+        self.assertAlmostEqual(sep1, 0.47, delta=0.02)
+        self.assertAlmostEqual(sep2, 0.63, delta=0.02)
+        self.assertEqual(label_x0, 0.005)
+        self.assertEqual(source, "detected_morphology")
+
 
 class RowBandDetectionTests(unittest.TestCase):
     def test_blank_image_has_no_bands(self):

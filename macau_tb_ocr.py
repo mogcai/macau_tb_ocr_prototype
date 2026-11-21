@@ -340,15 +340,125 @@ def extract_best_embedded_image(doc: fitz.Document, page: fitz.Page, page_index:
     return TableImage(page_index, out_path, pix.width, pix.height, None, False)
 
 
+# Outer table frames sit near the image edges. Treating them as amount
+# separators shifts every ROI (issue 5 page 6: right frame became sep2, so the
+# real label|debit rule was misread as an account-code trim).
+_COLUMN_LEFT_FRAME_MAX = 0.12
+_COLUMN_RIGHT_FRAME_MIN = 0.88
+_COLUMN_MIN_AMOUNT_GAP = 0.08
+_COLUMN_CODE_GAP = 0.05
+_COLUMN_CODE_STRENGTH_RATIO = 0.4
+
+
+def _merge_vertical_rules(
+    candidates: list[tuple[float, float]], *, merge_gap: float = 0.02
+) -> list[tuple[float, float]]:
+    """Merge near-duplicate vertical rules (double edges of one separator)."""
+    merged: list[tuple[float, float]] = []
+    for strength, frac in sorted(candidates, key=lambda item: item[1]):
+        if merged and frac - merged[-1][1] < merge_gap:
+            if strength > merged[-1][0]:
+                merged[-1] = (strength, frac)
+        else:
+            merged.append((strength, frac))
+    return merged
+
+
+def _amount_column_widths_similar(gap_a: float, gap_b: float) -> bool:
+    """True when two gaps look like side-by-side debit/credit columns."""
+    if gap_a < _COLUMN_MIN_AMOUNT_GAP or gap_b < _COLUMN_MIN_AMOUNT_GAP:
+        return False
+    # Amount columns are rarely wider than ~1/3 of the page; a much larger gap
+    # is the account-label span (or a code|label span), not an amount column.
+    if gap_a > 0.32 or gap_b > 0.32:
+        return False
+    return min(gap_a, gap_b) / max(gap_a, gap_b) >= 0.55
+
+
+def _label_x0_from_code_rules(
+    candidates: list[tuple[float, float]],
+    *,
+    sep1: float,
+    strength_pool: list[tuple[float, float]],
+) -> float:
+    """Raise label_x0 when a strong rule left of sep1 looks like an account-code column."""
+    left_rules = [
+        item for item in candidates if item[1] < sep1 - _COLUMN_CODE_GAP
+    ]
+    if not left_rules or not strength_pool:
+        return 0.005
+    code_strength, code_frac = max(left_rules, key=lambda item: item[1])
+    strongest = max(item[0] for item in strength_pool)
+    if code_strength >= _COLUMN_CODE_STRENGTH_RATIO * strongest:
+        return min(0.99, max(0.005, code_frac + 0.003))
+    return 0.005
+
+
+def _select_amount_column_rules(
+    merged: list[tuple[float, float]], *, allow_code_column: bool
+) -> tuple[float, float, float] | None:
+    """Pick debit/credit separators from interior rules; optionally trim a code column.
+
+    Returns ``(sep1, sep2, label_x0)`` or ``None`` when fewer than two usable
+    interior rules remain.
+
+    Layout cases handled here:
+
+    - Two interior rules: label | debit | credit.
+    - Three interior rules with similar right-hand gaps: label | debit | credit
+      plus a right table frame that is not near the image edge (issue 5).
+    - Three interior rules with a wide left span: code | label | debit | credit
+      (issue 45 page 29).
+    - Four+ interior rules: left/right table frames around a 3-column body;
+      drop the outermost pair before choosing amount separators.
+    """
+    interior = [
+        item for item in merged
+        if _COLUMN_LEFT_FRAME_MAX < item[1] < _COLUMN_RIGHT_FRAME_MIN
+    ]
+    if len(interior) < 2:
+        return None
+
+    # Framed 3-column tables often keep left/right rules inside the interior
+    # band (whitespace outside the printed table). Drop those outer frames.
+    body = interior[1:-1] if len(interior) >= 4 else interior
+    if len(body) < 2:
+        return None
+
+    label_x0 = 0.005
+    if len(body) == 2:
+        sep1, sep2 = body[0][1], body[1][1]
+    elif len(body) >= 3:
+        fracs = [item[1] for item in body]
+        gap_left = fracs[1] - fracs[0]
+        gap_right = fracs[2] - fracs[1]
+        if _amount_column_widths_similar(gap_left, gap_right):
+            # body[2] (and anything further right in body) is a trailing frame.
+            sep1, sep2 = fracs[0], fracs[1]
+        else:
+            sep1, sep2 = fracs[-2], fracs[-1]
+            if allow_code_column:
+                label_x0 = _label_x0_from_code_rules(
+                    body[:-2], sep1=sep1, strength_pool=body
+                )
+    else:
+        return None
+
+    if sep1 + _COLUMN_MIN_AMOUNT_GAP >= sep2:
+        return None
+    return sep1, sep2, label_x0
+
+
 def detect_column_layout(image_path: Path) -> tuple[float, float, float, str]:
     """Find the two amount-column rules and the label column's left edge.
 
     Returns ``(sep1, sep2, label_x0, source)``. Some Balancetes add a leading
     account-code column (issue 45 page 29 has code / label / debit / credit), so
-    the two **rightmost** rules are the amount columns and any rule further left
-    is treated as the code/label separator. Picking the strongest rules instead
-    would put the label text into the debit ROI and both amounts into the credit
-    ROI, which silently shifts every value.
+    the two **rightmost interior** rules are the amount columns and any interior
+    rule further left is treated as the code/label separator. Outer table frames
+    near the image edges are ignored so they cannot displace the amount ROIs.
+    Picking the strongest rules instead would put the label text into the debit
+    ROI and both amounts into the credit ROI, which silently shifts every value.
     """
     try:
         import cv2
@@ -377,29 +487,14 @@ def detect_column_layout(image_path: Path) -> tuple[float, float, float, str]:
                 x = int(round(sum(g) / len(g)))
                 frac = x / w
                 strength = float(projection[g].max())
-                if 0.08 < frac < 0.92:
+                # Keep near-edge peaks so frame filtering can drop them explicitly.
+                if 0.05 < frac < 0.95:
                     candidates.append((strength, frac))
-        # Double rules (two edges of one separator) are merged before choosing.
-        merged: list[tuple[float, float]] = []
-        for strength, frac in sorted(candidates, key=lambda item: item[1]):
-            if merged and frac - merged[-1][1] < 0.02:
-                if strength > merged[-1][0]:
-                    merged[-1] = (strength, frac)
-            else:
-                merged.append((strength, frac))
-        if len(merged) >= 2:
-            right = merged[-2:]
-            sep1, sep2 = right[0][1], right[1][1]
-            if sep1 + 0.08 < sep2:
-                label_x0 = 0.005
-                if len(merged) >= 3:
-                    left_rules = [item for item in merged[:-2] if item[1] < sep1 - 0.05]
-                    if left_rules:
-                        code_strength, code_frac = max(left_rules, key=lambda item: item[1])
-                        strongest = max(item[0] for item in merged)
-                        if code_strength >= 0.4 * strongest:
-                            label_x0 = min(0.99, max(0.005, code_frac + 0.003))
-                return sep1, sep2, label_x0, "detected_morphology"
+        merged = _merge_vertical_rules(candidates)
+        selected = _select_amount_column_rules(merged, allow_code_column=True)
+        if selected is not None:
+            sep1, sep2, label_x0 = selected
+            return sep1, sep2, label_x0, "detected_morphology"
 
         # Some scans have interrupted/faint vertical rules, so morphology-open
         # may not preserve them. Raw dark-pixel column projection is a fallback.
@@ -410,22 +505,20 @@ def detect_column_layout(image_path: Path) -> tuple[float, float, float, str]:
         min_strength = max(h * 0.16, float(smooth.max()) * 0.16)
         for x in range(1, w - 1):
             frac = x / w
-            if 0.08 < frac < 0.92 and smooth[x] >= smooth[x - 1] and smooth[x] > smooth[x + 1] and smooth[x] >= min_strength:
+            if (
+                0.05 < frac < 0.95
+                and smooth[x] >= smooth[x - 1]
+                and smooth[x] > smooth[x + 1]
+                and smooth[x] >= min_strength
+            ):
                 local_peaks.append((float(smooth[x]), frac))
-        merged = []
-        for strength, frac in sorted(local_peaks, key=lambda item: item[1]):
-            if merged and frac - merged[-1][1] < 0.02:
-                if strength > merged[-1][0]:
-                    merged[-1] = (strength, frac)
-            else:
-                merged.append((strength, frac))
-        if len(merged) >= 2:
-            sep1, sep2 = merged[-2][1], merged[-1][1]
-            if sep1 + 0.08 < sep2:
-                # The projection fallback cannot distinguish a real code column
-                # from peaks caused by dense label text, so it never trims the
-                # label ROI. Only a clear morphology rule may do that.
-                return sep1, sep2, 0.005, "detected_projection"
+        merged = _merge_vertical_rules(local_peaks)
+        # Projection peaks from dense label text can look like a code column, so
+        # never trim label_x0 on this fallback path.
+        selected = _select_amount_column_rules(merged, allow_code_column=False)
+        if selected is not None:
+            sep1, sep2, label_x0 = selected
+            return sep1, sep2, label_x0, "detected_projection"
     except Exception:
         pass
     return 0.48, 0.75, 0.005, "fallback_0.48_0.75"
