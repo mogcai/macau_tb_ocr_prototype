@@ -1,12 +1,12 @@
-# Import Issue V2 — V3 Ingestion Upgrade Specification (V2.3)
+# Import Issue V2 — V3 Ingestion Upgrade Specification (V2.4)
 
 **Project:** Macau Gazette Balancete OCR  
 **Primary target:** `tools/import_issue.py`  
 **Related components:** `tools/replay_runs_to_v3.py`, `tools/build_v3_db.py`  
-**Specification version:** V2.3  
+**Specification version:** V2.4  
 **Status:** Implementation baseline  
-**Supersedes:** V2.0, V2.1 and V2.2  
-**Canonical location:** `docs/IMPORT_ISSUE_V2_V3_INGESTION_SPEC.md` (this V2.3 content replaces the earlier working copies)
+**Supersedes:** V2.0, V2.1, V2.2 and V2.3  
+**Canonical location:** `docs/IMPORT_ISSUE_V2_V3_INGESTION_SPEC.md` (this V2.4 content replaces the earlier working copies)
 
 ---
 
@@ -32,13 +32,13 @@ The V3 target must never pass the V3 database path to `tools/build_database.py`.
 
 ## 2. Verified current-state facts
 
-The implementation phase must re-check these facts against the current checkout and local operational database. The values below describe the repository state reviewed for V2.3 and must not be treated as timeless constants.
+The implementation phase must re-check these facts against the current checkout and local operational database. The values below describe the repository state reviewed for V2.4 and must not be treated as timeless constants.
 
 ### 2.1 Operational V3 data reviewed
 
 `data/macau_balancete_v3.sqlite` contained 14 Gazette issues and 14 source documents, covering issue keys 2026-16 through 2026-19, 2026-29 through 2026-33, and 2026-42 through 2026-46. It contained 118 document pages, 14 extraction runs, 118 page extractions, 7,156 extracted rows, 113 statements, 7,046 statement rows, 7,251 statement-row mappings and 68 statement reviews.
 
-At the time of review, the 14 issue-level and 14 document-level `source_url` fields were `NULL`.
+At the time of review, the 14 issue-level and 14 document-level `source_url` fields were `NULL`. Existing `source_documents.page_count` values record observed OCR pages, not the full PDF page count; for example, issue 2026-17 has `pdf_pages = 491` in `run_report.json` but `page_count = 11` in V3. V2.4 corrects this for new runs and defines a controlled legacy backfill.
 
 ### 2.2 Existing OCR run artifacts reviewed
 
@@ -77,9 +77,10 @@ The current `tools/replay_runs_to_v3.py`:
 - currently writes `NULL` to issue and source-document URL fields;
 - uses insert-if-absent logic;
 - currently guards changed evidence by row count, which does not catch a same-count amount or label change;
+- currently derives `source_documents.page_count` primarily from observed OCR page numbers, not from the PDF total in `run_report.pdf_pages`;
 - currently emits one JSON object per run on stdout and exits 0 or 1.
 
-The V2.3 implementation must explicitly change the behaviours identified in this section and prove the changes with tests.
+The V2.4 implementation must explicitly change the behaviours identified in this section and prove the changes with tests.
 
 ### 2.5 Existing Importer behaviour to preserve
 
@@ -131,7 +132,7 @@ Official Gazette PDF URL
        |-- duplicate / decision required
        |     -> delete temporary file, write result manifest, stop
        `-- approved
-             -> atomically promote PDF to managed input
+             -> no-clobber promote PDF to managed input
              -> OCR into a unique run directory
              -> write import_manifest.json
              -> tools/replay_runs_to_v3.py
@@ -159,6 +160,7 @@ Official Gazette PDF URL
 | `--issue-key YYYY-NN` | Accept explicit canonical identity from the Importer; validate against the manifest when present |
 | Run identity lookup | Reuse an existing V3 extraction run by `run_report_uri` before considering any V5 lookup or stable-ID fallback |
 | Evidence fingerprint | Compute, store and compare a versioned fingerprint for the three OCR evidence files |
+| Page coverage | Validate `documents.csv` against `pdf_pages`; use `pdf_pages` for `source_documents.page_count`; record coverage metadata |
 | Provenance | Persist original URL, PDF size, manifest origin and run paths in existing V3 fields/config JSON |
 | Single-run result | With one `--run-dir`, stdout is exactly one JSON object and nothing else |
 | Legacy replay | Continue to accept legacy manifests and runs without manifests for controlled backfill |
@@ -266,9 +268,9 @@ The source filename is the identity evidence, not an arbitrary `--name` override
 3. If the filename does not encode a recognised Issue key, require `--issue-key` for V3.
 4. `--name` changes only the managed local PDF basename; it must not alter Issue identity.
 5. `--issue-key` must match `^\d{4}-\d{2}$`; the year must be 1900-2999 and the issue number 1-99. `NN` is the Gazette issue number, not the month. Do not widen the format without updating the replay parser and existing V3 keys.
-6. Do not add a force override for a mismatch in V2.3. Correct the source or filename metadata instead.
+6. Do not add a force override for a mismatch in V2.4. Correct the source or filename metadata instead.
 
-Example: `anotariais-33-2026.pdf` derives `2026-33`, so `--issue-key 2026-34` must be rejected before download. There is no silent override in V2.3.
+Example: `anotariais-33-2026.pdf` derives `2026-33`, so `--issue-key 2026-34` must be rejected before download. There is no silent override in V2.4.
 
 ### 4.6 Full V3 import examples
 
@@ -338,7 +340,7 @@ First validate the target and mutually compatible options. Then branch by operat
 4. Resolve `--v3-db` and verify that it is an existing writable V3 operational database with the expected tables.
 5. Reject paths under `data/baseline/` and any frozen/read-only snapshot.
 6. Validate the managed input directory and unique output directory. The output directory must not already exist.
-7. Reject any `--pages` value other than the literal `all` for an ingestion that will proceed to V3 replay. A range is rejected even when it happens to cover the whole PDF in V2.3.
+7. Reject any `--pages` value other than the literal `all` for an ingestion that will proceed to V3 replay. A range is rejected even when it happens to cover the whole PDF in V2.4.
 8. Validate `--name` as a sanitised `.pdf` basename.
 9. If `--dry-run`, print the planned stages and exit without acquiring the lock, downloading, OCR or writing to V3.
 10. Acquire the V3 import lock (§9.7). If unavailable, return `import_locked` without downloading or OCR.
@@ -348,14 +350,15 @@ First validate the target and mutually compatible options. Then branch by operat
 Replay-only is a separate branch. It does **not** require or accept a source URL/local file and must not run source URL validation or filename-based Issue derivation. Its Issue identity comes from the manifest, not from a filename or directory name.
 
 1. Require `--outdir`; it must identify an existing run directory.
-2. Validate the V3 database as above.
-3. Acquire the V3 import lock before reading/replaying the run.
-4. Read and validate `import_manifest.json` in that run directory.
-5. Derive the Issue key from the manifest. If `--issue-key` is supplied, it is only an assertion and must equal the manifest value.
-6. Perform every integrity check in §5.2.
-7. Replay exactly that run directory; do not download or OCR.
+2. Validate the V3 database as above (read-only is sufficient for dry-run).
+3. If `--dry-run`: read and validate `import_manifest.json`, perform every read-only integrity check in §5.2, print the plan and exit without acquiring the lock or writing to V3.
+4. For a non-dry-run: acquire the V3 import lock before reading or replaying the run.
+5. Read and validate `import_manifest.json` in that run directory.
+6. Derive the Issue key from the manifest. If `--issue-key` is supplied, it is only an assertion and must equal the manifest value.
+7. Perform every integrity check in §5.2.
+8. Replay exactly that run directory; do not download or OCR.
 
-The lock is acquired before the duplicate gate or replay-only database write so that two cooperating importer processes cannot race.
+The non-dry-run lock is acquired before the replay-only database write so that two cooperating importer processes cannot race. Dry-run is read-only and does not take the lock; it must never call replay.
 
 #### Path C — V3 diagnostic modes (`--download-only` / `--inspect-only`)
 
@@ -428,16 +431,18 @@ Apply the exact decision table in §8.2–§8.3.
 
 #### If processing is approved
 
-Only after the gate authorises the ingestion, atomically promote the verified temporary file into the managed input directory:
+Only after the gate authorises the ingestion, promote the verified temporary file into the managed input directory with true no-clobber semantics. A check followed by `os.replace()` is not sufficient: another process, another V3 database importer, or a diagnostic run can create the destination between the check and the replace.
 
-1. If the normal destination does not exist, use the original sanitised filename.
-2. If the normal destination exists with the same SHA-256, reuse it and delete the temporary file. Only reuse an existing regular non-symlink file; a symlink final path is an error. Never delete or replace the existing final PDF.
-3. If the normal destination exists with different bytes, use `<stem>__<sha256[:8]>.pdf`.
-4. If the hash-suffixed path exists, verify its hash before reuse; never overwrite different bytes.
-5. Use `os.replace()` only for a unique temporary path after all checks.
-6. Start OCR only after promotion succeeds.
+1. Prefer an atomic create-if-absent primitive: `os.link(temp, final)` then `os.unlink(temp)` on the same filesystem. If `final` already exists, `os.link` raises `FileExistsError`; do not overwrite.
+2. On `FileExistsError`, re-hash `final`:
+   - same SHA-256 and a regular non-symlink file -> delete only the temporary file and reuse `final`;
+   - different bytes or a symlink -> choose `<stem>__<sha256[:8]>.pdf` and retry the no-clobber promotion;
+   - if the versioned path also collides, extend the suffix with more hash characters or a UUID and retry.
+3. If the filesystem does not support hard links, reserve the final path with `os.open(final, O_CREAT | O_EXCL)` and copy the verified bytes into that reserved file, then fsync and delete the temporary file. Never use `os.replace()` onto an existing final path.
+4. Bound the retry loop (for example, 10 attempts). If a unique destination cannot be reserved, fail with a clear `PdfPromotionError`; preserve the temporary file under a clearly marked `.unpromoted` name for diagnosis rather than overwriting anything.
+5. Start OCR only after promotion succeeds.
 
-The ordering is mandatory: **temporary download -> validation -> duplicate/version gate -> delete temp or promote -> OCR**. A duplicate result must never promote the temporary file, and an approved result must never OCR before promotion.
+The ordering is mandatory: **temporary download -> validation -> duplicate/version gate -> no-clobber promote or delete temp -> OCR**. A duplicate result must never promote the temporary file, and an approved result must never OCR before promotion. The same no-clobber rule applies to normal imports, diagnostics and importers using different V3 databases.
 
 ### 5.5 Stage 2 — OCR
 
@@ -445,8 +450,9 @@ Reuse the existing OCR/parser command and output format.
 
 - Run the current OCR pipeline using existing defaults unless supported OCR options are explicitly supplied.
 - A full V3 import (including `--reprocess` and `--new-version`) must use the literal `--pages all`. A range is rejected even if it happens to cover the whole PDF in this release, because preflight does not establish page coverage before download.
-- This is required for page-count integrity: `replay_runs_to_v3.py` derives `source_documents.page_count` primarily from the OCR page numbers. If a 20-page issue were OCR'd as 5 pages, V3 could record `page_count = 5` and make the document look complete when it is only partially processed.
+- This is required for page-count integrity: replay must validate every page and set `source_documents.page_count = pdf_pages`. Without full-page records, a partial OCR result could be mistaken for a complete document.
 - Partial pages are allowed only for `ocr-only` and V3 `--inspect-only` diagnostics, which do not create V3 evidence. A future partial-replay feature must add explicit OCR coverage metadata before it can relax this rule.
+- The V3 importer must pass the approved full-page-record OCR mode (for example, `--full-page-records`) so `documents.csv` contains one explicit row for every PDF page, including non-TB pages (`skipped`) and failed pages (`failed`). This is an internal importer-to-OCR setting, not a new user-facing Importer option.
 - Capture OCR stdout and stderr in the run-specific `import.log`; preserve useful output on stderr for interactive CLI use.
 - Record the exact command and OCR options in the manifest, excluding secrets.
 - Stop immediately on a non-zero OCR exit code.
@@ -454,6 +460,51 @@ Reuse the existing OCR/parser command and output format.
 - Require `run_report.source_pdf_sha256` to equal the downloaded PDF SHA-256.
 - Require `run_report.source_pdf` to identify the same source PDF, or use the manifest path when the report stores a path that is no longer directly resolvable.
 - Do not replay if an artifact is missing, unreadable, outside the run directory where applicable, or inconsistent with the manifest.
+
+#### 5.5.1 Page-coverage validation
+
+`--pages all` is a request, not proof that every PDF page was observed. Before replay, validate actual page coverage against `run_report.pdf_pages`.
+
+The current OCR pipeline writes `documents.csv` only for pages it classifies as TB pages; non-TB pages are skipped and never appear in the file. That is enough for V5 but **not** enough for V3 page-count integrity. For a full V3 import, the importer must invoke OCR with an approved full-page-record mode (for example, `--full-page-records`). In that mode, OCR writes exactly one `documents.csv` row for every page in `1..pdf_pages`:
+
+- TB page successfully processed: `ocr_status = "completed"`;
+- non-TB page deliberately skipped: `ocr_status = "skipped"`, with an explicit skip reason such as `not_tb_page`;
+- page processing failed: `ocr_status = "failed"`, with a useful error/reason;
+- every page must have a record; a missing record is a coverage error.
+
+The full-page-record mode is additive and must not change the default V5 OCR output. It is a required OCR-output change for V3 ingestion, not a change to OCR recognition models or thresholds. Adding a `skip_reason` (or equivalent) column to `documents.csv` is allowed additively; do not remove or repurpose existing columns.
+
+For a new V3 Importer run (`manifest_origin = written`, strict mode):
+
+1. `run_report.pdf_pages` must be present and a positive integer.
+2. `documents.csv` must contain exactly one row for every page `1..pdf_pages`.
+3. Every `documents.csv.pdf_page` value must be an integer in `1..pdf_pages`; duplicate page numbers are invalid; out-of-range pages are invalid.
+4. A failed or skipped page must still have an explicit `documents.csv` row with `ocr_status` set to `failed` or `skipped`. Missing rows are invalid; do not silently drop pages.
+5. Missing, duplicate, out-of-range or unparseable page records stop the import before replay. Write a failed manifest (`page_coverage_status = "invalid"`, `error_type = "PageCoverageError"`) and preserve the OCR artifacts for diagnosis. Do not write to V3.
+6. `source_documents.page_count` must equal the validated `run_report.pdf_pages`, not `len(page_numbers)`. If a reprocess reuses an existing source document whose page count was wrong, update it to the validated `pdf_pages`; do not change the document identity.
+7. Store `config_json.pdf_pages`, `config_json.ocr_pages_observed` and `config_json.ocr_page_coverage = "full"` on the extraction run.
+8. Replay must independently repeat the strict validation; it must not trust the importer's manifest alone.
+
+The failed-page policy is explicit: a page with `ocr_status = failed` or `skipped` is recorded as a document page and page extraction with that status, but it produces no extracted rows. It is not a successful OCR page and must not be counted as one.
+
+Record these counts on the extraction run and in the manifest:
+
+- `ocr_pages_observed`: all page records, including failed/skipped;
+- `ocr_pages_successful`: pages with `ocr_status = completed`;
+- `ocr_failed_pages`: pages with `ocr_status = failed`;
+- `ocr_skipped_pages`: pages with `ocr_status = skipped`.
+
+`ocr_page_coverage = "full"` means every page has a record, not that every page was successfully OCR'd. If `ocr_failed_pages > 0`, `extraction_runs.run_status` must be `partial` (the schema allows it), and the manifest must report the failed count. The importer must not describe the run as fully successful OCR.
+
+For a controlled legacy replay (`manifest_origin = reconstructed` or no v2 manifest), the existing run artifacts are historical and may only contain the pages that were actually OCR'd. Legacy replay must not fabricate missing page records or extracted rows. Instead:
+
+- use `run_report.pdf_pages` when valid as the true PDF total for `source_documents.page_count`;
+- store the observed OCR page count and `config_json.ocr_page_coverage = "legacy_partial"`;
+- preserve the historical `page_count` in `config_json.legacy_ocr_page_count` before correcting it;
+- if `pdf_pages` is missing/invalid, keep the historical page count and set `ocr_page_coverage = "unknown"`;
+- do not apply strict coverage rejection to legacy runs.
+
+This distinction lets Workbench tell "PDF has 20 pages, all observed" from "PDF has 20 pages, only 5 historically OCR'd" without inventing evidence.
 
 ### 5.6 Stage 3 — Write the pre-replay manifest
 
@@ -468,7 +519,8 @@ At minimum include:
 - `job_id`;
 - `source_kind`, `source_url`, `source_filename`;
 - canonical `issue_key`;
-- `pdf_path`, `pdf_sha256`, `pdf_bytes`;
+- `pdf_path`, `pdf_sha256`, `pdf_bytes`, `pdf_pages`;
+- `ocr_pages_observed`, `ocr_pages_successful`, `ocr_failed_pages`, `ocr_skipped_pages`, `page_coverage_status`, `ocr_page_coverage`;
 - absolute `run_dir` and `v3_db`;
 - stage status fields;
 - decision type/reason when applicable;
@@ -496,7 +548,12 @@ Requirements:
 - `--no-v5-lookup` is mandatory and must skip all V5 DB access;
 - do not call `tools/build_database.py`, `name_registry.py refresh-banks` or `import_user_standard.py map`;
 - parse the single-run JSON object from stdout; progress goes to stderr/log;
-- validate all required replay result fields and the evidence fingerprint;
+- validate all required replay result fields, the evidence fingerprint and page coverage (`pdf_pages`, `ocr_pages_observed`, `ocr_page_coverage`);
+- the replay tool must independently repeat strict page-coverage validation for new V3 runs and reject missing/duplicate/out-of-range pages before writing V3;
+- for strict new runs, create a `document_pages` row and a `page_extractions` row for every page `1..pdf_pages`, including `skipped`/`failed` pages; skipped/failed pages produce no extracted rows;
+- set `extraction_runs.run_status = 'partial'` when any page failed; do not report a failed page as successful;
+- for strict new runs, `source_documents.page_count` must be the validated `pdf_pages`, never `len(page_numbers)`;
+- for legacy runs, follow the documented `legacy_partial` / `unknown` policy in §5.5.1 and §6.8;
 - a non-zero exit code or invalid JSON/result is a failure;
 - update the manifest to completed only after replay success and result validation.
 
@@ -563,12 +620,18 @@ For one `--run-dir`, replay returns one JSON object:
 {
   "status": "ok",
   "run_id": "...",
-  "run_dir": "/abs/outputs/runs/issue33_2026__job_abc123",
+  "run_dir": "/abs/outputs/runs/issue33_2026__job_a1b2c3d4",
   "issue_key": "2026-33",
   "gazette_issue_id": "...",
   "source_document_id": "...",
   "pages": 11,
   "page_extractions": 11,
+  "pdf_pages": 11,
+  "ocr_pages_observed": 11,
+  "ocr_pages_successful": 11,
+  "ocr_failed_pages": 0,
+  "ocr_skipped_pages": 0,
+  "ocr_page_coverage": "full",
   "rows_inserted": 64,
   "rows_skipped": 0,
   "already_present": false,
@@ -646,6 +709,11 @@ Persist provenance without changing the V3 schema:
 | Document-level source URL | `source_documents.source_url` | Exact original PDF URL; set on insert; backfill only when `NULL`; never overwrite |
 | PDF SHA-256 | `source_documents.sha256` | Full hash; content identity |
 | PDF size | `extraction_runs.config_json.source_pdf_bytes` | Integer from manifest/report |
+| PDF total pages | `source_documents.page_count` | Validated `run_report.pdf_pages` for new runs; legacy correction only in controlled backfill |
+| Page coverage | `extraction_runs.config_json.ocr_page_coverage` | `full`, `legacy_partial` or `unknown` |
+| Observed OCR pages | `extraction_runs.config_json.ocr_pages_observed` | Count of `documents.csv` page rows; for strict runs must equal `pdf_pages` |
+| OCR page outcomes | `extraction_runs.config_json.ocr_pages_successful` / `ocr_failed_pages` / `ocr_skipped_pages` | Explicit counts; failed pages are not successful OCR |
+| Extraction status | `extraction_runs.run_status` | `partial` when any page failed; `completed` otherwise |
 | PDF local path | `source_documents.storage_uri` | Absolute local path, not a network URL |
 | Original filename | `source_documents.original_filename` | Sanitised filename |
 | Acquisition time | `source_documents.acquired_at` | Manifest download completion time when available; otherwise replay time for legacy run |
@@ -662,7 +730,7 @@ If an existing source document's `storage_uri` is missing or unreadable and a re
 
 Do not store secrets or URL query values. V3 URL policy rejects query strings and fragments.
 
-### 6.7 No V3 schema migration in V2.3
+### 6.7 No V3 schema migration in V2.4
 
 Do not add a file-size column or migration in this upgrade. PDF size is stored in:
 
@@ -684,9 +752,16 @@ The replay tool must:
 - read the eight legacy manifest `source` values during deliberate backfill;
 - backfill PDF size into `config_json.source_pdf_bytes` from `run_report.json` where present;
 - update a source URL only when the V3 field is currently `NULL`;
+- backfill `config_json.pdf_pages` and `config_json.ocr_pages_observed` from `run_report.pdf_pages` and the observed `documents.csv` rows;
+- backfill `config_json.ocr_pages_successful`, `ocr_failed_pages` and `ocr_skipped_pages` from the observed page statuses;
+- correct `source_documents.page_count` to the validated `run_report.pdf_pages` where available, preserving the old value in `config_json.legacy_ocr_page_count`;
+- mark legacy coverage as `config_json.ocr_page_coverage = "legacy_partial"` (or `"unknown"` when `pdf_pages` is unavailable);
+- set `extraction_runs.run_status = "partial"` when `pdf_pages` is valid and the observed page count is lower, or when any observed page failed; leave the existing status unchanged when coverage is `unknown`;
 - preserve all existing rows and all existing `config_json` keys.
 
-A controlled replay of the existing 14 runs must insert no new raw evidence rows when their evidence is unchanged. Run it on a backup/copy first, with no Importer active. The direct replay command does not acquire the Importer's advisory lock.
+Legacy backfill must not fabricate missing `document_pages`, page extractions or extracted rows. A page count larger than the number of observed `document_pages` is expected for legacy partial runs and is the reason the coverage field exists.
+
+A controlled replay of the existing 14 runs must insert no new raw evidence rows when their evidence is unchanged. It may update provenance/page_count metadata as above. Run it on a backup/copy first, with no Importer active. The direct replay command does not acquire the Importer's advisory lock.
 
 ### 6.9 Macau currency/unit domain rule
 
@@ -749,13 +824,14 @@ For duplicate/decision/lock results, do not create the requested run directory. 
 
 Every V3 invocation allocates a `job_id` before any filesystem mutation.
 
-- If `--outdir` is supplied, derive `job_id` from a trailing `__job_<id>` segment when present; otherwise generate one. Sanitise the value and do not trust an arbitrary basename as a unique ID without validation.
+- If `--outdir` is supplied, a trailing `__job_<id>` segment is a **preferred label**, not proof of uniqueness. Sanitise it and treat collisions as a normal race.
 - If `--outdir` is omitted, generate `job_id = uuid4().hex[:8]` (extend on collision) and use `ROOT/outputs/runs/issueNN_YYYY__job_<job_id>`.
-- If the generated run directory exists, regenerate the ID; never overwrite.
-- Use the same `job_id` for `ROOT/output_import_failed/<job_id>/` and `ROOT/output_import_results/<job_id>/`.
-- Record `job_id` in the manifest and the `--json` result.
+- Reserve the run directory with `mkdir(exist_ok=False)`. If it already exists, regenerate the ID or fail; never reuse or overwrite it.
+- Reserve every result directory with `mkdir(exist_ok=False)`. If `ROOT/output_import_results/<job_id>/` or `ROOT/output_import_failed/<job_id>/` already exists, append a unique suffix (for example, `<job_id>-<uuid4().hex[:4]>`) and retry, or fail with a clear collision error. Never write into a directory already owned by another invocation.
+- Use the actual, successfully reserved `job_id` in the manifest and the `--json` result. Do not report the preferred label if a suffix was added.
+- Two invocations with the same `--outdir` must not share a result directory. The normal-import run directory is also no-clobber; a race that loses the reservation fails without overwriting.
 
-For replay-only, `--outdir` is required and `job_id` is derived from it or generated for the result manifest; the run directory itself is not renamed.
+For replay-only, `--outdir` is required and the run directory already exists. `job_id` is the preferred label from that path, but the result directory still uses the atomic `mkdir(exist_ok=False)` reservation above; the run directory itself is not renamed.
 
 ---
 
@@ -879,13 +955,13 @@ The hardened URL and filesystem policy applies to V3 ingestion.
 - Compute size and SHA-256 while streaming.
 - Validate `%PDF-` before duplicate checking.
 - Do not promote the file until the duplicate/version gate authorises processing (except non-ingestion diagnostic modes).
-- Promote with `os.replace()` only after validation.
+- Promote only with an atomic no-clobber operation (`os.link` + unlink, or `O_CREAT | O_EXCL` + copy). Never use check-then-`os.replace()`; it can overwrite a file created by another importer or diagnostic run.
 - Delete incomplete temporary files on failure and delete the temporary file after a duplicate/decision result.
 - Never overwrite an existing different PDF. Use a SHA-suffixed filename when necessary.
 
 ### 9.4 Filesystem safety
 
-- V3 input defaults to `ROOT/input`. An explicit V3 `--input-dir` must resolve to `ROOT/input` or a subdirectory of it; otherwise reject. There is no V2.3 override for V3 input outside the managed root.
+- V3 input defaults to `ROOT/input`. An explicit V3 `--input-dir` must resolve to `ROOT/input` or a subdirectory of it; otherwise reject. There is no V2.4 override for V3 input outside the managed root.
 - V3 run output defaults to `ROOT/outputs/runs`.
 - Validate resolved paths against managed roots to prevent traversal and symlink escape.
 - Reject a symlink as a final destination.
@@ -1021,8 +1097,8 @@ Recommended object:
   "target": "v3",
   "job_id": "a1b2c3d4",
   "issue_key": "2026-33",
-  "run_dir": "/abs/outputs/runs/issue33_2026__job_abc123",
-  "manifest_path": "/abs/outputs/runs/issue33_2026__job_abc123/import_manifest.json",
+  "run_dir": "/abs/outputs/runs/issue33_2026__job_a1b2c3d4",
+  "manifest_path": "/abs/outputs/runs/issue33_2026__job_a1b2c3d4/import_manifest.json",
   "pdf_sha256": "<64 lowercase hex>",
   "v3": {
     "gazette_issue_id": "...",
@@ -1032,6 +1108,9 @@ Recommended object:
     "evidence_fingerprint": "<64 lowercase hex>",
     "pages": 11,
     "page_extractions": 11,
+    "pdf_pages": 11,
+    "ocr_pages_observed": 11,
+    "ocr_page_coverage": "full",
     "rows_inserted": 64,
     "rows_skipped": 0
   },
@@ -1065,9 +1144,9 @@ A crash must leave either the previous valid manifest or the new complete manife
 
 ---
 
-## 11. Import manifest schema v2 (Importer V2.3)
+## 11. Import manifest schema v2 (Importer V2.4)
 
-`manifest_version` remains the integer `2`. V2.3 is the Importer/specification version, not a new manifest schema. Replay reads version 2. A future schema change must bump the version and support dual reads.
+`manifest_version` remains the integer `2`. V2.4 is the Importer/specification version, not a new manifest schema. Replay reads version 2. A future schema change must bump the version and support dual reads.
 
 ### 11.1 Canonical example
 
@@ -1085,7 +1164,14 @@ A crash must leave either the previous valid manifest or the new complete manife
   "pdf_path": "/abs/input/anotariais-33-2026.pdf",
   "pdf_sha256": "<64 lowercase hex>",
   "pdf_bytes": 3232716,
-  "run_dir": "/abs/outputs/runs/issue33_2026__job_abc123",
+  "pdf_pages": 11,
+  "ocr_pages_observed": 11,
+  "ocr_pages_successful": 11,
+  "ocr_failed_pages": 0,
+  "ocr_skipped_pages": 0,
+  "page_coverage_status": "valid",
+  "ocr_page_coverage": "full",
+  "run_dir": "/abs/outputs/runs/issue33_2026__job_a1b2c3d4",
   "v3_db": "/abs/data/macau_balancete_v3.sqlite",
   "status": "running",
   "current_stage": "v3_replay",
@@ -1139,6 +1225,10 @@ These are stage statuses only. Operation values such as `replay_only` must never
 - `v3_replay_status = completed` only after a validated successful replay result.
 - V3 `status = completed` means raw evidence only; it does not mean a financial Statement is reviewed.
 - `pdf_sha256` is the full 64-character hash when present; it may be null for a result manifest that stopped before download.
+- `pdf_pages` is a positive integer for a V3 run manifest.
+- New V3 runs use `ocr_page_coverage = "full"` and `source_documents.page_count = pdf_pages`; legacy runs may use `"legacy_partial"` or `"unknown"`.
+- `ocr_pages_observed = ocr_pages_successful + ocr_failed_pages + ocr_skipped_pages` for a strict run.
+- If `ocr_failed_pages > 0`, `extraction_runs.run_status` is `partial` and the manifest reports the failure; a failed page is never counted as successful.
 - `decision_reason` is non-empty whenever a decision flag was used.
 - `decision_type` is `reprocess` or `new_version` when applicable.
 - The manifest contains no secrets or URL query values.
@@ -1191,6 +1281,18 @@ V5 manifests keep their existing legacy top-level shape (`source`, `pdf`, `outdi
 - V3 default paths resolve against `ROOT` when launched from another cwd.
 - V3 rejects `--pages 1-5` (and any non-`all` value) before download when the run will be replayed; `ocr-only` and V3 `--inspect-only` may use a range.
 - V3 rejects `--reprocess` or `--new-version` on an Issue with no prior document and no matching hash.
+- OCR full-page-record mode emits one `documents.csv` row per PDF page; non-TB pages are `skipped`, failed pages are `failed`, and default V5 output remains TB-only.
+
+Page-coverage tests:
+
+| Case | Expected result |
+|---|---|
+| 20-page PDF, 20 page records | Pass; `source_documents.page_count = 20`; `ocr_page_coverage = "full"` |
+| 20-page PDF, missing page 10 | Reject before V3 write; `PageCoverageError` |
+| 20-page PDF, page 10 OCR failed but has an explicit row | Accept the record as failed; create the page/page-extraction with failed status and no extracted rows; `run_status = "partial"`; `ocr_failed_pages = 1`; do not count it as successful OCR |
+| 20-page PDF, extra page 21 record | Reject before V3 write |
+| 20-page PDF, duplicate page 10 record | Reject before V3 write |
+
 - V3 `--download-only` / `--inspect-only` do not require a V3 database, do not acquire the V3 lock, require a new unique `--outdir`, and reject decision flags.
 - A failed download or OCR never invokes replay.
 - A failed replay returns non-zero and leaves an accurate manifest.
@@ -1210,6 +1312,8 @@ V5 manifests keep their existing legacy top-level shape (`source`, `pdf`, `outdi
 - `run_report.source_pdf_sha256` mismatch is rejected.
 - Missing/modified PDF is rejected.
 - Missing `documents.csv` or `tb_rows.csv` is rejected.
+- Strict replay-only rejects missing, duplicate or out-of-range page records.
+- A strict failed/skipped page with an explicit record is accepted as a failed/skipped page extraction with no extracted rows.
 - Artifact symlinks, traversal and paths escaping the run directory are rejected.
 - Valid replay-only retry succeeds and is idempotent.
 
@@ -1223,13 +1327,16 @@ V5 manifests keep their existing legacy top-level shape (`source`, `pdf`, `outdi
 
 ### 12.5 Manifest and provenance
 
-- New V3 import writes manifest version 2, operation, job ID, source URL, Issue key, SHA-256 and byte size.
+- New V3 import writes manifest version 2, operation, job ID, source URL, Issue key, SHA-256, byte size, `pdf_pages`, `ocr_pages_observed` and `ocr_page_coverage`.
 - Source URL is written to issue and document provenance fields, only filling `NULL` values.
 - PDF size is written to `extraction_runs.config_json.source_pdf_bytes` and the manifest.
 - Existing non-NULL URLs and existing `config_json` keys are never overwritten.
 - Legacy `source` manifests are read correctly.
 - Missing legacy manifests do not fail replay; `manifest_origin = reconstructed`.
 - Existing 14 runs can be replayed for controlled provenance backfill without inserting new raw rows when evidence is unchanged.
+- Legacy backfill corrects `source_documents.page_count` to `run_report.pdf_pages`, records `ocr_page_coverage = "legacy_partial"` and preserves the old value in `config_json.legacy_ocr_page_count`.
+- Legacy backfill marks `extraction_runs.run_status = "partial"` when observed pages are fewer than `pdf_pages` or any page failed.
+- Legacy backfill does not fabricate `document_pages`, page extractions or extracted rows for pages that were never OCR'd.
 - Exact Issue/document/run identities remain traceable.
 - A reprocess whose old `storage_uri` is missing updates `storage_uri` to the newly promoted same-hash PDF without changing document identity.
 
@@ -1277,6 +1384,8 @@ V5 manifests keep their existing legacy top-level shape (`source`, `pdf`, `outdi
 - A duplicate result deletes only the temporary file and leaves an existing final PDF with the same hash intact.
 - An approved result promotes the temporary PDF before OCR starts; OCR is not invoked for a duplicate result.
 - Same-name/different-hash download is stored under a versioned filename without overwriting.
+- Two importers using different V3 databases and the same input directory cannot overwrite each other's PDF; the no-clobber test verifies both files survive.
+- A simulated race that creates the final path after the pre-check still cannot be overwritten; the importer re-checks the hash and reuses or versions.
 - Path traversal, symlink escape and symlink destination are rejected.
 - Outside output directory is rejected without trusted override.
 - Local source is rejected without `--allow-local-source`.
@@ -1289,8 +1398,10 @@ V5 manifests keep their existing legacy top-level shape (`source`, `pdf`, `outdi
 - Lock is released after success, handled failure and interruption/process exit.
 - A symlink path and the real path to the same V3 DB resolve to the same lock; only one importer can hold it.
 - A relative and absolute path to the same V3 DB also resolve to the same lock.
-- Replay-only also respects the lock.
+- Replay-only also respects the lock for a normal run.
+- Replay-only `--dry-run` does not take the lock and still performs read-only validation.
 - V5 and OCR-only do not acquire the V3 lock.
+- Two invocations with the same `--outdir`/preferred job label reserve distinct result directories; neither overwrites the other's result manifest.
 - Direct maintenance replay is documented as outside the lock; integration tests do not run it concurrently with imports.
 
 ### 12.10 JSON output
@@ -1335,8 +1446,9 @@ Do not start Workbench UI implementation in this phase.
 3. Inspect current V3 DDL, migrations and replay result shape.
 4. Confirm official Gazette URL hostnames from real project source URLs.
 5. Re-check operational DB counts and existing run artifacts.
-6. Confirm V2.3 does not change the V3 schema.
-7. Identify source URL, hash, size and run metadata write locations.
+6. Confirm that the current OCR only writes TB-page rows to `documents.csv`; define the additive full-page-record mode needed for V3 coverage validation.
+7. Confirm V2.4 does not change the V3 schema.
+8. Identify source URL, hash, size, page coverage and run metadata write locations.
 
 **Deliverable:** short implementation note in the PR/commit describing the contracts and any discovered deviations from this specification.
 
@@ -1356,14 +1468,16 @@ Do not start Workbench UI implementation in this phase.
 1. Add `--target v3`, `--v3-db`, `--replay-only`, duplicate/version flags, `--reason`, `--issue-key`, `--allow-local-source`, `--allow-outside-output` and `--json`.
 2. Implement separate preflight branches for normal import and replay-only.
 3. Implement V3 temporary download, hashing and duplicate/version gate before final PDF promotion.
-4. Enforce full-PDF OCR for replayable V3 ingestion.
-5. Write manifest v2 (Importer V2.3) with legacy aliases.
-6. Update replay to accept `--v3-db`, `--issue-key` and `--no-v5-lookup`.
-7. Implement run identity lookup by `run_report_uri`.
-8. Stabilise the one-run JSON result.
-9. Persist source URL, hash, size and run provenance without a schema migration.
-10. Implement replay-only integrity checks and retry.
-11. Add a controlled provenance backfill procedure for existing runs.
+4. Add the additive full-page-record mode to `macau_tb_ocr.py`; V3 uses it, V5 keeps its current output.
+5. Enforce full-PDF OCR and strict page-coverage validation for replayable V3 ingestion; set `source_documents.page_count = pdf_pages`.
+6. Write manifest v2 (Importer V2.4) with legacy aliases.
+7. Update replay to accept `--v3-db`, `--issue-key` and `--no-v5-lookup`.
+8. Implement run identity lookup by `run_report_uri`.
+9. Stabilise the one-run JSON result.
+10. Persist source URL, hash, size, page coverage and run provenance without a schema migration.
+11. Implement replay-only integrity checks and retry.
+12. Add the legacy `legacy_partial` page-count/coverage policy for controlled backfill.
+13. Add a controlled provenance backfill procedure for existing runs.
 
 **Deliverable:** one CLI command can safely import a new Gazette Issue's raw OCR evidence into V3; replay-only can retry without re-running OCR or duplicating evidence.
 
@@ -1372,10 +1486,10 @@ Do not start Workbench UI implementation in this phase.
 1. Implement and test evidence fingerprinting.
 2. Implement official-host allowlist and redirect validation.
 3. Enforce HTTPS, destination-address checks, streaming size limits and PDF signature validation.
-4. Enforce managed input/output path boundaries and atomic PDF promotion.
+4. Enforce managed input/output path boundaries and no-clobber PDF promotion (`os.link`/`O_EXCL`, never check-then-replace).
 5. Add failure-injection tests for the atomic manifest writer; do not reimplement it.
-6. Implement the V3 advisory import lock.
-7. Complete security, fingerprint, atomic-write, lock and JSON tests.
+6. Implement the V3 advisory import lock with `realpath` resolution.
+7. Complete security, page-coverage, no-clobber, fingerprint, atomic-write, lock and JSON tests.
 8. Keep all V5 tests green.
 
 **Gate:** do not expose V3 ingestion to Workbench before Phase 3 is complete.
@@ -1406,16 +1520,18 @@ Verify:
 
 | File | Expected work |
 |---|---|
-| `tools/import_issue.py` | Target routing, V3 orchestration, temporary download/duplicate gate, manifest v2 (Importer V2.3), atomic writer, JSON contract, lock and V5 compatibility |
-| `tools/replay_runs_to_v3.py` | `--v3-db`, `--issue-key`, `--no-v5-lookup`, V3 run identity lookup, fingerprint, provenance, one-run JSON result and legacy compatibility |
+| `tools/import_issue.py` | Target routing, V3 orchestration, temporary download/duplicate gate, manifest v2 (Importer V2.4), atomic writer, JSON contract, lock and V5 compatibility |
+| `tools/replay_runs_to_v3.py` | `--v3-db`, `--issue-key`, `--no-v5-lookup`, V3 run identity lookup, fingerprint, provenance, page-coverage validation, `page_count = pdf_pages` for strict runs, one-run JSON result and legacy compatibility |
+| `macau_tb_ocr.py` | Add the additive full-page-record mode used by V3 (`documents.csv` row per PDF page, explicit skipped/failed status); do not change default V5 output or OCR recognition settings |
 | `tests/test_import_issue.py` | Preserve existing tests; add V5 path/CLI regression coverage |
 | `tests/test_import_issue_v3.py` | New V3 orchestration, replay-only, duplicate, JSON, lock and security tests (or extend current test file) |
-| `tests/database/test_v3_replay_idempotency.py` | Run identity, fingerprint, source provenance, backfill and replay result tests |
+| `tests/database/test_v3_replay_idempotency.py` | Run identity, fingerprint, source provenance, page coverage, backfill and replay result tests |
+| `tests/test_full_page_records.py` | New OCR full-page-record mode: every PDF page has a row, non-TB pages are `skipped`, failures are `failed`, and default V5 output is unchanged |
 | `README.md` / `IMPORT_ISSUE.md` | Document V5, V3, OCR-only, replay-only and database separation |
 | `DATABASE.md` | Document provenance stored in existing V3 fields and `config_json`; no schema change |
-| `CHANGELOG.md` | Record Importer V2.3 |
+| `CHANGELOG.md` | Record Importer V2.4 |
 
-No `database/v3/*.sql` change and no migration helper are required for V2.3.
+No `database/v3/*.sql` change and no migration helper are required for V2.4.
 
 Do not modify Workbench routes or templates in this phase. Do not add a Workbench import-job table to the shared ingestion layer. Persistent Workbench job tracking is a separate follow-on task.
 
@@ -1423,7 +1539,7 @@ Do not modify Workbench routes or templates in this phase. Do not add a Workbenc
 
 ## 15. Follow-on Workbench integration contract
 
-After Importer V2.3 is implemented and validated, Workbench calls it as a child process rather than reimplementing download/OCR/replay logic.
+After Importer V2.4 is implemented and validated, Workbench calls it as a child process rather than reimplementing download/OCR/replay logic.
 
 Example:
 
@@ -1466,7 +1582,7 @@ A successful Importer run means only that raw OCR evidence is in V3.
 
 ## 16. Explicit non-goals
 
-V2.3 does not include:
+V2.4 does not include:
 
 - Workbench Import Issue page/API/worker implementation;
 - page classification UI;
@@ -1486,7 +1602,7 @@ V2.3 does not include:
 
 ## 17. Definition of done
 
-Importer V2.3 is complete only when all are true:
+Importer V2.4 is complete only when all are true:
 
 - [ ] Existing V5 commands and tests work without changing user commands.
 - [ ] V5 path behaviour is unchanged, including the distinction between cwd-based DB/input paths and ROOT-derived default output path.
@@ -1497,7 +1613,12 @@ Importer V2.3 is complete only when all are true:
 - [ ] Duplicate checking occurs before final PDF promotion and before OCR; a duplicate deletes only the temporary file and leaves an existing same-hash final PDF intact.
 - [ ] An approved import promotes the PDF before OCR starts.
 - [ ] Full V3 import rejects every `--pages` value except literal `all`; partial pages are available only through `ocr-only` and V3 `--inspect-only`.
-- [ ] Every V3 invocation has a unique `job_id` used consistently by the run and result directories.
+- [ ] Full V3 import produces explicit `documents.csv` records for every page `1..pdf_pages`, including skipped non-TB pages and failed pages; missing, duplicate or out-of-range page records stop the import before V3 writes.
+- [ ] `source_documents.page_count` equals the validated `pdf_pages` for new runs; legacy backfill uses `legacy_partial`/`unknown` coverage and never fabricates missing pages.
+- [ ] A failed page sets `extraction_runs.run_status = "partial"` and is never counted as a successful OCR page.
+- [ ] PDF promotion is no-clobber: another importer or diagnostic run cannot overwrite the destination, and cross-DB input-directory races preserve both files.
+- [ ] Replay-only dry-run performs read-only validation without acquiring the lock; normal replay-only acquires it before replay.
+- [ ] Every V3 invocation has a unique `job_id` used consistently by the run and result directories, and colliding `--outdir` job labels cannot share result directories.
 - [ ] Mismatched source filename and explicit Issue key is rejected, including the `anotariais-33-2026.pdf` / `--issue-key 2026-34` case.
 - [ ] V3 uses `--v3-db` and never passes that DB to the V5 builder.
 - [ ] V3 replay passes `--no-v5-lookup` and a test proves the V5 DB is never opened.
@@ -1555,3 +1676,16 @@ Importer V2.3 is complete only when all are true:
 | `replay_only` could still be confused with a result status | Added an explicit note that `replay_only` is an operation, never a manifest or result status; success is `status=completed`, `operation=replay_only` |
 | Lock path could differ for symlink and real paths | Lock path now derives from `os.path.realpath()` on the V3 DB; added symlink/relative-path concurrency tests |
 | Promotion-order and replay-only preflight behaviour lacked regression tests | Added tests for duplicate temp cleanup, existing final PDF preservation, promotion-before-OCR, unparseable replay-only directory, and symlink-lock identity |
+
+---
+
+## Appendix C — Changes from V2.3 to V2.4
+
+| V2.3 issue | V2.4 resolution |
+|---|---|
+| `--pages all` did not prove that every PDF page was actually observed | Added strict page-coverage validation against `run_report.pdf_pages`: one record per page, no missing/duplicate/out-of-range pages, explicit failed/skipped page records, and `source_documents.page_count = pdf_pages` for new runs |
+| Legacy runs only contain the pages that were historically OCR'd | Added a legacy exception: correct `page_count` to `pdf_pages` where valid, record `ocr_page_coverage = "legacy_partial"` and `legacy_ocr_page_count`, and never fabricate missing pages/rows |
+| `os.replace()` could overwrite a PDF created by another importer or diagnostic run | Replaced check-then-replace with atomic no-clobber promotion (`os.link` + unlink, or `O_CREAT`/`O_EXCL` + copy); same-hash reuse and versioned retry remain; added cross-DB input-directory race tests |
+| Replay-only dry-run lock order was ambiguous | Path B now has separate dry-run and normal branches: dry-run performs read-only validation without the lock; normal replay-only acquires the lock before replay |
+| `--outdir` `__job_` segment was assumed to be unique | `job_id` is now a preferred label only; run/result directories are reserved with `mkdir(exist_ok=False)` and colliding result IDs get a unique suffix or fail |
+| Page-coverage, no-clobber and job-ID collision behaviour lacked tests | Added the 20-page coverage table, cross-DB PDF race test, dry-run lock test and duplicate result-directory test |
