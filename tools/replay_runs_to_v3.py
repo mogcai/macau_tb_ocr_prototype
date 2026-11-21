@@ -35,6 +35,7 @@ import re
 import sqlite3
 import uuid
 from collections import defaultdict
+import fitz
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -59,6 +60,10 @@ class EvidenceChangedError(ValueError):
 
 class PageCoverageError(ValueError):
     """The run artifacts do not cover the PDF pages exactly once."""
+
+
+class ManifestError(ValueError):
+    """The run manifest is present but corrupt or unsupported."""
 
 
 def now() -> str:
@@ -106,6 +111,13 @@ def maybe_int(value: Any) -> int | None:
         return int(float(raw))
     except (TypeError, ValueError):
         return None
+
+
+def strict_int(value: Any) -> int | None:
+    raw = text(value)
+    if not re.fullmatch(r"\d+", raw):
+        return None
+    return int(raw)
 
 
 def maybe_float(value: Any) -> float | None:
@@ -227,7 +239,44 @@ def directory_issue_key(run_dir: Path) -> str | None:
 
 
 def read_manifest(run_dir: Path) -> dict[str, Any]:
-    return read_json(run_dir / "import_manifest.json")
+    path = run_dir / "import_manifest.json"
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ManifestError(f"invalid import_manifest.json: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ManifestError("import_manifest.json is not a JSON object")
+    return data
+
+
+def validate_manifest(manifest: dict[str, Any]) -> None:
+    if not manifest:
+        return
+    version = manifest.get("manifest_version")
+    if version is None:
+        # Legacy V5 manifest: allowed for controlled reconstruction.
+        return
+    if version != 2:
+        raise ManifestError(f"unsupported manifest_version: {version!r}")
+    if text(manifest.get("target")) != "v3":
+        raise ManifestError("V2 manifest target must be v3")
+    issue_key = text(manifest.get("issue_key"))
+    if not issue_key:
+        raise ManifestError("V2 manifest is missing issue_key")
+    canonical_issue_key(issue_key)
+
+
+def actual_pdf_pages(path: Path) -> int | None:
+    try:
+        doc = fitz.open(path)
+    except Exception:
+        return None
+    try:
+        return len(doc)
+    finally:
+        doc.close()
 
 
 def resolve_issue_key(
@@ -297,7 +346,7 @@ def validate_page_coverage(
     *,
     strict: bool,
 ) -> dict[str, Any]:
-    pdf_pages = maybe_int(report.get("pdf_pages"))
+    pdf_pages = strict_int(report.get("pdf_pages"))
     document_pages = sorted({
         page for row in documents
         if (page := page_number(row.get("pdf_page"))) is not None
@@ -333,15 +382,14 @@ def validate_page_coverage(
             raise PageCoverageError(f"invalid ocr_status values: {sorted(set(invalid))}")
         coverage = "full"
     elif pdf_pages is None or pdf_pages <= 0:
+        pdf_pages = None
         coverage = "unknown"
     else:
-        coverage = (
-            "full" if len(observed_pages) == pdf_pages and failed == 0
-            else "legacy_partial"
-        )
+        # Legacy runs are never certified as full coverage.
+        coverage = "legacy_partial"
 
     return {
-        "pdf_pages": pdf_pages or (max(observed_pages) if observed_pages else 1),
+        "pdf_pages": pdf_pages,
         "ocr_pages_observed": len(observed_pages),
         "ocr_completed_pages": completed,
         "ocr_skipped_pages": skipped,
@@ -399,7 +447,7 @@ def get_or_create_document(
     issue_key: str,
     source_pdf: str,
     sha256: str,
-    page_count: int,
+    page_count: int | None,
     source_url: str = "",
 ) -> str:
     document_key = f"{issue_key}:{sha256[:16]}"
@@ -415,7 +463,7 @@ def get_or_create_document(
             """
             UPDATE source_documents
             SET source_url = COALESCE(source_url, ?),
-                page_count = ?
+                page_count = COALESCE(?, page_count)
             WHERE source_document_id = ?
             """,
             (source_url or None, page_count, document_id),
@@ -644,22 +692,64 @@ def replay_run(
     issue_key_override: str | None = None,
 ) -> dict[str, Any]:
     report = read_json(run_dir / "run_report.json")
+    if not report:
+        raise ValueError(f"run_report.json is missing or invalid in {run_dir}")
     documents = read_csv(run_dir / "documents.csv")
     rows_csv = read_csv(run_dir / "tb_rows.csv")
     if not documents and not rows_csv:
         raise ValueError(f"no documents.csv or tb_rows.csv in {run_dir}")
 
     manifest = read_manifest(run_dir)
-    manifest_target = text(manifest.get("target"))
-    if manifest_target and manifest_target != "v3":
-        raise ValueError(f"manifest target is not v3: {manifest_target}")
+    validate_manifest(manifest)
     strict = manifest_is_strict(manifest)
     issue_key = resolve_issue_key(run_dir, manifest, issue_key_override)
+    source_url = manifest_source_url(manifest)
+
+    source_pdf = text(manifest.get("pdf_path")) if strict else text(report.get("source_pdf"))
+    report_sha = text(report.get("source_pdf_sha256"))
+    manifest_sha = text(manifest.get("pdf_sha256"))
+    if strict and not manifest_sha:
+        raise ManifestError("strict manifest is missing pdf_sha256")
+    if manifest_sha and report_sha and manifest_sha != report_sha:
+        raise ValueError("manifest PDF SHA-256 disagrees with run_report")
+    sha256 = report_sha or manifest_sha
+    if not sha256:
+        raise ValueError(f"missing source PDF SHA-256 in {run_dir}")
+
+    pdf_path = Path(source_pdf).expanduser() if source_pdf else None
+    if pdf_path is not None and pdf_path.is_symlink():
+        raise ValueError(f"source PDF must not be a symlink: {pdf_path}")
+    pdf_hash_verified = False
+    actual_pages: int | None = None
+    if pdf_path is not None and pdf_path.is_file():
+        actual_sha = sha256_file(pdf_path)
+        if actual_sha != sha256:
+            raise EvidenceChangedError(
+                f"source PDF hash mismatch for {run_dir}: "
+                f"expected {sha256}, got {actual_sha}"
+            )
+        pdf_hash_verified = True
+        actual_pages = actual_pdf_pages(pdf_path)
+    elif strict:
+        raise ValueError(f"strict run requires a readable source PDF: {source_pdf}")
+
     coverage = validate_page_coverage(
         report, documents, rows_csv, strict=strict
     )
-    pdf_pages = int(coverage["pdf_pages"])
-    source_url = manifest_source_url(manifest)
+    pdf_pages = coverage["pdf_pages"]
+    if strict:
+        if pdf_pages is None:
+            raise PageCoverageError("strict run has invalid pdf_pages")
+        if actual_pages is None:
+            raise PageCoverageError("cannot determine actual PDF page count")
+        if actual_pages != pdf_pages:
+            raise PageCoverageError(
+                f"actual PDF has {actual_pages} pages but run_report says {pdf_pages}"
+            )
+    elif pdf_pages is not None and actual_pages is not None:
+        pdf_pages = actual_pages
+        coverage["pdf_pages"] = actual_pages
+        coverage["ocr_page_coverage"] = "legacy_partial"
 
     publication_date = first_value(documents, "publication_date") or first_value(rows_csv, "publication_date")
     gazette_issue_id = stable_id("gazette_issue", issue_key)
@@ -682,13 +772,6 @@ def replay_run(
             "WHERE gazette_issue_id = ?",
             (source_url, gazette_issue_id),
         )
-
-    source_pdf = text(report.get("source_pdf"))
-    sha256 = text(report.get("source_pdf_sha256"))
-    if not sha256 and source_pdf and Path(source_pdf).is_file():
-        sha256 = sha256_file(Path(source_pdf))
-    if not sha256:
-        raise ValueError(f"missing source PDF SHA-256 in {run_dir}")
 
     document_key = f"{issue_key}:{sha256[:16]}"
     existing_document = conn.execute(
@@ -747,6 +830,8 @@ def replay_run(
         "ocr_failed_pages": coverage["ocr_failed_pages"],
         "ocr_page_coverage": coverage["ocr_page_coverage"],
         "source_pdf_bytes": maybe_int(report.get("source_pdf_size")),
+        "pdf_hash_verified": pdf_hash_verified,
+        "pdf_integrity": "verified" if pdf_hash_verified else "unverified",
         "import_manifest": (
             str(run_dir / "import_manifest.json")
             if (run_dir / "import_manifest.json").is_file() else None
@@ -798,7 +883,16 @@ def replay_run(
     for index, row in enumerate(rows_csv, start=1):
         page = page_number(row.get("pdf_page"))
         if page is None:
+            if strict:
+                raise PageCoverageError(
+                    f"tb_rows.csv row {index} has invalid pdf_page: "
+                    f"{row.get('pdf_page')!r}"
+                )
             continue
+        if strict and (pdf_pages is None or not (1 <= page <= pdf_pages)):
+            raise PageCoverageError(
+                f"tb_rows.csv row {index} page {page} is outside 1-{pdf_pages}"
+            )
         rows_by_page[page].append((index, row))
     if strict:
         status_by_page = {
@@ -898,6 +992,7 @@ def replay_run(
         "ocr_skipped_pages": coverage["ocr_skipped_pages"],
         "ocr_failed_pages": coverage["ocr_failed_pages"],
         "ocr_page_coverage": coverage["ocr_page_coverage"],
+        "pdf_hash_verified": pdf_hash_verified,
         "run_status": run_status or (
             str(existing_run["run_status"]) if existing_run is not None else "completed"
         ),

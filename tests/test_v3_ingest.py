@@ -12,9 +12,12 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+import uuid
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
+
+import fitz
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -172,6 +175,15 @@ class V3IngestOrchestrationTests(unittest.TestCase):
             "--allow-outside-output", "--json", *argv,
         ])
 
+    def _make_pdf(self, pages: int = 1) -> Path:
+        path = self.root / f"source_{pages}.pdf"
+        doc = fitz.open()
+        for _ in range(pages):
+            doc.new_page(width=200, height=200)
+        doc.save(path)
+        doc.close()
+        return path
+
     def _write_ocr_artifacts(self, out_dir: Path, sha: str) -> None:
         out_dir.mkdir(parents=True, exist_ok=True)
         report = {
@@ -194,8 +206,7 @@ class V3IngestOrchestrationTests(unittest.TestCase):
             writer.writerow({"pdf_page": "1", "label_raw": "現金"})
 
     def test_full_import_orchestration(self) -> None:
-        source = self.root / "source.pdf"
-        source.write_bytes(b"%PDF-1.4\nfixture\n")
+        source = self._make_pdf(1)
         sha = hashlib.sha256(source.read_bytes()).hexdigest()
         out_dir = self.root / "out"
         args = self._args(
@@ -244,8 +255,7 @@ class V3IngestOrchestrationTests(unittest.TestCase):
     def test_run_replay_subprocess_contract(self) -> None:
         run_dir = self.root / "issue99_2026__job_contract"
         run_dir.mkdir()
-        pdf = self.root / "contract.pdf"
-        pdf.write_bytes(b"%PDF-1.4\nfixture\n")
+        pdf = self._make_pdf(1)
         sha = hashlib.sha256(pdf.read_bytes()).hexdigest()
         self._write_ocr_artifacts(run_dir, sha)
         (run_dir / "import_manifest.json").write_text(json.dumps({
@@ -310,11 +320,165 @@ class V3IngestOrchestrationTests(unittest.TestCase):
         capture.assert_not_called()
         replay_run.assert_not_called()
 
+    def _replay_fixture(
+        self, *, issue_key: str = "2026-99", decision_type: str | None = None
+    ) -> Path:
+        run_dir = self.root / f"run_{uuid.uuid4().hex[:8]}"
+        run_dir.mkdir()
+        pdf = self.root / f"pdf_{uuid.uuid4().hex[:8]}.pdf"
+        pdf_doc = fitz.open()
+        pdf_doc.new_page(width=200, height=200)
+        pdf_doc.save(pdf)
+        pdf_doc.close()
+        sha = hashlib.sha256(pdf.read_bytes()).hexdigest()
+        self._write_ocr_artifacts(run_dir, sha)
+        (run_dir / "import_manifest.json").write_text(json.dumps({
+            "manifest_version": 2, "manifest_origin": "written",
+            "target": "v3", "operation": "full_import",
+            "issue_key": issue_key, "decision_type": decision_type,
+            "pdf_path": str(pdf), "pdf_sha256": sha, "run_dir": str(run_dir),
+            "status": "failed",
+        }), encoding="utf-8")
+        return run_dir
+
+    def _insert_source_document(self, issue_key: str, run_dir: Path) -> None:
+        pdf = Path(json.loads(
+            (run_dir / "import_manifest.json").read_text()
+        )["pdf_path"])
+        sha = hashlib.sha256(pdf.read_bytes()).hexdigest()
+        conn = sqlite3.connect(self.db)
+        conn.execute(
+            "INSERT OR IGNORE INTO gazette_issues("
+            "gazette_issue_id,issue_key,discovered_at) VALUES(?,?,?)",
+            (f"issue-{issue_key}", issue_key, "2026-11-21T00:00:00+00:00"),
+        )
+        conn.execute(
+            "INSERT INTO source_documents("
+            "source_document_id,gazette_issue_id,document_key,storage_uri,sha256,"
+            "page_count,acquired_at) VALUES(?,?,?,?,?,1,?)",
+            (f"doc-{issue_key}", f"issue-{issue_key}",
+             f"{issue_key}:{sha[:16]}", str(pdf), sha,
+             "2026-11-21T00:00:00+00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_replay_only_cross_issue_conflict(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        self._insert_source_document("2026-98", run_dir)
+        args = self._args("--replay-only", "--outdir", str(run_dir))
+        result_path = self.root / "conflict-result.json"
+        with mock.patch.object(v3, "run_replay") as replay_call, \
+                mock.patch.object(v3, "result_manifest_path", return_value=result_path):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 3)
+        self.assertEqual(
+            json.loads(stdout.getvalue())["status"],
+            "already_imported_content_conflict",
+        )
+        replay_call.assert_not_called()
+
+    def test_replay_only_same_issue_retry_allowed(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        self._insert_source_document("2026-99", run_dir)
+        args = self._args("--replay-only", "--outdir", str(run_dir))
+        replay_result = {
+            "status": "already_present", "run_id": "run_1",
+            "gazette_issue_id": "g", "source_document_id": "d",
+            "evidence_fingerprint": "f" * 64, "pdf_pages": 1,
+            "ocr_pages_observed": 1, "ocr_page_coverage": "full",
+            "run_status": "completed", "already_present": True,
+        }
+        with mock.patch.object(v3, "run_replay", return_value=replay_result):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 0)
+
+    def test_replay_only_dry_run_does_not_lock_or_replay(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        with mock.patch.object(v3, "run_replay") as replay_call:
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(stdout.getvalue())["status"], "planned")
+        replay_call.assert_not_called()
+
+    def test_replay_only_rejects_symlink_artifact(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        documents = run_dir / "documents.csv"
+        target = self.root / "outside-documents.csv"
+        target.write_text(documents.read_text(), encoding="utf-8")
+        documents.unlink()
+        os.symlink(target, documents)
+        args = self._args("--replay-only", "--outdir", str(run_dir))
+        with mock.patch.object(v3, "run_replay") as replay_call:
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 1)
+        replay_call.assert_not_called()
+
+    def test_replay_result_missing_fields_is_rejected(self) -> None:
+        out_dir = self.root / "replay-result"
+        out_dir.mkdir()
+        stdout = json.dumps({
+            "status": "ok", "run_id": "run_1",
+        })
+        with mock.patch.object(v3, "run_capture", return_value=(0, stdout, "")):
+            with self.assertRaises(v3.V3IngestError):
+                v3.run_replay(self.db, out_dir, "2026-99", out_dir / "log")
+
+    def test_temp_names_are_unique_for_same_job_id(self) -> None:
+        source = self.root / "unique.pdf"
+        doc = fitz.open()
+        doc.new_page()
+        doc.save(source)
+        doc.close()
+        args = self._args(
+            str(source), "--outdir", str(self.root / "out"),
+            "--allow-local-source",
+        )
+        first = v3.download_source(args, self.root, "same-job")
+        second = v3.download_source(args, self.root, "same-job")
+        self.assertNotEqual(first["temp"], second["temp"])
+        first["temp"].unlink(missing_ok=True)
+        second["temp"].unlink(missing_ok=True)
+
+    def test_local_source_signature_and_size_validation(self) -> None:
+        bad = self.root / "bad.pdf"
+        bad.write_bytes(b"not a pdf")
+        args = self._args(
+            str(bad), "--outdir", str(self.root / "out"),
+            "--allow-local-source",
+        )
+        with self.assertRaises(v3.V3IngestError):
+            v3.download_source(args, self.root, "job")
+        big = self.root / "big.pdf"
+        big.write_bytes(b"%PDF-" + b"x" * 100)
+        with mock.patch.object(v3, "MAX_PDF_BYTES", 20):
+            with self.assertRaises(v3.V3IngestError):
+                v3.download_source(args, self.root, "job2")
+
+    def test_url_policy_rejects_private_address_and_port(self) -> None:
+        with mock.patch.object(v3.socket, "getaddrinfo", return_value=[
+            (v3.socket.AF_INET, v3.socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))
+        ]):
+            with self.assertRaises(v3.V3IngestError):
+                v3.validate_v3_url("https://images.bo.dsaj.gov.mo/a.pdf")
+        with self.assertRaises(v3.V3IngestError):
+            v3.validate_v3_url("https://images.bo.dsaj.gov.mo:8443/a.pdf")
+
     def test_replay_only_orchestration(self) -> None:
         run_dir = self.root / "run"
         run_dir.mkdir()
-        pdf = self.root / "source.pdf"
-        pdf.write_bytes(b"%PDF-1.4\nfixture\n")
+        pdf = self._make_pdf(1)
         sha = hashlib.sha256(pdf.read_bytes()).hexdigest()
         self._write_ocr_artifacts(run_dir, sha)
         (run_dir / "import_manifest.json").write_text(json.dumps({

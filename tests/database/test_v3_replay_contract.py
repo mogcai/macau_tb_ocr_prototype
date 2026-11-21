@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import sqlite3
 import sys
 import tempfile
 import unittest
+import uuid
+
+import fitz
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -35,7 +39,7 @@ class V3ReplayContractTests(unittest.TestCase):
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         apply_schema(self.conn)
-        self.pdf_sha = "d" * 64
+        self.pdf_sha = ""
 
     def tearDown(self) -> None:
         self.conn.close()
@@ -54,11 +58,18 @@ class V3ReplayContractTests(unittest.TestCase):
         status_items = (
             list(statuses.items()) if isinstance(statuses, dict) else list(statuses)
         )
+        pdf_path = self.root / f"source_{uuid.uuid4().hex}.pdf"
+        pdf = fitz.open()
+        for _ in range(pdf_pages):
+            pdf.new_page(width=200, height=200)
+        pdf.save(pdf_path)
+        pdf.close()
+        self.pdf_sha = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
         report = {
             "app_version": "0.7.0",
-            "source_pdf": "/tmp/issue99.pdf",
+            "source_pdf": str(pdf_path),
             "source_pdf_sha256": self.pdf_sha,
-            "source_pdf_size": 12345,
+            "source_pdf_size": pdf_path.stat().st_size,
             "pdf_pages": pdf_pages,
             "ocr_engine": "vision",
             "ocr_version": "test",
@@ -117,9 +128,9 @@ class V3ReplayContractTests(unittest.TestCase):
                     "operation": "full_import",
                     "issue_key": issue_key,
                     "source_url": "https://images.bo.dsaj.gov.mo/issue99_2026.pdf",
-                    "pdf_path": "/tmp/issue99.pdf",
+                    "pdf_path": str(pdf_path),
                     "pdf_sha256": self.pdf_sha,
-                    "pdf_bytes": 12345,
+                    "pdf_bytes": pdf_path.stat().st_size,
                     "run_dir": str(self.run_dir),
                     "v3_db": str(self.db_path),
                 }),
@@ -248,6 +259,77 @@ class V3ReplayContractTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 code = replay_module.main()
         self.assertEqual(code, 0)
+
+    def test_legacy_equal_page_count_is_still_legacy_partial(self) -> None:
+        self.write_run(
+            pdf_pages=2,
+            document_statuses={1: "completed", 2: "skipped"},
+            include_manifest=False,
+        )
+        result = self.replay()
+        self.assertEqual(result["ocr_page_coverage"], "legacy_partial")
+        self.assertNotEqual(result["ocr_page_coverage"], "full")
+
+    def test_invalid_pdf_pages_does_not_overwrite_existing_page_count(self) -> None:
+        self.write_run(pdf_pages=2, include_manifest=False)
+        report_path = self.run_dir / "run_report.json"
+        report = json.loads(report_path.read_text())
+        report["pdf_pages"] = "2.5"
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        sha = self.pdf_sha
+        self.conn.execute(
+            "INSERT INTO source_documents("
+            "source_document_id,gazette_issue_id,document_key,storage_uri,sha256,"
+            "page_count,acquired_at) VALUES('existing',NULL,?,?,?,5,?)",
+            (f"2026-99:{sha[:16]}", str(self.root / "old.pdf"), sha,
+             "2026-11-21T00:00:00+00:00"),
+        )
+        self.conn.commit()
+        result = self.replay()
+        page_count = self.conn.execute(
+            "SELECT page_count FROM source_documents WHERE source_document_id='existing'"
+        ).fetchone()[0]
+        self.assertEqual(page_count, 5)
+        self.assertEqual(result["ocr_page_coverage"], "unknown")
+        self.assertIsNone(result["pdf_pages"])
+
+    def test_corrupt_manifest_is_rejected_not_downgraded(self) -> None:
+        self.write_run()
+        (self.run_dir / "import_manifest.json").write_text("{not json", encoding="utf-8")
+        with self.assertRaises(replay_module.ManifestError):
+            replay_run(self.conn, self.run_dir, legacy_runs={})
+
+    def test_strict_invalid_tb_row_page_is_rejected(self) -> None:
+        self.write_run(tb_rows=[{
+            "pdf_page": "2.5", "label_raw": "x", "label_normalized": "x",
+            "label_role": "item", "parent_label_raw": "", "debit_raw": "",
+            "credit_raw": "", "debit_amount": "", "credit_amount": "",
+            "debit_parse_status": "blank", "credit_parse_status": "blank",
+            "row_confidence": "0.9",
+        }])
+        with self.assertRaises(PageCoverageError):
+            replay_run(self.conn, self.run_dir, legacy_runs={})
+        self.conn.rollback()
+
+    def test_pdf_hash_mismatch_is_rejected(self) -> None:
+        self.write_run()
+        pdf_path = Path(json.loads(
+            (self.run_dir / "run_report.json").read_text()
+        )["source_pdf"])
+        pdf_path.write_bytes(b"%PDF-1.4\nchanged\n")
+        with self.assertRaises(EvidenceChangedError):
+            replay_run(self.conn, self.run_dir, legacy_runs={})
+        self.conn.rollback()
+
+    def test_actual_pdf_page_count_mismatch_is_rejected(self) -> None:
+        self.write_run(pdf_pages=2)
+        report_path = self.run_dir / "run_report.json"
+        report = json.loads(report_path.read_text())
+        report["pdf_pages"] = 3
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        with self.assertRaises(PageCoverageError):
+            replay_run(self.conn, self.run_dir, legacy_runs={})
+        self.conn.rollback()
 
     def test_explicit_issue_key_must_match_manifest_and_directory(self) -> None:
         manifest = {"issue_key": "2026-99"}

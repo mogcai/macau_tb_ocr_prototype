@@ -71,7 +71,7 @@ def _is_forbidden_address(address: str) -> bool:
     except ValueError:
         return True
     return bool(
-        ip.is_private or ip.is_loopback or ip.is_link_local or
+        not ip.is_global or ip.is_private or ip.is_loopback or ip.is_link_local or
         ip.is_multicast or ip.is_reserved or ip.is_unspecified
     )
 
@@ -84,6 +84,12 @@ def validate_v3_url(url: str) -> urllib.parse.ParseResult:
         raise V3IngestError("URL user-info is not allowed")
     if parsed.query or parsed.fragment:
         raise V3IngestError("URL query strings and fragments are not allowed")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise V3IngestError(f"invalid URL port: {exc}") from exc
+    if port not in (None, 443):
+        raise V3IngestError("V3 source URL must use port 443")
     hostname = (parsed.hostname or "").lower()
     if not hostname:
         raise V3IngestError("URL has no hostname")
@@ -119,6 +125,10 @@ class _RedirectPolicy(urllib.request.HTTPRedirectHandler):
 
 
 def _open_url(url: str):
+    # Hostname/IP policy is validated before the request and for every redirect.
+    # urllib still performs its own DNS resolution when connecting, so a narrow
+    # DNS-rebinding window remains. The checkpoint documents this residual risk;
+    # this function does not claim complete SSRF protection.
     opener = urllib.request.build_opener(_RedirectPolicy())
     return opener.open(
         urllib.request.Request(
@@ -239,15 +249,33 @@ def _copy_local_source(
     filename = Path(explicit_name).name if explicit_name else path.name
     if not filename.lower().endswith(".pdf"):
         raise V3IngestError("managed source filename must end with .pdf")
-    temp = input_dir / f".local-{job_id}-{uuid.uuid4().hex[:8]}.part"
-    temp.write_bytes(path.read_bytes())
+    temp = input_dir / f".local-{job_id}-{uuid.uuid4().hex}.part"
+    digest = hashlib.sha256()
+    total = 0
+    temp_created = False
+    try:
+        fd = os.open(temp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        temp_created = True
+        with os.fdopen(fd, "wb") as out, path.open("rb") as src:
+            while chunk := src.read(1024 * 1024):
+                total += len(chunk)
+                if total > MAX_PDF_BYTES:
+                    raise V3IngestError("local PDF exceeds 250 MB")
+                out.write(chunk)
+                digest.update(chunk)
+        if not imp.looks_like_pdf(temp):
+            raise V3IngestError("local source is not a PDF")
+    except Exception:
+        if temp_created:
+            temp.unlink(missing_ok=True)
+        raise
     return {
         "temp": temp,
         "source_url": "",
         "source_kind": "local_file",
         "source_filename": filename,
-        "bytes": temp.stat().st_size,
-        "sha256": sha256_file(temp),
+        "bytes": total,
+        "sha256": digest.hexdigest(),
     }
 
 
@@ -262,11 +290,14 @@ def download_source(args: argparse.Namespace, input_dir: Path, job_id: str) -> d
         return _copy_local_source(source, input_dir, job_id, args.name)
     validate_v3_url(source)
     name = imp.filename_from_url(source, args.name)
-    temp = input_dir / f".{Path(name).stem}.{job_id}.part"
+    temp = input_dir / f".{Path(name).stem}.{job_id}.{uuid.uuid4().hex}.part"
     digest = hashlib.sha256()
     total = 0
+    temp_created = False
     try:
-        with _open_url(source) as response, temp.open("wb") as out:
+        fd = os.open(temp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        temp_created = True
+        with _open_url(source) as response, os.fdopen(fd, "wb") as out:
             while True:
                 chunk = response.read(1024 * 1024)
                 if not chunk:
@@ -287,7 +318,8 @@ def download_source(args: argparse.Namespace, input_dir: Path, job_id: str) -> d
             "sha256": digest.hexdigest(),
         }
     except Exception:
-        temp.unlink(missing_ok=True)
+        if temp_created:
+            temp.unlink(missing_ok=True)
         raise
 
 
@@ -424,6 +456,15 @@ def validate_artifacts(out_dir: Path) -> tuple[dict, list, list, dict]:
     return report, documents, rows, coverage
 
 
+def _ensure_artifact_in_run(path: Path, run_dir: Path) -> None:
+    if path.is_symlink() or not path.is_file():
+        raise V3IngestError(f"artifact is not a regular file: {path}")
+    try:
+        path.resolve().relative_to(run_dir.resolve())
+    except ValueError as exc:
+        raise V3IngestError(f"artifact escapes run directory: {path}") from exc
+
+
 def run_capture(command: list[str], log_path: Path) -> tuple[int, str, str]:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as log:
@@ -436,7 +477,14 @@ def run_capture(command: list[str], log_path: Path) -> tuple[int, str, str]:
     return completed.returncode, completed.stdout, completed.stderr
 
 
-def run_replay(db_path: Path, out_dir: Path, issue_key: str, log_path: Path) -> dict:
+def run_replay(
+    db_path: Path,
+    out_dir: Path,
+    issue_key: str,
+    log_path: Path,
+    *,
+    expected_coverage: dict[str, Any] | None = None,
+) -> dict:
     code, stdout, stderr = run_capture([
         sys.executable, str(ROOT / "tools" / "replay_runs_to_v3.py"),
         "--v3-db", str(db_path), "--run-dir", str(out_dir),
@@ -453,6 +501,26 @@ def run_replay(db_path: Path, out_dir: Path, issue_key: str, log_path: Path) -> 
         raise V3IngestError("V3 replay result is not valid JSON") from exc
     if result.get("status") not in ("ok", "already_present"):
         raise V3IngestError(f"V3 replay returned {result.get('status')}")
+    required = (
+        "run_id", "gazette_issue_id", "source_document_id",
+        "evidence_fingerprint", "pdf_pages", "ocr_pages_observed",
+        "ocr_page_coverage", "run_status",
+    )
+    missing = [key for key in required if result.get(key) in (None, "")]
+    if missing:
+        raise V3IngestError(f"V3 replay result is missing: {', '.join(missing)}")
+    fingerprint = str(result["evidence_fingerprint"])
+    if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+        raise V3IngestError("V3 replay evidence_fingerprint is invalid")
+    if result["run_status"] not in ("completed", "partial"):
+        raise V3IngestError(f"V3 replay run_status is invalid: {result['run_status']}")
+    if expected_coverage is not None:
+        for key in ("pdf_pages", "ocr_pages_observed", "ocr_page_coverage", "run_status"):
+            if result.get(key) != expected_coverage.get(key):
+                raise V3IngestError(
+                    f"V3 replay result {key}={result.get(key)!r} does not match "
+                    f"importer validation {expected_coverage.get(key)!r}"
+                )
     return result
 
 
@@ -609,10 +677,23 @@ def _run_full(args: argparse.Namespace) -> int:
             report, documents, rows, coverage = validate_artifacts(out_dir)
             if report.get("source_pdf_sha256") != pdf_info["sha256"]:
                 raise V3IngestError("run_report SHA-256 does not match the downloaded PDF")
+            actual_pages = replay.actual_pdf_pages(Path(pdf_info["path"]))
+            if actual_pages is None or actual_pages != coverage["pdf_pages"]:
+                raise V3IngestError(
+                    f"actual PDF pages {actual_pages} do not match "
+                    f"run_report.pdf_pages {coverage['pdf_pages']}"
+                )
             manifest = build_manifest(args, job_id, issue_key, out_dir, pdf_info, coverage, report)
             manifest_path = out_dir / "import_manifest.json"
             imp.write_manifest(out_dir, manifest)
-            replay_result = run_replay(v3_db, out_dir, issue_key, log_path)
+            expected_coverage = dict(coverage)
+            expected_coverage["run_status"] = (
+                "partial" if coverage["ocr_failed_pages"] > 0 else "completed"
+            )
+            replay_result = run_replay(
+                v3_db, out_dir, issue_key, log_path,
+                expected_coverage=expected_coverage,
+            )
             manifest["v3_replay_status"] = "completed"
             manifest["status"] = "completed"
             manifest["finished_at"] = now()
@@ -778,15 +859,26 @@ def _run_replay_only(args: argparse.Namespace) -> int:
         result["error"] = {"type": "V3IngestError", "message": "--outdir is required with --replay-only"}
         emit(args, result, None)
         return 2
+    if args.outdir.is_symlink():
+        result["status"] = "usage_error"
+        result["error"] = {"type": "V3IngestError", "message": "--outdir must not be a symlink"}
+        emit(args, result, None)
+        return 2
     out_dir = args.outdir.expanduser().resolve()
     manifest_path = out_dir / "import_manifest.json"
     v3_db = resolve_v3_db(args)
     manifest: dict[str, Any] = {}
     try:
         validate_v3_db(v3_db)
-        manifest = replay.read_json(manifest_path)
+        _ensure_artifact_in_run(manifest_path, out_dir)
+        manifest = replay.read_manifest(out_dir)
         if not manifest:
             raise V3IngestError("replay-only requires import_manifest.json")
+        replay.validate_manifest(manifest)
+        if not re.fullmatch(
+            r"[0-9a-f]{64}", str(manifest.get("pdf_sha256") or "").strip()
+        ):
+            raise V3IngestError("replay-only manifest has an invalid pdf_sha256")
         if manifest.get("manifest_version") != 2 or manifest.get("target") != "v3":
             raise V3IngestError("replay-only manifest must be v2 target v3")
         operation = manifest.get("operation")
@@ -797,13 +889,13 @@ def _run_replay_only(args: argparse.Namespace) -> int:
         issue_key = replay.resolve_issue_key(out_dir, manifest, args.issue_key)
         if Path(manifest.get("run_dir", "")).resolve() != out_dir:
             raise V3IngestError("manifest run_dir does not match --outdir")
-        if (
-            not (out_dir / "run_report.json").is_file()
-            or not (out_dir / "documents.csv").is_file()
-            or not (out_dir / "tb_rows.csv").is_file()
-        ):
-            raise V3IngestError("replay-only artifacts are incomplete")
-        report = replay.read_json(out_dir / "run_report.json")
+        report_path = out_dir / "run_report.json"
+        documents_path = out_dir / "documents.csv"
+        rows_path = out_dir / "tb_rows.csv"
+        _ensure_artifact_in_run(report_path, out_dir)
+        _ensure_artifact_in_run(documents_path, out_dir)
+        _ensure_artifact_in_run(rows_path, out_dir)
+        report = replay.read_json(report_path)
         if report.get("source_pdf_sha256") != manifest.get("pdf_sha256"):
             raise V3IngestError("run_report SHA-256 does not match the manifest")
         pdf_path = Path(manifest.get("pdf_path", ""))
@@ -811,9 +903,51 @@ def _run_replay_only(args: argparse.Namespace) -> int:
             raise V3IngestError("manifest PDF path is a symlink")
         if not pdf_path.is_file() or sha256_file(pdf_path) != manifest.get("pdf_sha256"):
             raise V3IngestError("manifest PDF hash does not match the source file")
+        actual_pages = replay.actual_pdf_pages(pdf_path)
+        if actual_pages is None or actual_pages != replay.strict_int(report.get("pdf_pages")):
+            raise V3IngestError("actual PDF page count does not match run_report.pdf_pages")
+        documents = replay.read_csv(out_dir / "documents.csv")
+        rows = replay.read_csv(out_dir / "tb_rows.csv")
+        coverage = replay.validate_page_coverage(
+            report, documents, rows, strict=replay.manifest_is_strict(manifest)
+        )
+        expected_coverage = dict(coverage)
+        expected_coverage["run_status"] = (
+            "partial" if coverage["ocr_failed_pages"] > 0 else "completed"
+        )
+        with contextlib.closing(connect_v3(v3_db)) as conn:
+            state = duplicate_state(conn, str(manifest.get("pdf_sha256")), issue_key)
+            if state["same_issue_hash"]:
+                pass
+            elif state["issue_docs"]:
+                if manifest.get("decision_type") != "new_version":
+                    raise OperatorDecision(
+                        "new_source_version_required",
+                        "replay-only requires decision_type=new_version for this issue",
+                    )
+            elif state["same_hash"]:
+                if manifest.get("decision_type") != "reprocess":
+                    raise OperatorDecision(
+                        "already_imported_content_conflict",
+                        "replay-only requires decision_type=reprocess for cross-issue content",
+                    )
+        if args.dry_run:
+            result.update({
+                "status": "planned",
+                "operation": "replay_only",
+                "issue_key": issue_key,
+                "run_dir": str(out_dir),
+                "manifest_path": str(manifest_path),
+                "pdf_sha256": manifest.get("pdf_sha256"),
+                "v3": None,
+                "message": "V3 replay-only preflight valid; no lock, replay or DB write",
+            })
+            emit(args, result, manifest_path)
+            return 0
         with import_lock(v3_db):
             replay_result = run_replay(
-                v3_db, out_dir, issue_key, out_dir / "replay.log"
+                v3_db, out_dir, issue_key, out_dir / "replay.log",
+                expected_coverage=expected_coverage,
             )
             manifest["v3_replay_status"] = "completed"
             manifest["status"] = "completed"
@@ -844,6 +978,18 @@ def _run_replay_only(args: argparse.Namespace) -> int:
             })
             emit(args, result, manifest_path)
             return 0
+    except OperatorDecision as exc:
+        result.update({"status": exc.status, "error": {
+            "type": type(exc).__name__, "message": str(exc)
+        }})
+        result_path = result_manifest_path("results", job_id)
+        imp.write_manifest(result_path.parent, {
+            **result, "target": "v3", "job_id": job_id,
+            "manifest_version": 2, "status": exc.status,
+            "operation": "replay_only",
+        })
+        emit(args, result, result_path)
+        return 0 if exc.status == "already_imported" else 3
     except ImportLocked as exc:
         result.update({"status": "import_locked", "error": {"type": type(exc).__name__, "message": str(exc)}})
         emit(args, result, None)
@@ -938,7 +1084,7 @@ def run(args: argparse.Namespace) -> int:
         })
         emit(args, result, None)
         return 2
-    if args.dry_run:
+    if args.dry_run and not args.replay_only:
         return _run_planned(args)
     if args.replay_only:
         return _run_replay_only(args)
