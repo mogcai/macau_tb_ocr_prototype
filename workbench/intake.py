@@ -31,12 +31,17 @@ from typing import Any
 
 from workbench.config import ROOT
 from workbench.db import connect_v3
+from workbench.ocr_quality import summarize_run_dir
 
-SCHEMA_FILE = ROOT / "database" / "v3" / "017_page_statement_decisions.sql"
+SCHEMA_FILES = (
+    ROOT / "database" / "v3" / "017_page_statement_decisions.sql",
+    ROOT / "database" / "v3" / "018_discard_statement_assignment.sql",
+)
 AUTO_MAP = ROOT / "tools" / "p1_auto_map_standard_items.py"
 V5_SEED = ROOT / "data" / "baseline" / "baseline_v5_20261118.sqlite"
 NAMESPACE = uuid.UUID("d3f7c7b9-6b5e-5a4e-9d2e-8a1c2f3b4d55")
 VERSION = "workbench-intake-1"
+EMPTY_LABEL_WARN_RATE = 0.10
 
 PAGE_ROLES = {
     "financial_statement", "audit_report", "shareholder_list",
@@ -81,13 +86,154 @@ def _target_db_path() -> Path:
     return Path(workbench_db.V3_DB).resolve()
 
 
+_COMPOSITE_STATEMENT_ROW_FK = (
+    "REFERENCES extracted_rows(extracted_row_id, statement_extraction_id)"
+)
+
+
+_STATEMENT_ROWS_DISCARD_DDL = """
+CREATE TABLE statement_rows (
+    statement_row_id           TEXT PRIMARY KEY,
+    statement_id               TEXT NOT NULL,
+    statement_extraction_id    TEXT NOT NULL,
+    extracted_row_id           TEXT NOT NULL,
+    parent_row_id              TEXT,
+    statement_order            INTEGER,
+    row_type                   TEXT NOT NULL CHECK (
+        row_type IN
+        ('heading', 'item', 'subtotal', 'total', 'continuation',
+         'note', 'header', 'unknown')
+    ),
+    parent_context_status      TEXT NOT NULL DEFAULT 'unknown' CHECK (
+        parent_context_status IN
+        ('root', 'identified', 'unknown', 'not_applicable')
+    ),
+    label_normalized           TEXT,
+    label_language             TEXT NOT NULL DEFAULT 'unknown' CHECK (
+        label_language IN ('zh-Hant', 'pt', 'en', 'unknown')
+    ),
+    debit_minor                INTEGER,
+    debit_value_state          TEXT NOT NULL CHECK (
+        debit_value_state IN
+        ('amount', 'dash', 'blank', 'unreadable', 'not_applicable',
+         'ambiguous')
+    ),
+    credit_minor               INTEGER,
+    credit_value_state         TEXT NOT NULL CHECK (
+        credit_value_state IN
+        ('amount', 'dash', 'blank', 'unreadable', 'not_applicable',
+         'ambiguous')
+    ),
+    row_fingerprint            TEXT NOT NULL,
+    fingerprint_version        INTEGER NOT NULL,
+    carry_forward_status       TEXT NOT NULL DEFAULT 'none' CHECK (
+        carry_forward_status IN
+        ('none', 'exact_match_candidate', 'changed', 'ambiguous')
+    ),
+    carried_from_statement_row_id TEXT,
+    created_at                 TEXT NOT NULL,
+    FOREIGN KEY (statement_extraction_id, statement_id)
+        REFERENCES statement_extractions(statement_extraction_id, statement_id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (extracted_row_id)
+        REFERENCES extracted_rows(extracted_row_id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (parent_row_id, statement_id, statement_extraction_id)
+        REFERENCES statement_rows(
+            statement_row_id, statement_id, statement_extraction_id
+        )
+        ON DELETE RESTRICT,
+    FOREIGN KEY (carried_from_statement_row_id)
+        REFERENCES statement_rows(statement_row_id)
+        ON DELETE RESTRICT,
+    UNIQUE (statement_extraction_id, extracted_row_id),
+    UNIQUE (statement_row_id, statement_id, statement_extraction_id),
+    CHECK (statement_order IS NULL OR statement_order >= 1),
+    CHECK (
+        length(row_fingerprint) = 64 AND
+        lower(row_fingerprint) NOT GLOB '*[^0-9a-f]*'
+    ),
+    CHECK (
+        (debit_value_state = 'amount' AND debit_minor IS NOT NULL)
+        OR
+        (debit_value_state <> 'amount' AND debit_minor IS NULL)
+    ),
+    CHECK (
+        (credit_value_state = 'amount' AND credit_minor IS NOT NULL)
+        OR
+        (credit_value_state <> 'amount' AND credit_minor IS NULL)
+    ),
+    CHECK (
+        carried_from_statement_row_id IS NULL OR
+        carried_from_statement_row_id <> statement_row_id
+    )
+);
+"""
+
+
+def _migrate_statement_rows_discard_fk(conn: sqlite3.Connection) -> None:
+    """Rebuild statement_rows to drop the composite extracted_rows FK.
+
+    Discarded builds keep statement_rows as a historical snapshot while
+    extracted_rows clear statement_extraction_id and return to unassigned.
+    Idempotent when the single-column FK is already in place.
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='statement_rows'"
+    ).fetchone()
+    if row is None or _COMPOSITE_STATEMENT_ROW_FK not in (row[0] or ""):
+        return
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.executescript(
+        """
+        DROP TRIGGER IF EXISTS trg_statement_rows_no_update;
+        DROP TRIGGER IF EXISTS trg_statement_rows_no_delete;
+        ALTER TABLE statement_rows RENAME TO statement_rows__pre_discard_fk;
+        """
+    )
+    conn.executescript(_STATEMENT_ROWS_DISCARD_DDL)
+    conn.executescript(
+        """
+        INSERT INTO statement_rows
+        SELECT * FROM statement_rows__pre_discard_fk;
+        DROP TABLE statement_rows__pre_discard_fk;
+
+        CREATE INDEX IF NOT EXISTS idx_statement_rows_extraction_order
+            ON statement_rows(statement_extraction_id, statement_order);
+        CREATE INDEX IF NOT EXISTS idx_statement_rows_statement_extraction
+            ON statement_rows(statement_id, statement_extraction_id);
+        CREATE INDEX IF NOT EXISTS idx_statement_rows_fingerprint
+            ON statement_rows(row_fingerprint);
+
+        CREATE TRIGGER IF NOT EXISTS trg_statement_rows_no_update
+        BEFORE UPDATE ON statement_rows
+        BEGIN
+            SELECT RAISE(ABORT, 'statement_rows is append-only');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_statement_rows_no_delete
+        BEFORE DELETE ON statement_rows
+        BEGIN
+            SELECT RAISE(ABORT, 'statement_rows is append-only');
+        END;
+        """
+    )
+    conn.execute("PRAGMA foreign_keys=ON")
+    errors = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if errors:
+        raise RuntimeError(f"statement_rows FK migration failed checks: {errors[:5]}")
+
+
 def ensure_schema() -> None:
     key = str(_target_db_path())
     if key in _initialised:
         return
     conn = connect_v3(write=True)
     try:
-        conn.executescript(SCHEMA_FILE.read_text(encoding="utf-8"))
+        for path in SCHEMA_FILES:
+            conn.executescript(path.read_text(encoding="utf-8"))
+        _migrate_statement_rows_discard_fk(conn)
         conn.commit()
     finally:
         conn.close()
@@ -163,7 +309,38 @@ def list_batches() -> list[dict[str, Any]]:
         conn.close()
 
 
+def _latest_run_id(conn: sqlite3.Connection, source_document_id: str) -> str | None:
+    row = conn.execute(
+        "SELECT run_id FROM extraction_runs WHERE source_document_id = ? "
+        "ORDER BY rowid DESC LIMIT 1",
+        (source_document_id,),
+    ).fetchone()
+    return None if row is None else row["run_id"]
+
+
+def _run_dir_for_document(
+    conn: sqlite3.Connection, source_document_id: str
+) -> Path | None:
+    row = conn.execute(
+        "SELECT run_report_uri, config_json FROM extraction_runs "
+        "WHERE source_document_id = ? ORDER BY rowid DESC LIMIT 1",
+        (source_document_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    if row["run_report_uri"]:
+        return Path(row["run_report_uri"]).parent
+    if row["config_json"]:
+        try:
+            run_dir = Path(json.loads(row["config_json"]).get("run_dir") or "")
+        except (ValueError, TypeError):
+            return None
+        return run_dir if str(run_dir) else None
+    return None
+
+
 def _page_rows(conn: sqlite3.Connection, source_document_id: str) -> list[dict[str, Any]]:
+    run_id = _latest_run_id(conn, source_document_id)
     rows = conn.execute(
         """
         SELECT dp.document_page_id, dp.pdf_page, dp.printed_page, dp.page_role,
@@ -173,15 +350,19 @@ def _page_rows(conn: sqlite3.Connection, source_document_id: str) -> list[dict[s
                psd.note AS decision_note,
                (SELECT COUNT(*) FROM extracted_rows er
                  WHERE er.document_page_id = dp.document_page_id
+                   AND (? IS NULL OR er.run_id = ?)
                    AND er.row_disposition = 'unassigned') AS unassigned_rows,
                (SELECT COUNT(*) FROM extracted_rows er
                  WHERE er.document_page_id = dp.document_page_id
+                   AND (? IS NULL OR er.run_id = ?)
                    AND er.row_disposition = 'included') AS included_rows,
                (SELECT COUNT(*) FROM extracted_rows er
-                 WHERE er.document_page_id = dp.document_page_id) AS total_rows,
+                 WHERE er.document_page_id = dp.document_page_id
+                   AND (? IS NULL OR er.run_id = ?)) AS total_rows,
                (SELECT GROUP_CONCAT(label, ' | ') FROM (
                     SELECT label_raw AS label FROM extracted_rows er
                     WHERE er.document_page_id = dp.document_page_id
+                      AND (? IS NULL OR er.run_id = ?)
                     ORDER BY er.page_row_order LIMIT 4)) AS sample_labels
         FROM document_pages dp
         LEFT JOIN page_statement_decisions psd
@@ -189,9 +370,15 @@ def _page_rows(conn: sqlite3.Connection, source_document_id: str) -> list[dict[s
         WHERE dp.source_document_id = ?
         ORDER BY dp.pdf_page
         """,
-        (source_document_id,),
+        (
+            run_id, run_id, run_id, run_id, run_id, run_id, run_id, run_id,
+            source_document_id,
+        ),
     ).fetchall()
-    return [dict(row) for row in rows]
+    result = [dict(row) for row in rows]
+    for page in result:
+        page["latest_run_id"] = run_id
+    return result
 
 
 def _document(conn: sqlite3.Connection, source_document_id: str) -> dict[str, Any]:
@@ -286,21 +473,7 @@ def _match_entity(
 
 def _run_documents(conn: sqlite3.Connection, source_document_id: str) -> dict[int, dict[str, str]]:
     """Read documents.csv for the latest run; it holds PDF-text bank names."""
-    row = conn.execute(
-        "SELECT run_report_uri, config_json FROM extraction_runs "
-        "WHERE source_document_id = ? ORDER BY rowid DESC LIMIT 1",
-        (source_document_id,),
-    ).fetchone()
-    if row is None:
-        return {}
-    run_dir: Path | None = None
-    if row["run_report_uri"]:
-        run_dir = Path(row["run_report_uri"]).parent
-    if run_dir is None and row["config_json"]:
-        try:
-            run_dir = Path(json.loads(row["config_json"]).get("run_dir") or "")
-        except (ValueError, TypeError):
-            run_dir = None
+    run_dir = _run_dir_for_document(conn, source_document_id)
     if not run_dir:
         return {}
     path = run_dir / "documents.csv"
@@ -447,6 +620,19 @@ def batch_detail(source_document_id: str) -> dict[str, Any]:
         and page["total_rows"] > 0
         and not page["suggested_entity_id"]
     ]
+    conn = connect_v3()
+    try:
+        ocr_quality = ocr_quality_for_document(conn, source_document_id)
+        discardable = discardable_statements(conn, source_document_id)
+        adopted_count = conn.execute(
+            "SELECT COUNT(*) AS n FROM statements "
+            "WHERE source_document_id = ? AND ("
+            "statement_status = 'active' OR adopted_statement_extraction_id IS NOT NULL)",
+            (source_document_id,),
+        ).fetchone()["n"]
+        latest_run_id = _latest_run_id(conn, source_document_id)
+    finally:
+        conn.close()
     return {
         "document": document,
         "pages": pages,
@@ -455,6 +641,11 @@ def batch_detail(source_document_id: str) -> dict[str, Any]:
         "preview": preview,
         "preview_error": preview_error,
         "can_build": bool(preview) and not pending and not preview_error,
+        "latest_run_id": latest_run_id,
+        "ocr_quality": ocr_quality,
+        "discardable_statements": discardable,
+        "adopted_statement_count": adopted_count,
+        "can_reprocess": adopted_count == 0,
         "suggestion_summary": {
             "suggested_pages": sum(
                 1 for page in pages if page["suggested_entity_id"]
@@ -463,6 +654,347 @@ def batch_detail(source_document_id: str) -> dict[str, Any]:
             "unmatched_pages": unmatched,
             "source": "documents.csv (PDF text)" if suggestions else None,
         },
+    }
+
+
+def ocr_quality_for_document(
+    conn: sqlite3.Connection, source_document_id: str
+) -> dict[str, Any] | None:
+    return summarize_run_dir(_run_dir_for_document(conn, source_document_id))
+
+
+def discardable_statements(
+    conn: sqlite3.Connection, source_document_id: str
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT s.statement_id, s.statement_date, s.statement_type, s.statement_status,
+               e.canonical_zh, e.canonical_pt, e.entity_key,
+               COALESCE((SELECT rv.review_status FROM statement_reviews rv
+                         WHERE rv.statement_id = s.statement_id), 'pending')
+                   AS review_status
+        FROM statements s
+        JOIN reporting_entities e ON e.entity_id = s.reporting_entity_id
+        WHERE s.source_document_id = ?
+          AND s.statement_status NOT IN ('active', 'excluded')
+          AND s.adopted_statement_extraction_id IS NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM statement_reviews rv
+              WHERE rv.statement_id = s.statement_id
+                AND rv.review_status = 'reviewed'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM publication_records p
+              WHERE p.statement_id = s.statement_id
+                AND p.publication_status = 'published'
+          )
+        ORDER BY s.statement_date, s.statement_id
+        """,
+        (source_document_id,),
+    ).fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        item["entity_name"] = (
+            item.get("canonical_zh") or item.get("canonical_pt") or item["entity_key"]
+        )
+        result.append(item)
+    return result
+
+
+def _find_reprocess_job(source_document_id: str) -> dict[str, Any]:
+    from workbench import import_jobs
+
+    ensure_schema()
+    conn = connect_v3()
+    try:
+        document = _document(conn, source_document_id)
+    finally:
+        conn.close()
+    sha = document.get("sha256")
+    issue_key = document.get("issue_key")
+    candidates = [
+        job for job in import_jobs.list_jobs(limit=200)
+        if job.get("status") in import_jobs.TERMINAL_STATUSES
+        and (
+            (sha and job.get("pdf_sha256") == sha)
+            or (issue_key and job.get("issue_key") == issue_key)
+        )
+    ]
+    if not candidates:
+        raise IntakeError(
+            "no completed import job found for this document; "
+            "reprocess from /imports instead"
+        )
+    # Prefer exact SHA match, then newest created_at.
+    candidates.sort(
+        key=lambda job: (
+            0 if sha and job.get("pdf_sha256") == sha else 1,
+            job.get("created_at") or "",
+        ),
+        reverse=False,
+    )
+    sha_matches = [job for job in candidates if sha and job.get("pdf_sha256") == sha]
+    pool = sha_matches or candidates
+    pool.sort(key=lambda job: job.get("created_at") or "", reverse=True)
+    return pool[0]
+
+
+def reprocess_ocr(
+    source_document_id: str,
+    actor: str,
+    *,
+    reason: str,
+    discard_pending: bool = False,
+) -> dict[str, Any]:
+    """Start an OCR reprocess job for this document's source PDF."""
+    from workbench import import_jobs
+
+    reason = str(reason or "").strip()
+    if not reason:
+        raise IntakeError("a reason is required to reprocess OCR")
+    ensure_schema()
+    conn = connect_v3()
+    try:
+        adopted = conn.execute(
+            "SELECT COUNT(*) AS n FROM statements "
+            "WHERE source_document_id = ? AND ("
+            "statement_status = 'active' OR adopted_statement_extraction_id IS NOT NULL)",
+            (source_document_id,),
+        ).fetchone()["n"]
+        if adopted:
+            raise IntakeConflict(
+                "cannot reprocess OCR while adopted statements exist for this document"
+            )
+        pending = discardable_statements(conn, source_document_id)
+    finally:
+        conn.close()
+
+    discarded: dict[str, Any] | None = None
+    if pending and not discard_pending:
+        raise IntakeConflict(
+            "discard pending statements before reprocessing OCR "
+            f"({len(pending)} statement(s)); pass discard_pending=true to do both"
+        )
+    if pending and discard_pending:
+        discarded = discard_pending_for_document(
+            source_document_id, actor, reason=f"before OCR reprocess: {reason}"
+        )
+
+    job_row = _find_reprocess_job(source_document_id)
+    try:
+        job = import_jobs.decision_job(
+            job_row["job_id"],
+            decision="reprocess",
+            reason=reason,
+            created_by=actor,
+        )
+    except import_jobs.ImportJobConflict as exc:
+        raise IntakeConflict(str(exc)) from exc
+    except import_jobs.ImportJobError as exc:
+        raise IntakeError(str(exc)) from exc
+    return {
+        "source_document_id": source_document_id,
+        "job": job,
+        "discarded": discarded,
+    }
+
+
+def _assert_discardable(
+    conn: sqlite3.Connection, statement_id: str
+) -> dict[str, Any]:
+    row = conn.execute(
+        "SELECT statement_id, source_document_id, statement_status, "
+        "adopted_statement_extraction_id, notes "
+        "FROM statements WHERE statement_id = ?",
+        (statement_id,),
+    ).fetchone()
+    if row is None:
+        raise LookupError(f"statement not found: {statement_id}")
+    statement = dict(row)
+    if statement["statement_status"] == "active":
+        raise IntakeConflict("cannot discard an active/adopted statement")
+    if statement["statement_status"] == "excluded":
+        raise IntakeConflict("statement is already discarded")
+    if statement["adopted_statement_extraction_id"]:
+        raise IntakeConflict("cannot discard a statement with an adopted extraction")
+    review = conn.execute(
+        "SELECT review_status FROM statement_reviews WHERE statement_id = ?",
+        (statement_id,),
+    ).fetchone()
+    if review is not None and review["review_status"] == "reviewed":
+        raise IntakeConflict("cannot discard a reviewed statement; reopen first")
+    published = conn.execute(
+        "SELECT 1 FROM publication_records WHERE statement_id = ? "
+        "AND publication_status = 'published' LIMIT 1",
+        (statement_id,),
+    ).fetchone()
+    if published is not None:
+        raise IntakeConflict("cannot discard a published statement")
+    return statement
+
+
+def discard_pending_statement(
+    statement_id: str, actor: str, *, reason: str
+) -> dict[str, Any]:
+    """Unassign OCR rows and exclude a never-reviewed statement."""
+    reason = str(reason or "").strip()
+    if not reason:
+        raise IntakeError("a reason is required to discard a statement")
+    ensure_schema()
+    conn = _conn()
+    try:
+        statement = _assert_discardable(conn, statement_id)
+        source_document_id = statement["source_document_id"]
+
+        conn.execute(
+            "UPDATE statement_review_bindings SET binding_status='void', "
+            "voided_by=?, voided_at=? "
+            "WHERE statement_id=? AND binding_status='active'",
+            (actor, now(), statement_id),
+        )
+        conn.execute(
+            "UPDATE statement_row_adjustments SET adjustment_status='void', "
+            "voided_by=?, voided_at=?, void_reason=? "
+            "WHERE statement_id=? AND adjustment_status='active'",
+            (actor, now(), reason, statement_id),
+        )
+
+        unassigned = conn.execute(
+            """
+            UPDATE extracted_rows
+               SET row_disposition='unassigned',
+                   statement_id=NULL,
+                   statement_extraction_id=NULL,
+                   statement_order=NULL
+             WHERE statement_id = ?
+               AND row_disposition IN ('included', 'excluded_page_role')
+            """,
+            (statement_id,),
+        ).rowcount
+
+        # Rows excluded by page role for this document stay document-scoped;
+        # only statement-linked rows are cleared above. Also release latest-run
+        # rows that were marked excluded_page_role without a statement_id when
+        # the whole document is being unlocked via discard_pending_for_document.
+
+        rejected = conn.execute(
+            "UPDATE statement_extractions SET extraction_status='rejected', "
+            "notes = COALESCE(notes, '') || ? "
+            "WHERE statement_id = ? AND extraction_status <> 'rejected'",
+            (f"\n[discarded] {reason}", statement_id),
+        ).rowcount
+
+        note = (statement.get("notes") or "").strip()
+        discard_note = f"[discarded by {actor}] {reason}"
+        new_notes = f"{note}\n{discard_note}".strip() if note else discard_note
+        conn.execute(
+            "UPDATE statements SET statement_status='excluded', notes=? "
+            "WHERE statement_id=?",
+            (new_notes, statement_id),
+        )
+
+        _audit(
+            conn,
+            stable_id("statement_discarded", statement_id, VERSION, reason),
+            "statement_discarded",
+            actor,
+            source_document_id=source_document_id,
+            statement_id=statement_id,
+            before={
+                "statement_status": statement["statement_status"],
+            },
+            after={"statement_status": "excluded"},
+            details={
+                "rows_unassigned": unassigned,
+                "extractions_rejected": rejected,
+                "version": VERSION,
+            },
+            reason=reason,
+        )
+        conn.commit()
+        return {
+            "statement_id": statement_id,
+            "source_document_id": source_document_id,
+            "statement_status": "excluded",
+            "rows_unassigned": unassigned,
+            "extractions_rejected": rejected,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def discard_pending_for_document(
+    source_document_id: str, actor: str, *, reason: str
+) -> dict[str, Any]:
+    """Discard every discardable statement for a source document."""
+    reason = str(reason or "").strip()
+    if not reason:
+        raise IntakeError("a reason is required to discard pending statements")
+    ensure_schema()
+    conn = connect_v3()
+    try:
+        pending = discardable_statements(conn, source_document_id)
+        latest_run_id = _latest_run_id(conn, source_document_id)
+    finally:
+        conn.close()
+
+    discarded = []
+    for item in pending:
+        discarded.append(
+            discard_pending_statement(item["statement_id"], actor, reason=reason)
+        )
+
+    # Unlock latest-run rows that were marked excluded_page_role without a
+    # statement link so classify/build can run again after a full discard.
+    conn = _conn()
+    try:
+        released = 0
+        if latest_run_id:
+            released = conn.execute(
+                """
+                UPDATE extracted_rows
+                   SET row_disposition='unassigned',
+                       statement_id=NULL,
+                       statement_extraction_id=NULL,
+                       statement_order=NULL
+                 WHERE run_id = ?
+                   AND row_disposition = 'excluded_page_role'
+                   AND statement_id IS NULL
+                """,
+                (latest_run_id,),
+            ).rowcount
+            if released:
+                _audit(
+                    conn,
+                    stable_id(
+                        "page_rows_reopened", source_document_id, latest_run_id, VERSION
+                    ),
+                    "page_rows_reopened",
+                    actor,
+                    source_document_id=source_document_id,
+                    details={
+                        "rows_released": released,
+                        "run_id": latest_run_id,
+                        "version": VERSION,
+                    },
+                    reason=reason,
+                )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    return {
+        "source_document_id": source_document_id,
+        "discarded_count": len(discarded),
+        "statements": discarded,
+        "rows_released_from_page_role": released,
     }
 
 
@@ -722,6 +1254,21 @@ def _fingerprint(row: sqlite3.Row, document_page_id: str) -> str:
 
 
 def _page_run_id(conn: sqlite3.Connection, document_page_id: str) -> str:
+    """Prefer the document's latest extraction run when the page has that run."""
+    page = conn.execute(
+        "SELECT source_document_id FROM document_pages WHERE document_page_id = ?",
+        (document_page_id,),
+    ).fetchone()
+    if page is None:
+        raise IntakeError(f"page not found: {document_page_id}")
+    latest = _latest_run_id(conn, page["source_document_id"])
+    if latest is not None:
+        has_latest = conn.execute(
+            "SELECT 1 FROM page_extractions WHERE document_page_id = ? AND run_id = ?",
+            (document_page_id, latest),
+        ).fetchone()
+        if has_latest is not None:
+            return latest
     row = conn.execute(
         "SELECT run_id FROM page_extractions WHERE document_page_id = ? "
         "ORDER BY created_at DESC LIMIT 1",
@@ -878,8 +1425,8 @@ def build_statements(source_document_id: str, actor: str) -> dict[str, Any]:
                     )
                 rows = conn.execute(
                     "SELECT * FROM extracted_rows WHERE document_page_id = ? "
-                    "ORDER BY page_row_order",
-                    (page_id,),
+                    "AND run_id = ? ORDER BY page_row_order",
+                    (page_id, run_id),
                 ).fetchall()
                 for row in rows:
                     statement_order = (page_order - 1) * 100000 + int(row["page_row_order"])
@@ -952,11 +1499,13 @@ def build_statements(source_document_id: str, actor: str) -> dict[str, Any]:
             "AND (page_role <> 'financial_statement' OR classification_status <> 'approved')",
             (source_document_id,),
         ).fetchall()
+        latest_run_id = _latest_run_id(conn, source_document_id)
         for page in excluded_pages:
             updated = conn.execute(
                 "UPDATE extracted_rows SET row_disposition='excluded_page_role' "
-                "WHERE document_page_id = ? AND row_disposition = 'unassigned'",
-                (page["document_page_id"],),
+                "WHERE document_page_id = ? AND row_disposition = 'unassigned' "
+                "AND (? IS NULL OR run_id = ?)",
+                (page["document_page_id"], latest_run_id, latest_run_id),
             ).rowcount
             summary["rows_excluded"] += updated
             _audit(

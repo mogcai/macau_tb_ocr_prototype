@@ -43,6 +43,9 @@
           {% elif can_review_statement %}
           <span class="pill blocked">Resolve mapping first</span>
           {% endif %}
+          {% if can_review_statement and item.can_discard %}
+          <button class="discard-button secondary" data-statement="{{ item.statement_id }}" data-role="{{ role }}">Discard</button>
+          {% endif %}
         </td>
       </tr>
       {% else %}
@@ -188,6 +191,37 @@ document.querySelectorAll(".return-review-button").forEach((button) => {
     } else {
       const body = await response.json().catch(() => ({}));
       alert(body.detail || "Return to review failed");
+      button.disabled = false;
+    }
+  });
+});
+document.querySelectorAll(".discard-button").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const reason = window.prompt(
+      "Discard this pending statement and return its OCR rows to intake?\nProvide a reason:",
+      "Bad OCR — rebuild after reprocess"
+    );
+    if (reason === null) return;
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      alert("A reason is required");
+      return;
+    }
+    button.disabled = true;
+    const response = await fetch(`/api/review/${button.dataset.statement}/discard`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      },
+      body: JSON.stringify({reason: trimmed})
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Discard failed");
       button.disabled = false;
     }
   });

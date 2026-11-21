@@ -27,7 +27,8 @@ Open <http://127.0.0.1:8000>.
 8. Audit trail
 9. Read-only MVP snapshot visibility
 10. Import issue jobs (background V3 raw ingestion, URL or PDF upload)
-11. Import intake: page classification, reporting entity/date, statement creation
+11. Import intake: OCR quality preview, page classification, reporting
+   entity/date, statement creation, discard pending builds / OCR reprocess
 
 The 89-item user catalogue is seeded into `standard_items`; statement rows have
 `proposed` mappings from the first-pass auto-map.  Review Queue rows show
@@ -90,10 +91,12 @@ POST /api/imports/{job_id}/decision                # reprocess / new_version + r
 GET  /intake                                       # Import intake batch list
 GET  /intake/{source_document_id}                  # Page classification + build
 GET  /api/intake
-GET  /api/intake/{source_document_id}
+GET  /api/intake/{source_document_id}             # includes ocr_quality summary
 POST /api/intake/{source_document_id}/pages/{document_page_id}  # classify, reviewer+
 POST /api/intake/{source_document_id}/auto-classify             # apply PDF-text suggestions
 POST /api/intake/{source_document_id}/build                     # create statements
+POST /api/intake/{source_document_id}/reprocess                 # OCR reprocess via import job
+POST /api/intake/{source_document_id}/discard-pending           # discard all pending builds
 GET  /catalogue                                  # Standard List page
 POST /api/catalogue/items                        # create draft item, admin
 POST /api/catalogue/items/{id}/approve           # admin
@@ -105,6 +108,7 @@ POST /api/review/{statement_id}/rows/{row_id}/exclude # exclude/remove row, revi
 POST /api/review/{statement_id}/rows/{row_id}/map     # X-Workbench-Role: reviewer
 POST /api/review/{statement_id}/adjustments/{id}/restore
 POST /api/review/{statement_id}/review                 # X-Workbench-Role: reviewer
+POST /api/review/{statement_id}/discard                # discard pending (never reviewed)
 POST /api/statements/{statement_id}/adopt    # X-Workbench-Role: adopter
 POST /api/statements/{statement_id}/return-to-review  # X-Workbench-Role: adopter
 POST /api/statements/{statement_id}/publish  # X-Workbench-Role: publisher, 501 in v1
@@ -141,11 +145,19 @@ and the job log tail.
 ## Import intake
 
 A finished import creates raw rows only. `/intake` lists documents that still
-have `proposed` pages or `unassigned` rows. Bank names and statement dates are
-already extracted from the PDF text into the run's `documents.csv`, so the page
-shows a suggested entity (exact or fuzzy match against approved canonical names
-and aliases) and date. **Apply PDF suggestions** classifies every proposed page
-at once; the reviewer still confirms each match before building.
+have `proposed` pages or `unassigned` rows. The batch page shows an **OCR
+quality preview** from the latest run folder (`tb_rows.csv` / `documents.csv` /
+`run_report.json`): row counts, empty-label rate, amount-looking labels, and
+top review reasons. Warnings are advisory; classify/build stay available.
+**Reprocess OCR** (import capability) queues the matching import job when no
+adopted statement exists; pending builds must be discarded first (or use
+`discard_pending` on the reprocess call).
+
+Bank names and statement dates are already extracted from the PDF text into the
+run's `documents.csv`, so the page shows a suggested entity (exact or fuzzy
+match against approved canonical names and aliases) and date. **Apply PDF
+suggestions** classifies every proposed page at once; the reviewer still
+confirms each match before building.
 
 For each page a reviewer:
 
@@ -160,6 +172,8 @@ be classified manually.
 Decisions are written to `document_pages` plus `page_statement_decisions`
 (migration `database/v3/017_page_statement_decisions.sql`) and audited in
 `audit_events`. Every page must be classified before **Build statements** runs.
+Intake row counts and build assignment use only the **latest** extraction run
+for that document; older runs stay in the DB as audit evidence.
 
 Building creates `statements`, `statement_extractions`, `statement_pages` and
 `statement_rows`, assigns the raw `extracted_rows` (`included`), and marks rows
@@ -172,6 +186,12 @@ After the build, the existing first-pass auto-map
 (`tools/p1_auto_map_standard_items.py --apply`) creates **proposed** Standard
 Item mappings only. It never approves a mapping. Statements then appear in the
 Review Queue like any other statement.
+
+**Discard pending** (review capability) undoes a never-reviewed /
+never-adopted build: unassigns `extracted_rows` (migration `018`), rejects the
+extraction, marks the statement `excluded`, and leaves `statement_rows` as a
+historical snapshot. Excluded statements do not appear in the Review Queue.
+Reviewed, adopted, active, or published statements cannot be discarded this way.
 
 Identity rules: `reporting_scope` comes from the approved entity type, currency
 is `MOP` and `unit_scale` is 1 under the Macau domain rule, and the identity key

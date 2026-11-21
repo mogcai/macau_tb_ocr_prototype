@@ -54,17 +54,38 @@ def _insert_fixture(db: Path, run_dir: Path) -> tuple[dict, dict]:
     with (run_dir / "documents.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle,
-            fieldnames=["pdf_page", "bank_name", "statement_date", "ocr_status", "skip_reason"],
+            fieldnames=[
+                "pdf_page", "bank_name", "statement_date", "ocr_status",
+                "skip_reason", "label_column_x0",
+            ],
         )
         writer.writeheader()
         writer.writerow({"pdf_page": 1, "bank_name": "", "statement_date": "",
-                         "ocr_status": "skipped", "skip_reason": "not_tb_page"})
+                         "ocr_status": "skipped", "skip_reason": "not_tb_page",
+                         "label_column_x0": ""})
         writer.writerow({"pdf_page": 2, "bank_name": _entity_name(first),
                          "statement_date": "2099-12-31", "ocr_status": "completed",
-                         "skip_reason": ""})
+                         "skip_reason": "", "label_column_x0": "0.005"})
         writer.writerow({"pdf_page": 3, "bank_name": _entity_name(second),
                          "statement_date": "2099-12-31", "ocr_status": "completed",
-                         "skip_reason": ""})
+                         "skip_reason": "", "label_column_x0": "0.005"})
+    with (run_dir / "tb_rows.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["pdf_page", "label_raw", "debit_raw", "credit_raw", "review_reason"],
+        )
+        writer.writeheader()
+        writer.writerow({"pdf_page": 2, "label_raw": "利息收入", "debit_raw": "1.00",
+                         "credit_raw": "", "review_reason": ""})
+        writer.writerow({"pdf_page": 2, "label_raw": "現金", "debit_raw": "2.00",
+                         "credit_raw": "", "review_reason": "low_ocr_confidence"})
+        writer.writerow({"pdf_page": 3, "label_raw": "總額", "debit_raw": "3.00",
+                         "credit_raw": "3.00", "review_reason": ""})
+    (run_dir / "run_report.json").write_text(
+        '{"tb_rows_extracted": 3, "rows_for_review": 1, "tb_pages_detected": 2, '
+        '"ocr_engine": "vision", "vision_level": "accurate"}',
+        encoding="utf-8",
+    )
     conn = sqlite3.connect(db)
     try:
         conn.execute("PRAGMA foreign_keys = ON")
@@ -123,17 +144,48 @@ def _insert_fixture(db: Path, run_dir: Path) -> tuple[dict, dict]:
     return first, second
 
 
+def _bootstrap_v3_fixture_db(dest: Path) -> None:
+    """Copy the operational DB, or build a minimal schema + two entities."""
+    if V3_DB.is_file():
+        shutil.copyfile(V3_DB, dest)
+        return
+    from tools.build_v3_db import apply_schema, seed_metadata
+
+    conn = sqlite3.connect(dest)
+    try:
+        apply_schema(conn)
+        seed_metadata(conn, baseline=None, artifact_manifest=None)
+        for index, (key, zh, pt) in enumerate(
+            (
+                ("bank_fixture_a", "測試銀行甲", "Banco Fixture A"),
+                ("bank_fixture_b", "測試銀行乙", "Banco Fixture B"),
+            ),
+            start=1,
+        ):
+            conn.execute(
+                "INSERT INTO reporting_entities("
+                "entity_id, entity_key, entity_type, registry_status, "
+                "canonical_zh, canonical_pt, created_at) "
+                "VALUES (?, ?, 'bank', 'approved', ?, ?, ?)",
+                (f"entity-fixture-{index}", key, zh, pt, NOW),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 class _IntakeTestBase(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.db = Path(self.tempdir.name) / "v3.sqlite"
-        shutil.copyfile(V3_DB, self.db)
+        _bootstrap_v3_fixture_db(self.db)
         self.patchers = [
             mock.patch.object(wdb, "V3_DB", self.db),
             mock.patch.object(intake, "_auto_map", return_value={"status": "stubbed"}),
         ]
         for patcher in self.patchers:
             patcher.start()
+        intake._initialised.clear()
         intake.ensure_schema()
         self.run_dir = Path(self.tempdir.name) / "run"
         self.first, self.second = _insert_fixture(self.db, self.run_dir)
@@ -287,6 +339,85 @@ class IntakeTests(_IntakeTestBase):
                 2, page_role="other", decision="reject", note="late change",
             )
 
+    def test_ocr_quality_preview_is_attached(self) -> None:
+        quality = self.detail["ocr_quality"]
+        self.assertIsNotNone(quality)
+        self.assertEqual(quality["rows"], 3)
+        self.assertEqual(quality["review_rows"], 1)
+        self.assertEqual(quality["empty_labels"], 0)
+        self.assertEqual(quality["amount_in_label"], 0)
+        self.assertFalse(quality["warning"])
+        self.assertEqual(self.detail["latest_run_id"], "run-intake-fixture")
+
+    def test_discard_pending_statement_unassigns_rows(self) -> None:
+        self._classify_all()
+        summary = intake.build_statements(DOC_ID, "tester")
+        statement_id = summary["statements"][0]["statement_id"]
+        self.assertEqual(self._rows(
+            "SELECT COUNT(*) FROM extracted_rows WHERE statement_id = ?",
+            (statement_id,),
+        ), summary["statements"][0]["rows"])
+
+        snapshot_rows = self._rows(
+            "SELECT COUNT(*) FROM statement_rows WHERE statement_id = ?",
+            (statement_id,),
+        )
+        self.assertGreater(snapshot_rows, 0)
+
+        result = intake.discard_pending_statement(
+            statement_id, "tester", reason="Bad OCR — discard for reprocess"
+        )
+        self.assertEqual(result["statement_status"], "excluded")
+        self.assertGreater(result["rows_unassigned"], 0)
+        self.assertEqual(self._rows(
+            "SELECT COUNT(*) FROM extracted_rows WHERE statement_id = ?",
+            (statement_id,),
+        ), 0)
+        self.assertEqual(self._rows(
+            "SELECT COUNT(*) FROM extracted_rows WHERE row_disposition = 'unassigned' "
+            "AND extracted_row_id IN ("
+            "SELECT extracted_row_id FROM statement_rows WHERE statement_id = ?)",
+            (statement_id,),
+        ), snapshot_rows)
+        self.assertEqual(self._rows(
+            "SELECT COUNT(*) FROM statement_rows WHERE statement_id = ?",
+            (statement_id,),
+        ), snapshot_rows)
+        self.assertEqual(self._rows(
+            "SELECT COUNT(*) FROM statements WHERE statement_id = ? "
+            "AND statement_status = 'excluded'",
+            (statement_id,),
+        ), 1)
+        queue_ids = {item["statement_id"] for item in service.review_queue()}
+        self.assertNotIn(statement_id, queue_ids)
+
+        detail = intake.batch_detail(DOC_ID)
+        unlocked = [
+            item for item in detail["pages"]
+            if item["included_rows"] == 0 and item["total_rows"] > 0
+        ]
+        self.assertTrue(unlocked)
+
+    def test_discard_refuses_reviewed_statement(self) -> None:
+        self._classify_all()
+        summary = intake.build_statements(DOC_ID, "tester")
+        statement_id = summary["statements"][0]["statement_id"]
+        conn = sqlite3.connect(self.db)
+        try:
+            conn.execute(
+                "INSERT INTO statement_reviews(statement_id, review_status, "
+                "reviewed_by, reviewed_at, updated_at) "
+                "VALUES (?, 'reviewed', 'tester', ?, ?)",
+                (statement_id, NOW, NOW),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        with self.assertRaises(intake.IntakeConflict):
+            intake.discard_pending_statement(
+                statement_id, "tester", reason="should fail"
+            )
+
 
 class IntakeMatcherTests(unittest.TestCase):
     def test_exact_and_split_matches(self) -> None:
@@ -389,6 +520,79 @@ class IntakeApiTests(_IntakeTestBase):
         self.assertIn("Import intake", page.text)
         batch_page = self.client.get(f"/intake/{DOC_ID}")
         self.assertEqual(batch_page.status_code, 200)
+        self.assertIn("OCR quality preview", batch_page.text)
+
+    def test_discard_endpoint_and_reprocess_requires_reason(self) -> None:
+        self.client.post(
+            f"/api/intake/{DOC_ID}/auto-classify",
+            json={"classify_empty_pages": True},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        built = self.client.post(
+            f"/api/intake/{DOC_ID}/build",
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(built.status_code, 200, built.text)
+        statement_id = built.json()["statements"][0]["statement_id"]
+
+        refused = self.client.post(
+            f"/api/review/{statement_id}/discard",
+            json={"reason": ""},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(refused.status_code, 400)
+
+        discarded = self.client.post(
+            f"/api/review/{statement_id}/discard",
+            json={"reason": "OCR misaligned columns"},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(discarded.status_code, 200, discarded.text)
+        self.assertEqual(discarded.json()["statement_status"], "excluded")
+
+        with mock.patch.object(
+            intake, "_find_reprocess_job",
+            return_value={"job_id": "job-fixture"},
+        ), mock.patch("workbench.import_jobs.decision_job") as decide:
+            decide.return_value = {"job_id": "job-new", "status": "queued"}
+            response = self.client.post(
+                f"/api/intake/{DOC_ID}/reprocess",
+                json={"reason": "column layout fix", "discard_pending": True},
+                headers={"X-Workbench-Role": "reviewer"},
+            )
+        self.assertEqual(response.status_code, 202, response.text)
+        decide.assert_called_once()
+        self.assertEqual(decide.call_args.kwargs["decision"], "reprocess")
+        self.assertEqual(decide.call_args.kwargs["reason"], "column layout fix")
+
+
+class OcrQualityHelperTests(unittest.TestCase):
+    def test_summarize_run_dir_flags_amount_in_label(self) -> None:
+        from workbench.ocr_quality import summarize_run_dir
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with (root / "tb_rows.csv").open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(
+                    handle,
+                    fieldnames=["pdf_page", "label_raw", "debit_raw", "credit_raw",
+                                "review_reason"],
+                )
+                writer.writeheader()
+                writer.writerow({
+                    "pdf_page": 1, "label_raw": "140,191,384.20",
+                    "debit_raw": "", "credit_raw": "", "review_reason": "",
+                })
+                writer.writerow({
+                    "pdf_page": 1, "label_raw": "",
+                    "debit_raw": "1.00", "credit_raw": "",
+                    "review_reason": "amount_without_account_label",
+                })
+            summary = summarize_run_dir(root)
+            self.assertEqual(summary["rows"], 2)
+            self.assertEqual(summary["amount_in_label"], 1)
+            self.assertEqual(summary["empty_labels"], 1)
+            self.assertTrue(summary["warning"])
 
 
 if __name__ == "__main__":
