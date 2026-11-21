@@ -50,6 +50,15 @@ ISSUE_RE = re.compile(r"issue(\d+)_(\d{4})", re.I)
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 LATIN_RE = re.compile(r"[A-Za-z]")
 DASH_RE = re.compile(r"^[\-–—−－]+$")
+ISSUE_KEY_RE = re.compile(r"^(\d{4})-(\d{1,2})$")
+
+
+class EvidenceChangedError(ValueError):
+    """The same run path now contains different OCR evidence."""
+
+
+class PageCoverageError(ValueError):
+    """The run artifacts do not cover the PDF pages exactly once."""
 
 
 def now() -> str:
@@ -199,13 +208,146 @@ def load_legacy_runs(path: Path) -> dict[str, str]:
         connection.close()
 
 
-def issue_identity(run_dir: Path) -> tuple[str, str]:
+def canonical_issue_key(value: Any) -> str:
+    match = ISSUE_KEY_RE.fullmatch(text(value))
+    if not match:
+        raise ValueError(f"invalid issue key: {value!r}")
+    year, issue = int(match.group(1)), int(match.group(2))
+    if not (1900 <= year <= 2999 and 1 <= issue <= 99):
+        raise ValueError(f"issue key out of range: {value!r}")
+    return f"{year}-{issue:02d}"
+
+
+def directory_issue_key(run_dir: Path) -> str | None:
     match = ISSUE_RE.search(run_dir.name)
     if not match:
-        raise ValueError(f"cannot parse issue number/year from {run_dir.name}")
+        return None
     issue, year = match.group(1), match.group(2)
-    issue_key = f"{year}-{int(issue):02d}"
-    return issue_key, issue_key
+    return f"{year}-{int(issue):02d}"
+
+
+def read_manifest(run_dir: Path) -> dict[str, Any]:
+    return read_json(run_dir / "import_manifest.json")
+
+
+def resolve_issue_key(
+    run_dir: Path,
+    manifest: dict[str, Any],
+    explicit: str | None,
+) -> str:
+    manifest_value = text(manifest.get("issue_key"))
+    manifest_key = canonical_issue_key(manifest_value) if manifest_value else None
+    dir_key = directory_issue_key(run_dir)
+    if explicit:
+        key = canonical_issue_key(explicit)
+        if manifest_key and manifest_key != key:
+            raise ValueError(
+                f"--issue-key {key} disagrees with manifest {manifest_key}"
+            )
+        if dir_key and dir_key != key:
+            raise ValueError(
+                f"--issue-key {key} disagrees with run directory {dir_key}"
+            )
+        return key
+    if manifest_key:
+        if dir_key and dir_key != manifest_key:
+            raise ValueError(
+                f"manifest issue {manifest_key} disagrees with run directory {dir_key}"
+            )
+        return manifest_key
+    if dir_key:
+        return dir_key
+    raise ValueError(f"cannot establish issue key from {run_dir.name}")
+
+
+def manifest_is_strict(manifest: dict[str, Any]) -> bool:
+    return (
+        manifest.get("manifest_version") == 2
+        and text(manifest.get("target")) == "v3"
+        and text(manifest.get("manifest_origin") or "written") == "written"
+    )
+
+
+def manifest_source_url(manifest: dict[str, Any]) -> str:
+    return text(manifest.get("source_url") or manifest.get("source"))
+
+
+def evidence_fingerprint(run_dir: Path) -> str:
+    parts = ["import-evidence-v1"]
+    for name in ("run_report.json", "documents.csv", "tb_rows.csv"):
+        path = run_dir / name
+        if path.is_file():
+            parts.append(name + "\0" + sha256_file(path))
+        else:
+            parts.append(name + "\0MISSING")
+    return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+
+
+def page_number(value: Any) -> int | None:
+    raw = text(value)
+    if not raw.isdigit():
+        return None
+    return int(raw)
+
+
+def validate_page_coverage(
+    report: dict[str, Any],
+    documents: list[dict[str, str]],
+    rows_csv: list[dict[str, str]],
+    *,
+    strict: bool,
+) -> dict[str, Any]:
+    pdf_pages = maybe_int(report.get("pdf_pages"))
+    document_pages = sorted({
+        page for row in documents
+        if (page := page_number(row.get("pdf_page"))) is not None
+    })
+    observed_pages = sorted({
+        page for row in [*documents, *rows_csv]
+        if (page := page_number(row.get("pdf_page"))) is not None
+    })
+    statuses = [text(row.get("ocr_status")).lower() for row in documents]
+    completed = sum(1 for status in statuses if status in ("completed", "extracted_only"))
+    failed = sum(1 for status in statuses if status == "failed")
+    skipped = sum(1 for status in statuses if status in ("skipped", "not_applicable"))
+
+    if strict:
+        if pdf_pages is None or pdf_pages <= 0:
+            raise PageCoverageError("run_report.pdf_pages is missing or invalid")
+        expected = list(range(1, pdf_pages + 1))
+        if document_pages != expected:
+            raise PageCoverageError(
+                f"documents.csv pages do not cover 1-{pdf_pages}: {document_pages[:5]}"
+            )
+        if len(documents) != pdf_pages:
+            raise PageCoverageError(
+                f"documents.csv has {len(documents)} rows for {pdf_pages} pages"
+            )
+        if any(page > pdf_pages for page in observed_pages):
+            raise PageCoverageError(
+                f"OCR output contains pages beyond pdf_pages={pdf_pages}"
+            )
+        invalid = [status for status in statuses if status not in
+                   ("completed", "failed", "skipped", "not_applicable", "extracted_only")]
+        if invalid:
+            raise PageCoverageError(f"invalid ocr_status values: {sorted(set(invalid))}")
+        coverage = "full"
+    elif pdf_pages is None or pdf_pages <= 0:
+        coverage = "unknown"
+    else:
+        coverage = (
+            "full" if len(observed_pages) == pdf_pages and failed == 0
+            else "legacy_partial"
+        )
+
+    return {
+        "pdf_pages": pdf_pages or (max(observed_pages) if observed_pages else 1),
+        "ocr_pages_observed": len(observed_pages),
+        "ocr_completed_pages": completed,
+        "ocr_skipped_pages": skipped,
+        "ocr_failed_pages": failed,
+        "ocr_page_coverage": coverage,
+    }
 
 
 def insert_if_absent(
@@ -225,6 +367,31 @@ def insert_if_absent(
     return True
 
 
+def merge_config_json(raw: Any, updates: dict[str, Any]) -> str:
+    config: dict[str, Any] = {}
+    if text(raw):
+        try:
+            loaded = json.loads(text(raw))
+        except json.JSONDecodeError as exc:
+            raise ValueError("extraction_runs.config_json is invalid JSON") from exc
+        if not isinstance(loaded, dict):
+            raise ValueError("extraction_runs.config_json is not a JSON object")
+        config = loaded
+    config.update(updates)
+    return json.dumps(config, ensure_ascii=False, sort_keys=True)
+
+
+def find_existing_run(
+    conn: sqlite3.Connection,
+    run_report_path: Path,
+) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT run_id, source_document_id, config_json, run_status "
+        "FROM extraction_runs WHERE run_report_uri = ?",
+        (str(run_report_path.resolve()),),
+    ).fetchone()
+
+
 def get_or_create_document(
     conn: sqlite3.Connection,
     *,
@@ -233,6 +400,7 @@ def get_or_create_document(
     source_pdf: str,
     sha256: str,
     page_count: int,
+    source_url: str = "",
 ) -> str:
     document_key = f"{issue_key}:{sha256[:16]}"
     existing = conn.execute(
@@ -242,7 +410,17 @@ def get_or_create_document(
     if existing:
         if existing["sha256"] != sha256:
             raise ValueError(f"source document hash changed for {document_key}")
-        return str(existing["source_document_id"])
+        document_id = str(existing["source_document_id"])
+        conn.execute(
+            """
+            UPDATE source_documents
+            SET source_url = COALESCE(source_url, ?),
+                page_count = ?
+            WHERE source_document_id = ?
+            """,
+            (source_url or None, page_count, document_id),
+        )
+        return document_id
     document_id = stable_id("document", document_key, sha256)
     conn.execute(
         """
@@ -252,7 +430,7 @@ def get_or_create_document(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            document_id, gazette_issue_id, document_key, None,
+            document_id, gazette_issue_id, document_key, source_url or None,
             Path(source_pdf).name, source_pdf, sha256, page_count, now(), "application/pdf",
         ),
     )
@@ -294,14 +472,48 @@ def get_or_create_run(
     source_document_id: str,
     report: dict[str, Any],
     run_report_path: Path,
+    config_updates: dict[str, Any],
+    run_status: str | None,
+    fingerprint: str,
+    existing_run: sqlite3.Row | None = None,
 ) -> None:
-    existing = conn.execute(
-        "SELECT source_document_id FROM extraction_runs WHERE run_id = ?", (run_id,)
-    ).fetchone()
-    if existing:
-        if existing["source_document_id"] != source_document_id:
+    if existing_run is None:
+        existing_run = conn.execute(
+            "SELECT run_id, source_document_id, config_json, run_status "
+            "FROM extraction_runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+    if existing_run:
+        if existing_run["source_document_id"] != source_document_id:
             raise ValueError(f"run {run_id} already belongs to another document")
+        config = {}
+        if text(existing_run["config_json"]):
+            try:
+                config = json.loads(text(existing_run["config_json"]))
+            except json.JSONDecodeError as exc:
+                raise ValueError("extraction_runs.config_json is invalid JSON") from exc
+            if not isinstance(config, dict):
+                raise ValueError("extraction_runs.config_json is not a JSON object")
+        stored = text(config.get("evidence_fingerprint"))
+        if stored and stored != fingerprint:
+            raise EvidenceChangedError(
+                f"evidence changed for run {run_id}: "
+                f"stored {stored}, current {fingerprint}"
+            )
+        updates = dict(config_updates)
+        updates["evidence_fingerprint"] = fingerprint
+        updates["evidence_fingerprint_version"] = 1
+        conn.execute(
+            "UPDATE extraction_runs SET config_json = ? WHERE run_id = ?",
+            (merge_config_json(existing_run["config_json"], updates), run_id),
+        )
+        if run_status is not None:
+            conn.execute(
+                "UPDATE extraction_runs SET run_status = ? WHERE run_id = ?",
+                (run_status, run_id),
+            )
         return
+
     engine = text(report.get("ocr_engine"))
     engine_version = text(report.get("ocr_version"))
     config = {
@@ -315,18 +527,22 @@ def get_or_create_run(
         )
         if key in report
     }
+    config.update(config_updates)
+    config["evidence_fingerprint"] = fingerprint
+    config["evidence_fingerprint_version"] = 1
     conn.execute(
         """
         INSERT INTO extraction_runs(
             run_id, source_document_id, app_version, ocr_engine_versions,
             config_json, started_at, completed_at, run_status, run_report_uri
-        ) VALUES (?, ?, ?, ?, ?, NULL, NULL, 'completed', ?)
+        ) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?)
         """,
         (
             run_id, source_document_id, text(report.get("app_version")),
             json.dumps({"engine": engine, "version": engine_version}, ensure_ascii=False),
             json.dumps(config, ensure_ascii=False, sort_keys=True),
-            str(run_report_path),
+            run_status or "completed",
+            str(run_report_path.resolve()),
         ),
     )
 
@@ -425,6 +641,7 @@ def replay_run(
     run_dir: Path,
     *,
     legacy_runs: dict[str, str],
+    issue_key_override: str | None = None,
 ) -> dict[str, Any]:
     report = read_json(run_dir / "run_report.json")
     documents = read_csv(run_dir / "documents.csv")
@@ -432,7 +649,18 @@ def replay_run(
     if not documents and not rows_csv:
         raise ValueError(f"no documents.csv or tb_rows.csv in {run_dir}")
 
-    issue_key, issue_id = issue_identity(run_dir)
+    manifest = read_manifest(run_dir)
+    manifest_target = text(manifest.get("target"))
+    if manifest_target and manifest_target != "v3":
+        raise ValueError(f"manifest target is not v3: {manifest_target}")
+    strict = manifest_is_strict(manifest)
+    issue_key = resolve_issue_key(run_dir, manifest, issue_key_override)
+    coverage = validate_page_coverage(
+        report, documents, rows_csv, strict=strict
+    )
+    pdf_pages = int(coverage["pdf_pages"])
+    source_url = manifest_source_url(manifest)
+
     publication_date = first_value(documents, "publication_date") or first_value(rows_csv, "publication_date")
     gazette_issue_id = stable_id("gazette_issue", issue_key)
     insert_if_absent(
@@ -443,11 +671,17 @@ def replay_run(
             "gazette_issue_id": gazette_issue_id,
             "issue_key": issue_key,
             "publication_date": publication_date or None,
-            "source_url": None,
+            "source_url": source_url or None,
             "discovered_at": now(),
             "notes": f"replayed from {run_dir.name}",
         },
     )
+    if source_url:
+        conn.execute(
+            "UPDATE gazette_issues SET source_url = COALESCE(source_url, ?) "
+            "WHERE gazette_issue_id = ?",
+            (source_url, gazette_issue_id),
+        )
 
     source_pdf = text(report.get("source_pdf"))
     sha256 = text(report.get("source_pdf_sha256"))
@@ -456,10 +690,19 @@ def replay_run(
     if not sha256:
         raise ValueError(f"missing source PDF SHA-256 in {run_dir}")
 
+    document_key = f"{issue_key}:{sha256[:16]}"
+    existing_document = conn.execute(
+        "SELECT page_count FROM source_documents WHERE document_key = ?",
+        (document_key,),
+    ).fetchone()
+    legacy_page_count = (
+        existing_document["page_count"] if existing_document is not None and not strict
+        else None
+    )
+
     page_numbers = sorted({
-        int(row["pdf_page"])
-        for row in [*documents, *rows_csv]
-        if text(row.get("pdf_page")).isdigit()
+        page for row in [*documents, *rows_csv]
+        if (page := page_number(row.get("pdf_page"))) is not None
     })
     source_document_id = get_or_create_document(
         conn,
@@ -467,23 +710,67 @@ def replay_run(
         issue_key=issue_key,
         source_pdf=source_pdf or str(run_dir),
         sha256=sha256,
-        page_count=len(page_numbers) or maybe_int(report.get("pdf_pages")) or 1,
+        page_count=pdf_pages,
+        source_url=source_url,
     )
 
-    run_id = legacy_runs.get(run_dir.name)
-    if not run_id:
-        run_id = stable_id("run", source_document_id, text(report.get("app_version")), run_dir.name)
+    run_report_path = run_dir / "run_report.json"
+    existing_run = find_existing_run(conn, run_report_path)
+    if existing_run is not None:
+        run_id = str(existing_run["run_id"])
+    else:
+        run_id = legacy_runs.get(run_dir.name)
+        if not run_id:
+            run_id = stable_id(
+                "run", source_document_id, text(report.get("app_version")),
+                run_dir.name,
+            )
+        existing_run = conn.execute(
+            "SELECT run_id, source_document_id, config_json, run_status "
+            "FROM extraction_runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+
+    fingerprint = evidence_fingerprint(run_dir)
+    if strict:
+        run_status = (
+            "partial" if coverage["ocr_failed_pages"] > 0 else "completed"
+        )
+    else:
+        run_status = None if existing_run is not None else "completed"
+
+    config_updates: dict[str, Any] = {
+        "pdf_pages": pdf_pages,
+        "ocr_pages_observed": coverage["ocr_pages_observed"],
+        "ocr_completed_pages": coverage["ocr_completed_pages"],
+        "ocr_skipped_pages": coverage["ocr_skipped_pages"],
+        "ocr_failed_pages": coverage["ocr_failed_pages"],
+        "ocr_page_coverage": coverage["ocr_page_coverage"],
+        "source_pdf_bytes": maybe_int(report.get("source_pdf_size")),
+        "import_manifest": (
+            str(run_dir / "import_manifest.json")
+            if (run_dir / "import_manifest.json").is_file() else None
+        ),
+        "manifest_origin": "written" if strict else "reconstructed",
+        "run_dir": str(run_dir.resolve()),
+    }
+    if legacy_page_count is not None:
+        config_updates["legacy_ocr_page_count"] = legacy_page_count
     get_or_create_run(
         conn,
         run_id=run_id,
         source_document_id=source_document_id,
         report=report,
-        run_report_path=run_dir / "run_report.json",
+        run_report_path=run_report_path,
+        config_updates=config_updates,
+        run_status=run_status,
+        fingerprint=fingerprint,
+        existing_run=existing_run,
     )
 
     document_by_page: dict[int, dict[str, str]] = {}
     for row in documents:
-        page = maybe_int(row.get("pdf_page"))
+        page = page_number(row.get("pdf_page"))
         if page is not None:
             document_by_page.setdefault(page, row)
 
@@ -509,10 +796,21 @@ def replay_run(
 
     rows_by_page: dict[int, list[tuple[int, dict[str, str]]]] = defaultdict(list)
     for index, row in enumerate(rows_csv, start=1):
-        page = maybe_int(row.get("pdf_page"))
+        page = page_number(row.get("pdf_page"))
         if page is None:
             continue
         rows_by_page[page].append((index, row))
+    if strict:
+        status_by_page = {
+            page: text(row.get("ocr_status")).lower()
+            for row in documents
+            if (page := page_number(row.get("pdf_page"))) is not None
+        }
+        for page in rows_by_page:
+            if status_by_page.get(page) in ("failed", "skipped", "not_applicable"):
+                raise PageCoverageError(
+                    f"page {page} is {status_by_page[page]} but has extracted rows"
+                )
 
     inserted = 0
     skipped = 0
@@ -590,12 +888,24 @@ def replay_run(
         "run_id": run_id,
         "run_dir": str(run_dir),
         "issue_key": issue_key,
+        "gazette_issue_id": gazette_issue_id,
+        "source_document_id": source_document_id,
         "pages": len(page_numbers),
         "page_extractions": len(page_extraction_ids),
+        "pdf_pages": pdf_pages,
+        "ocr_pages_observed": coverage["ocr_pages_observed"],
+        "ocr_completed_pages": coverage["ocr_completed_pages"],
+        "ocr_skipped_pages": coverage["ocr_skipped_pages"],
+        "ocr_failed_pages": coverage["ocr_failed_pages"],
+        "ocr_page_coverage": coverage["ocr_page_coverage"],
+        "run_status": run_status or (
+            str(existing_run["run_status"]) if existing_run is not None else "completed"
+        ),
         "rows_inserted": inserted,
         "rows_skipped": skipped,
+        "already_present": existing_run is not None and inserted == 0,
+        "evidence_fingerprint": fingerprint,
     }
-
 
 def first_value(rows: Iterable[dict[str, str]], column: str) -> str:
     for row in rows:
@@ -607,10 +917,18 @@ def first_value(rows: Iterable[dict[str, str]], column: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    parser.add_argument(
+        "--v3-db", "--db", dest="db", type=Path, default=DEFAULT_DB,
+        help="V3 database (--db is a deprecated alias)",
+    )
     parser.add_argument("--runs-dir", type=Path, default=DEFAULT_RUNS)
     parser.add_argument("--run-dir", type=Path, action="append", default=[])
     parser.add_argument("--v5-db", type=Path, default=DEFAULT_V5)
+    parser.add_argument(
+        "--no-v5-lookup", action="store_true",
+        help="never open the V5 database for legacy run IDs",
+    )
+    parser.add_argument("--issue-key", default=None)
     parser.add_argument("--log", type=Path, default=None)
     args = parser.parse_args()
 
@@ -625,7 +943,10 @@ def main() -> int:
     if not run_dirs:
         parser.error("no run directories found")
 
-    legacy_runs = load_legacy_runs(args.v5_db.expanduser().resolve())
+    legacy_runs = (
+        {} if args.no_v5_lookup
+        else load_legacy_runs(args.v5_db.expanduser().resolve())
+    )
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -633,8 +954,15 @@ def main() -> int:
     try:
         for run_dir in run_dirs:
             try:
-                result = replay_run(conn, run_dir, legacy_runs=legacy_runs)
-                result["status"] = "ok"
+                result = replay_run(
+                    conn,
+                    run_dir,
+                    legacy_runs=legacy_runs,
+                    issue_key_override=args.issue_key,
+                )
+                result["status"] = (
+                    "already_present" if result.get("already_present") else "ok"
+                )
                 conn.commit()
             except Exception as exc:  # noqa: BLE001 - keep per-run failures visible
                 conn.rollback()
@@ -652,7 +980,7 @@ def main() -> int:
             log_rows.append(result)
             print(json.dumps(result, ensure_ascii=False))
 
-        if all(row["status"] == "ok" for row in log_rows):
+        if all(row["status"] in ("ok", "already_present") for row in log_rows):
             conn.execute(
                 "INSERT INTO schema_meta(key, value, updated_at) VALUES('last_successful_replay_at', ?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
@@ -669,13 +997,16 @@ def main() -> int:
                 handle,
                 fieldnames=[
                     "run_id", "run_dir", "issue_key", "pages", "page_extractions",
-                    "rows_inserted", "rows_skipped", "status", "error",
+                    "pdf_pages", "ocr_pages_observed", "ocr_completed_pages",
+                    "ocr_skipped_pages", "ocr_failed_pages", "ocr_page_coverage",
+                    "run_status", "rows_inserted", "rows_skipped",
+                    "already_present", "evidence_fingerprint", "status", "error",
                 ],
                 extrasaction="ignore",
             )
             writer.writeheader()
             writer.writerows(log_rows)
-    return 0 if all(row["status"] == "ok" for row in log_rows) else 1
+    return 0 if all(row["status"] in ("ok", "already_present") for row in log_rows) else 1
 
 
 if __name__ == "__main__":

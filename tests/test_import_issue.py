@@ -95,6 +95,60 @@ class ImportIssueTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             imp.fetch_pdf(str(source), self.root / "input")
 
+    def test_v5_cli_defaults_are_preserved(self):
+        args = imp.build_parser().parse_args(["https://example.test/a.pdf"])
+        self.assertEqual(args.target, "v5")
+        self.assertIsNone(args.db)
+        self.assertIsNone(args.input_dir)
+        self.assertEqual(imp.resolve_v5_input_dir(None), Path("input"))
+        self.assertEqual(
+            imp.resolve_v5_db_path(None),
+            (Path.cwd() / "data" / "macau_balancete.sqlite").resolve(),
+        )
+
+    def test_v5_main_download_only_still_works(self):
+        source = self.root / "source.pdf"
+        source.write_bytes(self.pdf_bytes)
+        input_dir = self.root / "input"
+        out_dir = self.root / "out"
+        with mock.patch("builtins.print"):
+            code = imp.main([
+                str(source),
+                "--input-dir", str(input_dir),
+                "--outdir", str(out_dir),
+                "--download-only",
+            ])
+        self.assertEqual(code, 0)
+        self.assertTrue((out_dir / "import_manifest.json").is_file())
+        self.assertFalse((out_dir / "documents.csv").exists())
+
+    def test_ocr_only_download_does_not_touch_db(self):
+        source = self.root / "source.pdf"
+        source.write_bytes(self.pdf_bytes)
+        input_dir = self.root / "input"
+        out_dir = self.root / "ocr_out"
+        with mock.patch("builtins.print"):
+            code = imp.main([
+                str(source),
+                "--target", "ocr-only",
+                "--input-dir", str(input_dir),
+                "--outdir", str(out_dir),
+                "--download-only",
+            ])
+        self.assertEqual(code, 0)
+        manifest = json.loads((out_dir / "import_manifest.json").read_text())
+        self.assertEqual(manifest["status"], "download_only")
+
+    def test_v5_rejects_v3_only_options(self):
+        source = self.root / "source.pdf"
+        source.write_bytes(self.pdf_bytes)
+        with mock.patch("builtins.print"):
+            code = imp.main([
+                str(source),
+                "--v3-db", str(self.root / "v3.sqlite"),
+            ])
+        self.assertEqual(code, 2)
+
     def test_v5_path_semantics_are_preserved(self):
         original_cwd = Path.cwd()
         try:

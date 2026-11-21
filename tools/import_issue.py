@@ -241,9 +241,13 @@ def write_manifest(out_dir: Path, manifest: dict[str, Any]) -> None:
     )
 
 
-def resolve_v5_db_path(db_path: Path) -> Path:
+def resolve_v5_db_path(db_path: Path | None) -> Path:
     """Preserve the current V5 behaviour: resolve against the process cwd."""
-    return db_path.expanduser().resolve()
+    return (db_path or Path("data/macau_balancete.sqlite")).expanduser().resolve()
+
+
+def resolve_v5_input_dir(input_dir: Path | None) -> Path:
+    return input_dir or Path("input")
 
 
 def resolve_run_outdir(args: argparse.Namespace, pdf_path: Path) -> Path:
@@ -335,10 +339,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Download a Gazette PDF, OCR it and import into SQLite"
     )
-    parser.add_argument("source", help="PDF URL or local PDF path")
-    parser.add_argument("--db", type=Path,
-                        default=Path("data/macau_balancete.sqlite"))
-    parser.add_argument("--input-dir", type=Path, default=Path("input"))
+    parser.add_argument("source", nargs="?", help="PDF URL or local PDF path")
+    parser.add_argument(
+        "--target", choices=["v5", "v3", "ocr-only"], default="v5",
+        help="import target (default: v5)",
+    )
+    parser.add_argument("--db", type=Path, default=None)
+    parser.add_argument("--v3-db", type=Path, default=None)
+    parser.add_argument("--input-dir", type=Path, default=None)
+    parser.add_argument("--replay-only", action="store_true")
+    parser.add_argument("--reprocess", action="store_true")
+    parser.add_argument("--new-version", action="store_true")
+    parser.add_argument("--reason", default=None)
+    parser.add_argument("--issue-key", default=None)
+    parser.add_argument("--allow-local-source", action="store_true")
+    parser.add_argument("--allow-outside-output", action="store_true")
+    parser.add_argument("--json", action="store_true")
     parser.add_argument("--outdir", type=Path,
                         help="output directory (default: derived from filename)")
     parser.add_argument("--name", help="override downloaded PDF filename")
@@ -366,8 +382,10 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+def run_v5(args: argparse.Namespace) -> int:
+    if not args.source:
+        print("error: source is required", file=sys.stderr)
+        return 2
     started_at = now()
     manifest: dict[str, Any] = {
         "source": args.source,
@@ -378,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         pdf_info = fetch_pdf(
             args.source,
-            args.input_dir,
+            resolve_v5_input_dir(args.input_dir),
             explicit_name=args.name,
             overwrite_pdf=args.overwrite_pdf,
         )
@@ -452,6 +470,48 @@ def main(argv: list[str] | None = None) -> int:
             pass
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+
+def _v3_only_flags(args: argparse.Namespace) -> list[str]:
+    names = []
+    for name in (
+        "v3_db", "replay_only", "reprocess", "new_version", "reason",
+        "issue_key", "allow_local_source", "allow_outside_output",
+    ):
+        if getattr(args, name, None):
+            names.append("--" + name.replace("_", "-"))
+    return names
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.target == "v3":
+        from tools import v3_ingest
+        return v3_ingest.run(args)
+    v3_flags = _v3_only_flags(args)
+    if v3_flags:
+        print(
+            f"error: V3-only options are not valid for --target {args.target}: "
+            + ", ".join(v3_flags),
+            file=sys.stderr,
+        )
+        return 2
+    if args.json:
+        print("error: --json is only implemented for --target v3", file=sys.stderr)
+        return 2
+    if args.target == "ocr-only":
+        if args.db is not None:
+            print("error: --db is not valid with --target ocr-only", file=sys.stderr)
+            return 2
+        for name in ("publish", "force_publish", "no_name_map", "no_bank_refresh"):
+            if getattr(args, name, False):
+                print(
+                    f"error: --{name.replace('_', '-')} is not valid with --target ocr-only",
+                    file=sys.stderr,
+                )
+                return 2
+        args.no_db = True
+    return run_v5(args)
 
 
 if __name__ == "__main__":
