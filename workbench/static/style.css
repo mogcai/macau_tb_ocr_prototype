@@ -134,3 +134,6 @@ table.data.compact { min-width: 1120px; }
 .page-decision .row-error { flex-basis: 100%; }
 tr.intake-locked td { background: #f9fafb; }
 .build-result p { margin: 10px 0 0; }
+.auto-inline { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.intake-table .suggestion-cell { max-width: 300px; font-size: 12px; }
+.intake-table .suggestion-cell .pill { margin-left: 4px; }

@@ -92,6 +92,7 @@ GET  /intake/{source_document_id}                  # Page classification + build
 GET  /api/intake
 GET  /api/intake/{source_document_id}
 POST /api/intake/{source_document_id}/pages/{document_page_id}  # classify, reviewer+
+POST /api/intake/{source_document_id}/auto-classify             # apply PDF-text suggestions
 POST /api/intake/{source_document_id}/build                     # create statements
 GET  /catalogue                                  # Standard List page
 POST /api/catalogue/items                        # create draft item, admin
@@ -140,11 +141,21 @@ and the job log tail.
 ## Import intake
 
 A finished import creates raw rows only. `/intake` lists documents that still
-have `proposed` pages or `unassigned` rows. For each page a reviewer:
+have `proposed` pages or `unassigned` rows. Bank names and statement dates are
+already extracted from the PDF text into the run's `documents.csv`, so the page
+shows a suggested entity (exact or fuzzy match against approved canonical names
+and aliases) and date. **Apply PDF suggestions** classifies every proposed page
+at once; the reviewer still confirms each match before building.
+
+For each page a reviewer:
 
 1. picks the page role and approves or rejects it (reject requires a note);
 2. for an approved `financial_statement` page, records the approved reporting
    entity, statement date and statement type.
+
+Pages with no extracted rows (non-TB pages) can be bulk-approved as `other`.
+Ambiguous names are never guessed: the page is reported as unmatched and must
+be classified manually.
 
 Decisions are written to `document_pages` plus `page_statement_decisions`
 (migration `database/v3/017_page_statement_decisions.sql`) and audited in

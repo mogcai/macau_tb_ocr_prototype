@@ -91,6 +91,10 @@ class PageDecisionPayload(BaseModel):
     note: str = ""
 
 
+class AutoClassifyPayload(BaseModel):
+    classify_empty_pages: bool = True
+
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 STATIC = Path(__file__).resolve().parent / "static"
@@ -719,6 +723,30 @@ def api_intake_decide(
             statement_type=payload.statement_type,
             note=payload.note,
             actor=actor_from(request),
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except intake.IntakeConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/intake/{source_document_id}/auto-classify")
+def api_intake_auto_classify(
+    source_document_id: str,
+    payload: AutoClassifyPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_classify(role):
+        raise HTTPException(status_code=403, detail="classify capability is required")
+    try:
+        return intake.auto_classify(
+            source_document_id,
+            actor=actor_from(request),
+            classify_empty_pages=payload.classify_empty_pages,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

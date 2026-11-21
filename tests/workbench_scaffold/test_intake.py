@@ -1,6 +1,7 @@
 """Tests for Workbench import intake, page decisions and statement creation."""
 from __future__ import annotations
 
+import csv
 import shutil
 import sqlite3
 import sys
@@ -19,16 +20,110 @@ from workbench.config import V3_DB  # noqa: E402
 from workbench.main import app  # noqa: E402
 from workbench.permissions import can_classify  # noqa: E402
 
-
-def _snapshot_batch(batches):
-    for batch in batches:
-        if batch["unassigned_rows"]:
-            return batch
-    return batches[0] if batches else None
+NOW = "2026-11-21T00:00:00+00:00"
+DOC_ID = "doc-intake-fixture"
 
 
-@unittest.skipUnless(V3_DB.is_file(), "operational v3 DB not available")
-class IntakeTests(unittest.TestCase):
+def _approved_entities(db: Path) -> list[dict]:
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        return [
+            dict(row) for row in conn.execute(
+                "SELECT entity_id, entity_key, canonical_zh, canonical_pt "
+                "FROM reporting_entities WHERE registry_status = 'approved' "
+                "AND (canonical_zh IS NOT NULL OR canonical_pt IS NOT NULL) "
+                "ORDER BY entity_id"
+            )
+        ]
+    finally:
+        conn.close()
+
+
+def _entity_name(entity: dict) -> str:
+    return entity.get("canonical_zh") or entity.get("canonical_pt")
+
+
+def _insert_fixture(db: Path, run_dir: Path) -> tuple[dict, dict]:
+    """Create a small unclassified import: 1 skipped page + 2 statement pages."""
+    entities = _approved_entities(db)
+    if len(entities) < 2:
+        raise unittest.SkipTest("need two approved entities")
+    first, second = entities[0], entities[1]
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with (run_dir / "documents.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["pdf_page", "bank_name", "statement_date", "ocr_status", "skip_reason"],
+        )
+        writer.writeheader()
+        writer.writerow({"pdf_page": 1, "bank_name": "", "statement_date": "",
+                         "ocr_status": "skipped", "skip_reason": "not_tb_page"})
+        writer.writerow({"pdf_page": 2, "bank_name": _entity_name(first),
+                         "statement_date": "2099-12-31", "ocr_status": "completed",
+                         "skip_reason": ""})
+        writer.writerow({"pdf_page": 3, "bank_name": _entity_name(second),
+                         "statement_date": "2099-12-31", "ocr_status": "completed",
+                         "skip_reason": ""})
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute(
+            "INSERT INTO gazette_issues(gazette_issue_id, issue_key, publication_date, "
+            "discovered_at) VALUES('issue-intake-fixture', '2099-01', '2099-01-01', ?)",
+            (NOW,),
+        )
+        conn.execute(
+            "INSERT INTO source_documents(source_document_id, gazette_issue_id, "
+            "document_key, original_filename, storage_uri, sha256, page_count, acquired_at) "
+            "VALUES(?, 'issue-intake-fixture', '2099-01:intakefixture', "
+            "'anotariais-1-2099.pdf', ?, ?, 3, ?)",
+            (DOC_ID, str(run_dir / "fixture.pdf"), "a" * 64, NOW),
+        )
+        for page in (1, 2, 3):
+            conn.execute(
+                "INSERT INTO document_pages(document_page_id, source_document_id, pdf_page) "
+                "VALUES(?, ?, ?)",
+                (f"page-fixture-{page}", DOC_ID, page),
+            )
+        conn.execute(
+            "INSERT INTO extraction_runs(run_id, source_document_id, run_status, "
+            "run_report_uri, completed_at) VALUES('run-intake-fixture', ?, 'completed', ?, ?)",
+            (DOC_ID, str(run_dir / "run_report.json"), NOW),
+        )
+        rows = {
+            1: [],
+            2: [("利息收入", 1), ("現金", 2)],
+            3: [("總額", 1)],
+        }
+        for page, labels in rows.items():
+            conn.execute(
+                "INSERT INTO page_extractions(page_extraction_id, run_id, document_page_id, "
+                "source_document_id, ocr_status, created_at) VALUES(?, 'run-intake-fixture', ?, ?, ?, ?)",
+                (
+                    f"pe-fixture-{page}", f"page-fixture-{page}", DOC_ID,
+                    "skipped" if page == 1 else "completed", NOW,
+                ),
+            )
+            for label, order in labels:
+                conn.execute(
+                    "INSERT INTO extracted_rows(extracted_row_id, page_extraction_id, "
+                    "document_page_id, run_id, row_disposition, page_row_order, label_raw, "
+                    "row_type_proposed, debit_value_state, credit_value_state, created_at) "
+                    "VALUES(?, ?, ?, 'run-intake-fixture', 'unassigned', ?, ?, 'item', "
+                    "'blank', 'blank', ?)",
+                    (
+                        f"row-fixture-{page}-{order}", f"pe-fixture-{page}",
+                        f"page-fixture-{page}", order, label, NOW,
+                    ),
+                )
+        conn.commit()
+    finally:
+        conn.close()
+    return first, second
+
+
+class _IntakeTestBase(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.db = Path(self.tempdir.name) / "v3.sqlite"
@@ -40,169 +135,189 @@ class IntakeTests(unittest.TestCase):
         for patcher in self.patchers:
             patcher.start()
         intake.ensure_schema()
-        self.batch = _snapshot_batch(intake.list_batches())
-        if self.batch is None:
-            self.skipTest("no imported batch awaiting intake")
-        self.detail = intake.batch_detail(self.batch["source_document_id"])
+        self.run_dir = Path(self.tempdir.name) / "run"
+        self.first, self.second = _insert_fixture(self.db, self.run_dir)
+        self.detail = intake.batch_detail(DOC_ID)
 
     def tearDown(self) -> None:
         for patcher in reversed(self.patchers):
             patcher.stop()
         self.tempdir.cleanup()
 
+    def _save(self, page_number: int, **kwargs) -> None:
+        page = next(
+            item for item in self.detail["pages"] if item["pdf_page"] == page_number
+        )
+        intake.save_page_decision(
+            DOC_ID, page["document_page_id"], actor="tester", **kwargs
+        )
+
     def _classify_all(self, *, reject_page: int | None = None) -> None:
-        entity = self.detail["entities"][0]
         for page in self.detail["pages"]:
             if reject_page is not None and page["pdf_page"] == reject_page:
-                intake.save_page_decision(
-                    self.batch["source_document_id"],
-                    page["document_page_id"],
-                    page_role="other",
-                    decision="reject",
-                    actor="tester",
+                self._save(
+                    page["pdf_page"], page_role="other", decision="reject",
                     note="not a financial statement",
                 )
                 continue
-            intake.save_page_decision(
-                self.batch["source_document_id"],
-                page["document_page_id"],
+            entity = self.first if page["pdf_page"] == 2 else self.second
+            self._save(
+                page["pdf_page"],
                 page_role="financial_statement",
                 decision="approve",
-                actor="tester",
                 entity_id=entity["entity_id"],
-                statement_date="2025-12-31",
+                statement_date="2099-12-31",
                 statement_type="balance_sheet",
             )
 
-    def test_batch_detail_lists_pages_and_entities(self) -> None:
-        self.assertTrue(self.detail["pages"])
+    def _rows(self, sql: str, params: tuple = ()) -> int:
+        conn = sqlite3.connect(self.db)
+        try:
+            return conn.execute(sql, params).fetchone()[0]
+        finally:
+            conn.close()
+
+
+class IntakeTests(_IntakeTestBase):
+    def test_batch_detail_lists_pages_entities_and_pdf_suggestions(self) -> None:
+        self.assertEqual(len(self.detail["pages"]), 3)
         self.assertTrue(self.detail["entities"])
-        self.assertEqual(
-            self.detail["pending_pages"], len(self.detail["pages"])
-        )
+        self.assertEqual(self.detail["pending_pages"], 3)
         self.assertFalse(self.detail["can_build"])
+        page_two = self.detail["pages"][1]
+        self.assertEqual(page_two["suggested_entity_id"], self.first["entity_id"])
+        self.assertEqual(page_two["suggested_method"], "exact")
+        self.assertEqual(page_two["pdf_statement_date"], "2099-12-31")
+        self.assertEqual(self.detail["suggestion_summary"]["suggested_pages"], 2)
 
     def test_financial_approval_requires_entity_and_date(self) -> None:
-        page = self.detail["pages"][0]
         with self.assertRaises(intake.IntakeError):
-            intake.save_page_decision(
-                self.batch["source_document_id"], page["document_page_id"],
-                page_role="financial_statement", decision="approve", actor="tester",
-            )
+            self._save(2, page_role="financial_statement", decision="approve")
         with self.assertRaises(intake.IntakeError):
-            intake.save_page_decision(
-                self.batch["source_document_id"], page["document_page_id"],
-                page_role="financial_statement", decision="approve", actor="tester",
-                entity_id=self.detail["entities"][0]["entity_id"],
-                statement_date="2025-13-01",
+            self._save(
+                2, page_role="financial_statement", decision="approve",
+                entity_id=self.first["entity_id"], statement_date="2099-13-01",
             )
 
     def test_reject_requires_note(self) -> None:
-        page = self.detail["pages"][0]
         with self.assertRaises(intake.IntakeError):
-            intake.save_page_decision(
-                self.batch["source_document_id"], page["document_page_id"],
-                page_role="other", decision="reject", actor="tester", note=" ",
-            )
+            self._save(2, page_role="other", decision="reject", note=" ")
 
     def test_decision_writes_page_state_decision_and_audit(self) -> None:
-        entity = self.detail["entities"][0]
-        page = self.detail["pages"][0]
-        intake.save_page_decision(
-            self.batch["source_document_id"], page["document_page_id"],
-            page_role="financial_statement", decision="approve", actor="tester",
-            entity_id=entity["entity_id"], statement_date="2025-12-31",
-            statement_type="balance_sheet", note="reviewed",
+        self._save(
+            2, page_role="financial_statement", decision="approve",
+            entity_id=self.first["entity_id"], statement_date="2099-12-31",
+            note="reviewed",
         )
         conn = sqlite3.connect(self.db)
         try:
             state = conn.execute(
                 "SELECT page_role, classification_status, classification_source, "
-                "classified_by FROM document_pages WHERE document_page_id = ?",
-                (page["document_page_id"],),
+                "classified_by FROM document_pages WHERE document_page_id = 'page-fixture-2'"
             ).fetchone()
             decision = conn.execute(
                 "SELECT reporting_entity_id, statement_date, statement_type "
-                "FROM page_statement_decisions WHERE document_page_id = ?",
-                (page["document_page_id"],),
+                "FROM page_statement_decisions WHERE document_page_id = 'page-fixture-2'"
             ).fetchone()
             audit = conn.execute(
-                "SELECT COUNT(*) FROM audit_events WHERE document_page_id = ? "
-                "AND event_type = 'page_classified'",
-                (page["document_page_id"],),
+                "SELECT COUNT(*) FROM audit_events WHERE document_page_id = 'page-fixture-2' "
+                "AND event_type = 'page_classified'"
             ).fetchone()[0]
         finally:
             conn.close()
         self.assertEqual(state[:3], ("financial_statement", "approved", "human"))
         self.assertEqual(state[3], "tester")
-        self.assertEqual(decision, (entity["entity_id"], "2025-12-31", "balance_sheet"))
+        self.assertEqual(
+            decision, (self.first["entity_id"], "2099-12-31", "balance_sheet")
+        )
         self.assertEqual(audit, 1)
 
     def test_build_requires_every_page_classified(self) -> None:
         with self.assertRaises(intake.IntakeError):
-            intake.build_statements(self.batch["source_document_id"], "tester")
+            intake.build_statements(DOC_ID, "tester")
 
-    def test_build_creates_statement_rows_and_review_queue_entry(self) -> None:
-        self._classify_all()
-        detail = intake.batch_detail(self.batch["source_document_id"])
-        self.assertTrue(detail["can_build"], detail["preview_error"])
+    def test_auto_classify_uses_pdf_text_and_builds_one_statement_per_bank(self) -> None:
+        result = intake.auto_classify(DOC_ID, actor="tester")
+        self.assertEqual(result["financial"], 2)
+        self.assertEqual(result["empty"], 1)
+        self.assertEqual(result["unmatched"], [])
+        self.assertEqual(result["detail"]["pending_pages"], 0)
+        self.assertTrue(result["detail"]["can_build"])
 
-        summary = intake.build_statements(self.batch["source_document_id"], "tester")
-        self.assertEqual(summary["statements_created"], 1)
-        self.assertEqual(summary["rows_assigned"], self.batch["unassigned_rows"])
-        self.assertEqual(summary["mapping"]["status"], "stubbed")
-
-        conn = sqlite3.connect(self.db)
-        try:
-            included = conn.execute(
-                "SELECT COUNT(*) FROM extracted_rows er "
-                "JOIN document_pages dp ON dp.document_page_id = er.document_page_id "
-                "WHERE dp.source_document_id = ? AND er.row_disposition = 'included'",
-                (self.batch["source_document_id"],),
-            ).fetchone()[0]
-            unassigned = conn.execute(
-                "SELECT COUNT(*) FROM extracted_rows er "
-                "JOIN document_pages dp ON dp.document_page_id = er.document_page_id "
-                "WHERE dp.source_document_id = ? AND er.row_disposition = 'unassigned'",
-                (self.batch["source_document_id"],),
-            ).fetchone()[0]
-            statement_rows = conn.execute(
-                "SELECT COUNT(*) FROM statement_rows sr "
-                "JOIN statements s ON s.statement_id = sr.statement_id "
-                "WHERE s.source_document_id = ?",
-                (self.batch["source_document_id"],),
-            ).fetchone()[0]
-        finally:
-            conn.close()
-        self.assertEqual(unassigned, 0)
-        self.assertEqual(included, self.batch["unassigned_rows"])
-        self.assertEqual(statement_rows, included)
+        summary = intake.build_statements(DOC_ID, "tester")
+        self.assertEqual(summary["statements_created"], 2)
+        self.assertEqual(summary["rows_assigned"], 3)
+        self.assertEqual(
+            {statement["entity_name"] for statement in summary["statements"]},
+            {_entity_name(self.first), _entity_name(self.second)},
+        )
+        self.assertEqual(self._rows(
+            "SELECT COUNT(*) FROM extracted_rows WHERE document_page_id = 'page-fixture-1' "
+            "AND row_disposition = 'excluded_page_role'"
+        ), 0)
+        self.assertEqual(self._rows(
+            "SELECT COUNT(*) FROM extracted_rows WHERE document_page_id = 'page-fixture-1' "
+            "AND row_disposition = 'unassigned'"
+        ), 0)
 
         queue_ids = {item["statement_id"] for item in service.review_queue()}
-        self.assertIn(summary["statements"][0]["statement_id"], queue_ids)
+        for statement in summary["statements"]:
+            self.assertIn(statement["statement_id"], queue_ids)
 
-        again = intake.build_statements(self.batch["source_document_id"], "tester")
+        again = intake.build_statements(DOC_ID, "tester")
         self.assertEqual(again["statements_created"], 0)
-        self.assertEqual(again["statements_existing"], 1)
+        self.assertEqual(again["statements_existing"], 2)
         self.assertEqual(again["rows_assigned"], 0)
 
     def test_rejected_page_rows_are_excluded(self) -> None:
-        page_with_rows = next(
-            page for page in self.detail["pages"] if page["total_rows"]
+        self._classify_all(reject_page=2)
+        summary = intake.build_statements(DOC_ID, "tester")
+        self.assertEqual(summary["rows_excluded"], 2)
+        self.assertEqual(summary["statements_created"], 1)
+        self.assertEqual(self._rows(
+            "SELECT COUNT(*) FROM extracted_rows WHERE document_page_id = 'page-fixture-2' "
+            "AND row_disposition = 'excluded_page_role'"
+        ), 2)
+
+    def test_classification_is_locked_after_assignment(self) -> None:
+        self._classify_all()
+        intake.build_statements(DOC_ID, "tester")
+        with self.assertRaises(intake.IntakeConflict):
+            self._save(
+                2, page_role="other", decision="reject", note="late change",
+            )
+
+
+class IntakeMatcherTests(unittest.TestCase):
+    def test_exact_and_split_matches(self) -> None:
+        index = {
+            intake._norm_name("澳門國際銀行股份有限公司"): {"e1"},
+            intake._norm_name("HANG SENG BANK LIMITED"): {"e2"},
+        }
+        entities = {"e1": {}, "e2": {}}
+        self.assertEqual(
+            intake._match_entity("澳門國際銀行股份有限公司", index, entities),
+            ("e1", 1.0, "exact"),
         )
-        self._classify_all(reject_page=page_with_rows["pdf_page"])
-        summary = intake.build_statements(self.batch["source_document_id"], "tester")
-        self.assertGreater(summary["rows_excluded"], 0)
-        conn = sqlite3.connect(self.db)
-        try:
-            excluded = conn.execute(
-                "SELECT COUNT(*) FROM extracted_rows WHERE document_page_id = ? "
-                "AND row_disposition = 'excluded_page_role'",
-                (page_with_rows["document_page_id"],),
-            ).fetchone()[0]
-        finally:
-            conn.close()
-        self.assertEqual(excluded, page_with_rows["total_rows"])
+        self.assertEqual(
+            intake._match_entity(
+                "HANG SENG BANK LIMITED | SUCURSAL DE MACAU", index, entities
+            ),
+            ("e2", 1.0, "exact"),
+        )
+
+    def test_ambiguous_exact_is_not_guessed(self) -> None:
+        key = intake._norm_name("同名銀行")
+        self.assertIsNone(
+            intake._match_entity("同名銀行", {key: {"e1", "e2"}}, {"e1": {}, "e2": {}})
+        )
+
+    def test_fuzzy_variant_matches_with_score(self) -> None:
+        index = {intake._norm_name("國泰海通證劵(澳門)一人有限公司"): {"e1"}}
+        match = intake._match_entity("國泰君安證劵(澳門)一人有限公司", index, {"e1": {}})
+        self.assertIsNotNone(match)
+        self.assertEqual(match[0], "e1")
+        self.assertGreaterEqual(match[1], 0.85)
 
 
 class IntakePermissionTests(unittest.TestCase):
@@ -215,73 +330,64 @@ class IntakePermissionTests(unittest.TestCase):
                 self.assertFalse(can_classify(role))
 
 
-@unittest.skipUnless(V3_DB.is_file(), "operational v3 DB not available")
-class IntakeApiTests(unittest.TestCase):
+class IntakeApiTests(_IntakeTestBase):
     def setUp(self) -> None:
-        self.tempdir = tempfile.TemporaryDirectory()
-        self.db = Path(self.tempdir.name) / "v3.sqlite"
-        shutil.copyfile(V3_DB, self.db)
-        self.patchers = [
-            mock.patch.object(wdb, "V3_DB", self.db),
-            mock.patch.object(intake, "_auto_map", return_value={"status": "stubbed"}),
-        ]
-        for patcher in self.patchers:
-            patcher.start()
-        intake.ensure_schema()
+        super().setUp()
         self.client = TestClient(app)
-        self.batch = _snapshot_batch(intake.list_batches())
-        if self.batch is None:
-            self.skipTest("no imported batch awaiting intake")
-        self.detail = intake.batch_detail(self.batch["source_document_id"])
-
-    def tearDown(self) -> None:
-        for patcher in reversed(self.patchers):
-            patcher.stop()
-        self.tempdir.cleanup()
 
     def test_viewer_cannot_classify(self) -> None:
-        page = self.detail["pages"][0]
         response = self.client.post(
-            f"/api/intake/{self.batch['source_document_id']}/pages/"
-            f"{page['document_page_id']}",
+            f"/api/intake/{DOC_ID}/pages/page-fixture-2",
             json={"page_role": "other", "decision": "approve"},
             headers={"X-Workbench-Role": "viewer"},
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_auto_classify_endpoint_and_build(self) -> None:
+        response = self.client.post(
+            f"/api/intake/{DOC_ID}/auto-classify",
+            json={"classify_empty_pages": True},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        result = response.json()
+        self.assertEqual(result["financial"], 2)
+        self.assertEqual(result["detail"]["pending_pages"], 0)
+        built = self.client.post(
+            f"/api/intake/{DOC_ID}/build",
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(built.status_code, 200, built.text)
+        self.assertEqual(built.json()["statements_created"], 2)
+
     def test_pages_and_build_endpoint(self) -> None:
-        entity = self.detail["entities"][0]
         for page in self.detail["pages"]:
+            entity = self.first if page["pdf_page"] == 2 else self.second
             response = self.client.post(
-                f"/api/intake/{self.batch['source_document_id']}/pages/"
-                f"{page['document_page_id']}",
+                f"/api/intake/{DOC_ID}/pages/{page['document_page_id']}",
                 json={
                     "page_role": "financial_statement",
                     "decision": "approve",
                     "entity_id": entity["entity_id"],
-                    "statement_date": "2025-12-31",
+                    "statement_date": "2099-12-31",
                     "statement_type": "balance_sheet",
                 },
                 headers={"X-Workbench-Role": "reviewer"},
             )
             self.assertEqual(response.status_code, 200, response.text)
-        detail = self.client.get(
-            f"/api/intake/{self.batch['source_document_id']}"
-        )
+        detail = self.client.get(f"/api/intake/{DOC_ID}")
         self.assertEqual(detail.status_code, 200)
         self.assertTrue(detail.json()["can_build"])
         built = self.client.post(
-            f"/api/intake/{self.batch['source_document_id']}/build",
+            f"/api/intake/{DOC_ID}/build",
             headers={"X-Workbench-Role": "reviewer"},
         )
         self.assertEqual(built.status_code, 200, built.text)
-        self.assertEqual(built.json()["statements_created"], 1)
+        self.assertEqual(built.json()["statements_created"], 2)
         page = self.client.get("/intake")
         self.assertEqual(page.status_code, 200)
         self.assertIn("Import intake", page.text)
-        batch_page = self.client.get(
-            f"/intake/{self.batch['source_document_id']}"
-        )
+        batch_page = self.client.get(f"/intake/{DOC_ID}")
         self.assertEqual(batch_page.status_code, 200)
 
 

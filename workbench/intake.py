@@ -15,12 +15,15 @@ but does not depend on the legacy V5 statements, so it works for new issues.
 """
 from __future__ import annotations
 
+import csv
+import difflib
 import hashlib
 import json
 import re
 import sqlite3
 import subprocess
 import sys
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -216,6 +219,154 @@ def _entity_map(conn: sqlite3.Connection) -> dict[str, sqlite3.Row]:
     return {row["entity_id"]: row for row in rows}
 
 
+def _norm_name(value: str) -> str:
+    text = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    return re.sub(r"[\s\u3000|·•.,;:()（）\[\]【】\-—–/]+", "", text)
+
+
+def _entity_index(conn: sqlite3.Connection) -> dict[str, set[str]]:
+    index: dict[str, set[str]] = {}
+    for row in conn.execute(
+        "SELECT entity_id, canonical_zh, canonical_pt, canonical_en "
+        "FROM reporting_entities WHERE registry_status = 'approved'"
+    ):
+        for value in (row["canonical_zh"], row["canonical_pt"], row["canonical_en"]):
+            key = _norm_name(value)
+            if key:
+                index.setdefault(key, set()).add(row["entity_id"])
+    for row in conn.execute(
+        "SELECT a.raw_name, a.entity_id FROM reporting_entity_aliases a "
+        "JOIN reporting_entities e ON e.entity_id = a.entity_id "
+        "WHERE e.registry_status = 'approved' "
+        "AND a.status <> 'rejected' AND a.status <> 'retired'"
+    ):
+        key = _norm_name(row["raw_name"])
+        if key:
+            index.setdefault(key, set()).add(row["entity_id"])
+    return index
+
+
+def _match_entity(
+    raw_name: str,
+    index: dict[str, set[str]],
+    entities: dict[str, sqlite3.Row],
+) -> tuple[str, float, str] | None:
+    """Match a PDF bank name to one approved entity.
+
+    Tries each ``|``-separated part, prefers a unique exact normalised match,
+    then a fuzzy match with a clear margin.  Ambiguous matches are rejected so
+    the reviewer has to choose.
+    """
+    best: tuple[str, float, str] | None = None
+    for part in re.split(r"\|", str(raw_name or "")):
+        key = _norm_name(part)
+        if not key:
+            continue
+        exact = index.get(key)
+        if exact and len(exact) == 1:
+            return next(iter(exact)), 1.0, "exact"
+        scored: list[tuple[float, set[str]]] = []
+        for candidate, entity_ids in index.items():
+            score = difflib.SequenceMatcher(None, key, candidate).ratio()
+            if score >= 0.85:
+                scored.append((score, entity_ids))
+        if not scored:
+            continue
+        scored.sort(key=lambda item: item[0], reverse=True)
+        score, entity_ids = scored[0]
+        runner_up = scored[1][0] if len(scored) > 1 else 0.0
+        if len(entity_ids) == 1 and score - runner_up >= 0.03:
+            entity_id = next(iter(entity_ids))
+            if entity_id in entities and (
+                best is None or score > best[1]
+            ):
+                best = (entity_id, round(score, 3), "fuzzy")
+    return best
+
+
+def _run_documents(conn: sqlite3.Connection, source_document_id: str) -> dict[int, dict[str, str]]:
+    """Read documents.csv for the latest run; it holds PDF-text bank names."""
+    row = conn.execute(
+        "SELECT run_report_uri, config_json FROM extraction_runs "
+        "WHERE source_document_id = ? ORDER BY rowid DESC LIMIT 1",
+        (source_document_id,),
+    ).fetchone()
+    if row is None:
+        return {}
+    run_dir: Path | None = None
+    if row["run_report_uri"]:
+        run_dir = Path(row["run_report_uri"]).parent
+    if run_dir is None and row["config_json"]:
+        try:
+            run_dir = Path(json.loads(row["config_json"]).get("run_dir") or "")
+        except (ValueError, TypeError):
+            run_dir = None
+    if not run_dir:
+        return {}
+    path = run_dir / "documents.csv"
+    if not path.is_file():
+        return {}
+    result: dict[int, dict[str, str]] = {}
+    try:
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            for item in csv.DictReader(handle):
+                try:
+                    page = int(item.get("pdf_page") or 0)
+                except ValueError:
+                    continue
+                if page:
+                    result[page] = {
+                        "bank_name": (item.get("bank_name") or "").strip(),
+                        "statement_date": (item.get("statement_date") or "").strip(),
+                        "ocr_status": (item.get("ocr_status") or "").strip(),
+                        "skip_reason": (item.get("skip_reason") or "").strip(),
+                    }
+    except OSError:
+        return {}
+    return result
+
+
+def _suggestions(
+    conn: sqlite3.Connection, source_document_id: str
+) -> dict[int, dict[str, Any]]:
+    documents = _run_documents(conn, source_document_id)
+    if not documents:
+        return {}
+    entities = _entity_map(conn)
+    index = _entity_index(conn)
+    suggestions: dict[int, dict[str, Any]] = {}
+    for page, item in documents.items():
+        bank_name = item.get("bank_name", "")
+        date = item.get("statement_date", "")
+        if not _date_re.fullmatch(date or ""):
+            date = ""
+        match = _match_entity(bank_name, index, entities) if bank_name else None
+        suggestion: dict[str, Any] = {
+            "pdf_bank_name": bank_name or None,
+            "pdf_statement_date": date or None,
+            "suggested_entity_id": None,
+            "suggested_entity_name": None,
+            "suggested_score": None,
+            "suggested_method": None,
+            "ocr_status": item.get("ocr_status") or None,
+            "skip_reason": item.get("skip_reason") or None,
+        }
+        if match is not None:
+            entity_id, score, method = match
+            entity = entities.get(entity_id)
+            suggestion.update({
+                "suggested_entity_id": entity_id,
+                "suggested_entity_name": (
+                    entity["canonical_zh"] or entity["canonical_pt"]
+                    or entity["entity_key"]
+                ) if entity is not None else entity_id,
+                "suggested_score": score,
+                "suggested_method": method,
+            })
+        suggestions[page] = suggestion
+    return suggestions
+
+
 def _group_pages(
     document: dict[str, Any], pages: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -258,8 +409,17 @@ def batch_detail(source_document_id: str) -> dict[str, Any]:
     try:
         document = _document(conn, source_document_id)
         pages = _page_rows(conn, source_document_id)
+        suggestions = _suggestions(conn, source_document_id)
     finally:
         conn.close()
+    for page in pages:
+        suggestion = suggestions.get(page["pdf_page"], {})
+        page["pdf_bank_name"] = suggestion.get("pdf_bank_name")
+        page["pdf_statement_date"] = suggestion.get("pdf_statement_date")
+        page["suggested_entity_id"] = suggestion.get("suggested_entity_id")
+        page["suggested_entity_name"] = suggestion.get("suggested_entity_name")
+        page["suggested_score"] = suggestion.get("suggested_score")
+        page["suggested_method"] = suggestion.get("suggested_method")
     pending = [page for page in pages if page["classification_status"] == "proposed"]
     preview: list[dict[str, Any]] = []
     preview_error = None
@@ -276,6 +436,17 @@ def batch_detail(source_document_id: str) -> dict[str, Any]:
     }
     for group in preview:
         group["entity_name"] = names.get(group["entity_id"], group["entity_id"])
+    suggested_ids = {
+        page["suggested_entity_id"]
+        for page in pages
+        if page["suggested_entity_id"]
+    }
+    unmatched = [
+        page["pdf_page"] for page in pages
+        if page["classification_status"] == "proposed"
+        and page["total_rows"] > 0
+        and not page["suggested_entity_id"]
+    ]
     return {
         "document": document,
         "pages": pages,
@@ -284,6 +455,14 @@ def batch_detail(source_document_id: str) -> dict[str, Any]:
         "preview": preview,
         "preview_error": preview_error,
         "can_build": bool(preview) and not pending and not preview_error,
+        "suggestion_summary": {
+            "suggested_pages": sum(
+                1 for page in pages if page["suggested_entity_id"]
+            ),
+            "suggested_entities": len(suggested_ids),
+            "unmatched_pages": unmatched,
+            "source": "documents.csv (PDF text)" if suggestions else None,
+        },
     }
 
 
@@ -473,6 +652,57 @@ def save_page_decision(
     finally:
         conn.close()
     return batch_detail(source_document_id)
+
+
+def auto_classify(
+    source_document_id: str,
+    *,
+    actor: str,
+    classify_empty_pages: bool = True,
+) -> dict[str, Any]:
+    """Apply PDF-text suggestions to every still-proposed page.
+
+    Pages with a matched entity + statement date become approved financial
+    statements.  Pages with no extracted rows can be approved as `other` so the
+    batch can be built without clicking through cover pages.  Anything else is
+    left for the reviewer and reported back.
+    """
+    detail = batch_detail(source_document_id)
+    counts = {"financial": 0, "empty": 0, "skipped": 0, "unmatched": []}
+    for page in detail["pages"]:
+        if page["classification_status"] != "proposed":
+            counts["skipped"] += 1
+            continue
+        entity_id = page["suggested_entity_id"]
+        statement_date = page["pdf_statement_date"]
+        if entity_id and statement_date:
+            save_page_decision(
+                source_document_id,
+                page["document_page_id"],
+                page_role="financial_statement",
+                decision="approve",
+                actor=actor,
+                entity_id=entity_id,
+                statement_date=statement_date,
+                statement_type="balance_sheet",
+                note=f"auto: PDF text match {page['pdf_bank_name'] or ''}".strip(),
+            )
+            counts["financial"] += 1
+        elif classify_empty_pages and page["total_rows"] == 0:
+            save_page_decision(
+                source_document_id,
+                page["document_page_id"],
+                page_role="other",
+                decision="approve",
+                actor=actor,
+                note="auto: non-TB page, no extracted rows",
+            )
+            counts["empty"] += 1
+        else:
+            counts["unmatched"].append(page["pdf_page"])
+    counts["classified"] = counts["financial"] + counts["empty"]
+    counts["detail"] = batch_detail(source_document_id)
+    return counts
 
 
 def _fingerprint(row: sqlite3.Row, document_page_id: str) -> str:

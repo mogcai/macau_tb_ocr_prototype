@@ -25,6 +25,29 @@
 
 <section class="panel">
   <h2>Page classification</h2>
+  {% if suggestion_summary.source %}
+  <p class="sub">
+    Suggestions come from <strong>{{ suggestion_summary.source }}</strong>:
+    {{ suggestion_summary.suggested_pages }} page(s) matched
+    {{ suggestion_summary.suggested_entities }} entit(y/ies). Review the match,
+    then apply.{% if suggestion_summary.unmatched_pages %}
+    <span class="bad">No match: pages {{ suggestion_summary.unmatched_pages | join(", ") }}.</span>
+    {% endif %}
+  </p>
+  {% if can_classify and pending_pages %}
+  <div class="actions">
+    <button id="auto-classify-button" type="button">Apply PDF suggestions</button>
+    <label class="auto-inline">
+      <input type="checkbox" id="auto-empty-pages" checked>
+      also mark pages with no extracted rows as <code>other</code>
+    </label>
+  </div>
+  <div id="auto-result" class="build-result"></div>
+  {% endif %}
+  {% else %}
+  <p class="sub">No <code>documents.csv</code> PDF-text suggestion is available
+  for this run; choose the entity per page.</p>
+  {% endif %}
   <p class="sub">Approve financial-statement pages with an entity and statement
   date. Reject or reclassify everything else so no page stays <code>proposed</code>.
   Sample labels come from the raw OCR rows.</p>
@@ -34,6 +57,7 @@
         <tr>
           <th>Page</th>
           <th>Current</th>
+          <th>PDF text / suggestion</th>
           <th>Rows</th>
           <th>Sample labels</th>
           <th>Decision</th>
@@ -51,6 +75,19 @@
             {% if page.included_rows %}<div class="sub">assigned: {{ page.included_rows }} rows</div>{% endif %}
             {% if page.decision_note %}<div class="sub">{{ page.decision_note }}</div>{% endif %}
           </td>
+          <td class="suggestion-cell">
+            {% if page.pdf_bank_name %}<div>{{ page.pdf_bank_name }}</div>{% endif %}
+            {% if page.suggested_entity_name %}
+            <div class="sub">→ <strong>{{ page.suggested_entity_name }}</strong>
+              <span class="pill">{{ page.suggested_method }} {{ "%.2f" | format(page.suggested_score) }}</span>
+            </div>
+            {% elif page.pdf_bank_name %}
+            <div class="sub bad">no entity match</div>
+            {% else %}
+            <div class="sub">—</div>
+            {% endif %}
+            {% if page.pdf_statement_date %}<div class="sub">date {{ page.pdf_statement_date }}</div>{% endif %}
+          </td>
           <td>{{ page.total_rows }}
             <div class="sub">unassigned {{ page.unassigned_rows }}</div>
           </td>
@@ -58,9 +95,10 @@
           <td>
             {% if can_classify and not page.included_rows %}
             <form class="page-decision" data-page-id="{{ page.document_page_id }}">
+              {% set default_role = "financial_statement" if page.suggested_entity_id else page.page_role %}
               <select name="page_role">
                 {% for role in ["financial_statement", "cover", "contents", "audit_report", "shareholder_list", "other", "unknown"] %}
-                <option value="{{ role }}" {% if page.page_role == role %}selected{% endif %}>{{ role }}</option>
+                <option value="{{ role }}" {% if default_role == role %}selected{% endif %}>{{ role }}</option>
                 {% endfor %}
               </select>
               <select name="decision">
@@ -69,15 +107,17 @@
               </select>
               <select name="entity_id">
                 <option value="">— entity (FS only) —</option>
+                {% set chosen_entity = page.reporting_entity_id or page.suggested_entity_id %}
                 {% for entity in entities %}
                 <option value="{{ entity.entity_id }}"
-                  {% if page.reporting_entity_id == entity.entity_id %}selected{% endif %}>
+                  {% if chosen_entity == entity.entity_id %}selected{% endif %}>
                   {{ entity.canonical_zh or entity.canonical_pt or entity.entity_key }} · {{ entity.entity_type }}
                 </option>
                 {% endfor %}
               </select>
               <input type="date" name="statement_date"
-                     value="{{ page.statement_date or '' }}" title="statement date">
+                     value="{{ page.statement_date or page.pdf_statement_date or '' }}"
+                     title="statement date">
               <select name="statement_type">
                 {% for item in ["balance_sheet", "income_statement", "cash_flow", "other_financial_statement", "unknown"] %}
                 <option value="{{ item }}" {% if (page.statement_type or "balance_sheet") == item %}selected{% endif %}>{{ item }}</option>
@@ -177,6 +217,32 @@
       }
     });
   });
+  const autoButton = document.getElementById("auto-classify-button");
+  if (autoButton) {
+    autoButton.addEventListener("click", async () => {
+      const output = document.getElementById("auto-result");
+      output.textContent = "Applying PDF suggestions…";
+      const empty = document.getElementById("auto-empty-pages");
+      try {
+        const result = await postJson(
+          "/api/intake/{{ document.source_document_id }}/auto-classify",
+          {classify_empty_pages: Boolean(empty && empty.checked)},
+        );
+        const unmatched = result.unmatched || [];
+        output.innerHTML =
+          "<p class='ok'>Classified " + result.classified +
+          " page(s): " + result.financial + " financial, " +
+          result.empty + " empty/non-TB." +
+          (unmatched.length
+            ? " <span class='bad'>No match: pages " + unmatched.join(", ") + ".</span>"
+            : "") +
+          "</p>";
+        window.location.reload();
+      } catch (error) {
+        output.innerHTML = "<p class='bad'>" + error.message + "</p>";
+      }
+    });
+  }
   const build = document.getElementById("build-button");
   if (build) {
     build.addEventListener("click", async () => {

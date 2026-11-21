@@ -7,7 +7,7 @@
 - **Docs:** `IMPORT_ISSUE.md` rewritten V3-first with a V5 legacy section; `README.md`, `README_zh_HK.md`, `README_AGENT.md` and `SKILL.md` updated; the ingestion spec records the deliberate default change.
 - **Tests:** `tests/test_import_issue.py` covers default V3 routing, explicit V5 routing and V5-flag rejection.
 - **Workbench import page:** `/imports` starts `tools/import_issue.py --target v3` as a background job (URL or single-PDF upload), shows pipeline steps and the job log, and supports retry plus reprocess/new-version decisions with a reason. Jobs are stored in `import_jobs` (`database/v3/016_import_jobs.sql`); publish, bank refresh and name mapping are never invoked, and long OCR never runs inside an HTTP request.
-- **Workbench import intake:** `/intake` classifies imported pages (role, approve/reject, reporting entity + statement date for financial pages), then builds `statements`/`statement_rows` from the raw evidence and runs the existing proposed-mapping auto-map. Decisions live in `page_statement_decisions` (`database/v3/017_page_statement_decisions.sql`) and `audit_events`; classification is refused once rows are assigned.
+- **Workbench import intake:** `/intake` classifies imported pages (role, approve/reject, reporting entity + statement date for financial pages), auto-suggests the entity/date from the PDF text in `documents.csv`, then builds `statements`/`statement_rows` from the raw evidence and runs the existing proposed-mapping auto-map. Decisions live in `page_statement_decisions` (`database/v3/017_page_statement_decisions.sql`) and `audit_events`; classification is refused once rows are assigned.
 
 ## v0.7.0
 
