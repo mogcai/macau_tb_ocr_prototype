@@ -16,12 +16,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import sqlite3
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -209,13 +211,124 @@ def _db_exists(db_path: Path) -> bool:
         return False
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write text atomically without truncating an existing file on failure.
+
+    os.replace() swaps inodes. Mode bits are preserved, but owner/group, ACLs,
+    extended attributes and symlink identity are not. Manifest paths are
+    expected to be regular files owned by the importer process.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
+    temp = path.parent / f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    try:
+        with temp.open("w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if existing_mode is not None:
+            os.chmod(temp, existing_mode)
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
 def write_manifest(out_dir: Path, manifest: dict[str, Any]) -> None:
-    out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "import_manifest.json"
-    path.write_text(
+    atomic_write_text(
+        path,
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
     )
+
+
+def resolve_v5_db_path(db_path: Path) -> Path:
+    """Preserve the current V5 behaviour: resolve against the process cwd."""
+    return db_path.expanduser().resolve()
+
+
+def resolve_run_outdir(args: argparse.Namespace, pdf_path: Path) -> Path:
+    return (args.outdir or output_dir_for(pdf_path)).expanduser().resolve()
+
+
+def build_ocr_command(
+    args: argparse.Namespace,
+    pdf_path: Path,
+    out_dir: Path,
+) -> list[str]:
+    command = [
+        sys.executable, str(ROOT / "macau_tb_ocr.py"), str(pdf_path),
+        "--outdir", str(out_dir), "--pages", args.pages,
+        "--ocr-langs", args.ocr_langs,
+    ]
+    if args.engine:
+        command += ["--engine", args.engine]
+    if args.vision_level:
+        command += ["--vision-level", args.vision_level]
+    if args.inspect_only:
+        command.append("--inspect-only")
+    return command
+
+
+def build_v5_import_command(
+    args: argparse.Namespace,
+    out_dir: Path,
+    db_path: Path,
+) -> list[str]:
+    command = [
+        sys.executable, str(ROOT / "tools" / "build_database.py"),
+        str(out_dir), "--db", str(db_path),
+    ]
+    if args.publish:
+        command += ["--publish", "--published-by", args.published_by]
+    if args.force_publish:
+        command.append("--force-publish")
+    return command
+
+
+def build_bank_refresh_command(db_path: Path) -> list[str]:
+    return [
+        sys.executable, str(ROOT / "tools" / "name_registry.py"),
+        "refresh-banks", "--db", str(db_path),
+    ]
+
+
+def build_name_map_command(db_path: Path) -> list[str]:
+    return [
+        sys.executable,
+        str(ROOT / "tools" / "import_user_standard.py"),
+        "map", "--db", str(db_path),
+    ]
+
+
+def run_v5_database_stage(
+    args: argparse.Namespace,
+    out_dir: Path,
+    log_path: Path,
+    manifest: dict[str, Any],
+    *,
+    dry_run: bool = False,
+) -> None:
+    """Run the existing V5 DB import, bank refresh and name mapping in order."""
+    db_path = resolve_v5_db_path(args.db)
+    import_cmd = build_v5_import_command(args, out_dir, db_path)
+    run_command(import_cmd, log_path, dry_run=dry_run)
+    manifest["steps"]["db_import"] = {
+        "status": "completed", "command": import_cmd
+    }
+
+    if not args.no_bank_refresh:
+        bank_cmd = build_bank_refresh_command(db_path)
+        run_command(bank_cmd, log_path, dry_run=dry_run)
+        manifest["steps"]["bank_refresh"] = {
+            "status": "completed", "command": bank_cmd
+        }
+
+    if not args.no_name_map and _db_exists(db_path):
+        map_cmd = build_name_map_command(db_path)
+        run_command(map_cmd, log_path, dry_run=dry_run)
+        manifest["steps"]["name_map"] = {
+            "status": "completed", "command": map_cmd
+        }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -270,13 +383,13 @@ def main(argv: list[str] | None = None) -> int:
             overwrite_pdf=args.overwrite_pdf,
         )
         pdf_path = Path(pdf_info["path"])
-        out_dir = (args.outdir or output_dir_for(pdf_path)).expanduser().resolve()
+        out_dir = resolve_run_outdir(args, pdf_path)
         manifest.update({
             "pdf": str(pdf_path),
             "pdf_sha256": pdf_info["sha256"],
             "pdf_bytes": pdf_info.get("bytes") or pdf_path.stat().st_size,
             "outdir": str(out_dir),
-            "db": str(args.db.expanduser().resolve()),
+            "db": str(resolve_v5_db_path(args.db)),
         })
         manifest["steps"]["download"] = {
             "status": "reused" if pdf_info.get("reused") else "downloaded",
@@ -300,17 +413,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         out_dir.mkdir(parents=True, exist_ok=True)
         log_path = out_dir / "import.log"
-        ocr_cmd = [
-            sys.executable, str(ROOT / "macau_tb_ocr.py"), str(pdf_path),
-            "--outdir", str(out_dir), "--pages", args.pages,
-            "--ocr-langs", args.ocr_langs,
-        ]
-        if args.engine:
-            ocr_cmd += ["--engine", args.engine]
-        if args.vision_level:
-            ocr_cmd += ["--vision-level", args.vision_level]
-        if args.inspect_only:
-            ocr_cmd.append("--inspect-only")
+        ocr_cmd = build_ocr_command(args, pdf_path, out_dir)
         if args.no_ocr:
             manifest["steps"]["ocr"] = {"status": "skipped"}
         else:
@@ -328,40 +431,9 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(f"OCR did not produce documents.csv: {documents}")
 
         if not args.no_db:
-            db_path = args.db.expanduser().resolve()
-            import_cmd = [
-                sys.executable, str(ROOT / "tools" / "build_database.py"),
-                str(out_dir), "--db", str(db_path),
-            ]
-            if args.publish:
-                import_cmd += ["--publish", "--published-by", args.published_by]
-            if args.force_publish:
-                import_cmd.append("--force-publish")
-            run_command(import_cmd, log_path, dry_run=args.dry_run)
-            manifest["steps"]["db_import"] = {
-                "status": "completed", "command": import_cmd
-            }
-
-            if not args.no_bank_refresh:
-                bank_cmd = [
-                    sys.executable, str(ROOT / "tools" / "name_registry.py"),
-                    "refresh-banks", "--db", str(db_path),
-                ]
-                run_command(bank_cmd, log_path, dry_run=args.dry_run)
-                manifest["steps"]["bank_refresh"] = {
-                    "status": "completed", "command": bank_cmd
-                }
-
-            if not args.no_name_map and _db_exists(db_path):
-                map_cmd = [
-                    sys.executable,
-                    str(ROOT / "tools" / "import_user_standard.py"),
-                    "map", "--db", str(db_path),
-                ]
-                run_command(map_cmd, log_path, dry_run=args.dry_run)
-                manifest["steps"]["name_map"] = {
-                    "status": "completed", "command": map_cmd
-                }
+            run_v5_database_stage(
+                args, out_dir, log_path, manifest, dry_run=args.dry_run
+            )
 
         manifest["status"] = "completed"
         manifest["finished_at"] = now()
