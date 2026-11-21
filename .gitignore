@@ -6,9 +6,9 @@ models/
 input/
 .vision_cache
 .DS_Store
-lasped/
 ground_truth/**/crops/
 data/*
+!data/README.md
 !data/macau_balancete.sqlite
 !data/macau_balancete_import_report.json
 !data/macau_balancete_name_registry_report.json
@@ -17,5 +17,10 @@ data/*
 *.sqlite-wal
 *.sqlite-shm
 *.ipynb
-review/
 todo.md
+Todo.md
+
+# Archived local bulk / scratch (keep archive/README.md and archived docs)
+archive/ocr_runs/
+archive/workspaces/
+archive/notebooks/

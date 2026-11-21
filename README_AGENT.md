@@ -1,10 +1,10 @@
 # AI Agent Quick Start — Macau Gazette Balancete OCR v0.7.0
 
-Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`; name registry workflow is in `NAME_STANDARDIZATION.md`.
+Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF. macOS setup is in `MACOS_SETUP.md`; name registry workflow is in `NAME_STANDARDIZATION.md`. Layout / archive map: `PROJECT_LAYOUT.md`. Active V3 docs: `docs/README.md`.
 
 ## Purpose
 
-Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review.
+Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review. Operational review / adoption is on the V3 database and workbench; legacy V5 SQLite is frozen.
 
 ## v0.7.0 changes
 

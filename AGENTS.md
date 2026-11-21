@@ -2,7 +2,7 @@
 
 Before running or modifying this project:
 
-1. Read `SKILL.md` and `README_AGENT.md`. For a Mac install, read `MACOS_SETUP.md`.
+1. Read `SKILL.md` and `README_AGENT.md`. For a Mac install, read `MACOS_SETUP.md`. See `PROJECT_LAYOUT.md` for current vs archived paths. Operational DB is V3 (`data/macau_balancete_v3.sqlite`); do not treat `archive/` or legacy V5 as the publish path.
 2. Inspect each new PDF before OCR. Use a new output directory per run; never overwrite the source PDF or prior result folders.
 3. On macOS, use Apple Vision by default. Check `zh-Hant`, Portuguese, and English language availability on the actual machine. Never silently use Simplified Chinese when Traditional Chinese is unavailable.
 4. Preserve `label_raw`, `debit_raw`, `credit_raw`, source images, bounding boxes, and OCR evidence. Any normalized value must live in a separate column.

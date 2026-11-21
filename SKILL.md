@@ -7,11 +7,13 @@ Process Macau Government Gazette PDFs and extract bank / financial-institution B
 ## 1. Read these files first
 
 - `AGENTS.md`: mandatory agent behaviour and non-negotiable integrity rules.
+- `PROJECT_LAYOUT.md`: current tree vs `archive/` (DeepSeek-era / migration scaffolding).
+- `docs/README.md`: active platform specs (V3 is canonical).
 - `README_AGENT.md`: concise operational runbook.
 - `README_zh_HK.md`: human-readable installation and usage guide.
 - `MACOS_SETUP.md`: Apple Silicon / macOS installation instructions.
 - `MACOS_VISION_OCR.md`: Apple Vision architecture, ROI and language constraints.
-- `NAME_STANDARDIZATION.md`: bank / line-item registry, review and approval workflow.
+- `NAME_STANDARDIZATION.md`: bank / line-item registry, review and approval workflow (legacy V5 path; V3 catalogue lives in the V3 DB / workbench).
 
 ## 2. Architecture (v0.7.0)
 

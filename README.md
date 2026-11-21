@@ -4,11 +4,13 @@
 # 澳門銀行公報試算表OCR
 
 
-[詳細說明](README_zh_HK.md)
+[詳細說明](README_zh_HK.md) · [目錄結構](PROJECT_LAYOUT.md) · [現行文件索引](docs/README.md) · [Archive](archive/README.md)
 
 澳門特區政府公報（《澳門特別行政區公報》）銀行 Balancete（試算表）資料擷取工具，將 PDF 內的表格影像轉換成可供整理及分析的 CSV／Excel 資料。
 
 本專案以 Python 開發，並針對澳門公報中常見的中文、葡文及英文銀行財務表格作 OCR 處理。
+
+**現況（2026-11）：** 操作中的資料庫係 V3（`data/macau_balancete_v3.sqlite` + `workbench/`）。Legacy V5 SQLite 同遷移期文件已凍結／搬入 `archive/`，唔好當正式發布路徑。詳見 [`PROJECT_LAYOUT.md`](PROJECT_LAYOUT.md)。
 
 ## 版本簡介
 
