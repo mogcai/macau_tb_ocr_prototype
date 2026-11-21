@@ -364,6 +364,45 @@ class V3IngestOrchestrationTests(unittest.TestCase):
         conn.commit()
         conn.close()
 
+    def _snapshot_tree(self, root: Path) -> dict[str, tuple[int, int, str]]:
+        snapshot: dict[str, tuple[int, int, str]] = {}
+        for path in sorted(root.rglob("*")):
+            relative = str(path.relative_to(root))
+            if path.is_symlink():
+                snapshot[relative] = (-1, 0, os.readlink(path))
+            elif path.is_file():
+                stat = path.stat()
+                snapshot[relative] = (
+                    stat.st_size,
+                    stat.st_mtime_ns,
+                    hashlib.sha256(path.read_bytes()).hexdigest(),
+                )
+            elif path.is_dir():
+                snapshot[relative] = (-2, 0, "")
+        return snapshot
+
+    def _insert_extraction_run(
+        self,
+        run_dir: Path,
+        config: dict,
+        *,
+        run_id: str = "run-1",
+    ) -> None:
+        self._insert_source_document("2026-99", run_dir)
+        conn = sqlite3.connect(self.db)
+        conn.execute(
+            "INSERT INTO extraction_runs("
+            "run_id,source_document_id,config_json,started_at,completed_at,"
+            "run_status,run_report_uri) VALUES(?,?,?,?,?,?,?)",
+            (
+                run_id, "doc-2026-99", json.dumps(config),
+                "2026-11-21T00:00:00+00:00", "2026-11-21T00:00:00+00:00",
+                "completed", str((run_dir / "run_report.json").resolve()),
+            ),
+        )
+        conn.commit()
+        conn.close()
+
     def test_replay_only_cross_issue_conflict(self) -> None:
         run_dir = self._replay_fixture(issue_key="2026-99")
         self._insert_source_document("2026-98", run_dir)
@@ -424,16 +463,61 @@ class V3IngestOrchestrationTests(unittest.TestCase):
         doc.save(source)
         doc.close()
         out_dir = self.root / "dry-out"
+        before = self._snapshot_tree(self.root)
         args = self._args(
             str(source), "--dry-run", "--allow-local-source",
             "--outdir", str(out_dir),
         )
         stdout = io.StringIO()
-        with redirect_stdout(stdout):
-            code = v3.run(args)
+        with mock.patch.object(v3, "connect_v3", wraps=v3.connect_v3) as connect, \
+                mock.patch.object(
+                    v3, "result_manifest_path",
+                    side_effect=AssertionError("dry-run created result directory"),
+                ):
+            with redirect_stdout(stdout):
+                code = v3.run(args)
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(stdout.getvalue())["status"], "planned")
         self.assertFalse(out_dir.exists())
+        self.assertTrue(connect.called)
+        self.assertTrue(all(
+            call.kwargs.get("read_only") for call in connect.call_args_list
+        ))
+        self.assertEqual(self._snapshot_tree(self.root), before)
+
+    def test_full_dry_run_failure_has_zero_side_effects(self) -> None:
+        bad = self.root / "anotariais-99-2026.pdf"
+        bad.write_bytes(b"not a pdf")
+        out_dir = self.root / "dry-out"
+        before = self._snapshot_tree(self.root)
+        args = self._args(
+            str(bad), "--dry-run", "--allow-local-source",
+            "--outdir", str(out_dir),
+        )
+        with mock.patch.object(
+                v3, "result_manifest_path",
+                side_effect=AssertionError("dry-run created result directory"),
+        ):
+            with redirect_stdout(io.StringIO()):
+                code = v3.run(args)
+        self.assertEqual(code, 2)
+        self.assertFalse(out_dir.exists())
+        self.assertEqual(self._snapshot_tree(self.root), before)
+
+    def test_read_only_connection_rejects_writes(self) -> None:
+        with contextlib.closing(v3.connect_v3(self.db, read_only=True)) as conn:
+            with self.assertRaises(sqlite3.OperationalError):
+                conn.execute("CREATE TABLE forbidden(x INTEGER)")
+        conn = sqlite3.connect(self.db)
+        try:
+            names = {
+                row[0] for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+        finally:
+            conn.close()
+        self.assertNotIn("forbidden", names)
 
     def test_replay_only_acquires_lock_before_manifest_read(self) -> None:
         run_dir = self._replay_fixture(issue_key="2026-99")
@@ -454,6 +538,10 @@ class V3IngestOrchestrationTests(unittest.TestCase):
             return {}, "2026-99", {
                 "pdf_pages": 1, "ocr_pages_observed": 1,
                 "ocr_page_coverage": "full", "run_status": "completed",
+            }, {
+                "current": "f" * 64,
+                "manifest": "pending",
+                "database": "not_stored",
             }
 
         replay_result = {
@@ -501,35 +589,371 @@ class V3IngestOrchestrationTests(unittest.TestCase):
         self.assertEqual(json.loads(stdout.getvalue())["status"], "planned")
         replay_call.assert_not_called()
 
+    def test_replay_only_dry_run_success_has_zero_side_effects(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        before = self._snapshot_tree(self.root)
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        with mock.patch.object(v3, "connect_v3", wraps=v3.connect_v3) as connect, \
+                mock.patch.object(v3, "run_replay") as replay_call, \
+                mock.patch.object(
+                    v3, "result_manifest_path",
+                    side_effect=AssertionError("dry-run created result directory"),
+                ):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(stdout.getvalue())["status"], "planned")
+        self.assertTrue(connect.called)
+        self.assertTrue(all(
+            call.kwargs.get("read_only") for call in connect.call_args_list
+        ))
+        self.assertEqual(self._snapshot_tree(self.root), before)
+        replay_call.assert_not_called()
+
+    def test_replay_only_dry_run_rejection_has_zero_side_effects(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        self._insert_source_document("2026-98", run_dir)
+        before = self._snapshot_tree(self.root)
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        with mock.patch.object(
+                v3, "result_manifest_path",
+                side_effect=AssertionError("dry-run created result directory"),
+        ):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 3)
+        self.assertEqual(
+            json.loads(stdout.getvalue())["status"],
+            "already_imported_content_conflict",
+        )
+        self.assertEqual(self._snapshot_tree(self.root), before)
+
+    def test_replay_only_dry_run_rejects_illegal_tb_row_page(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        (run_dir / "tb_rows.csv").write_text(
+            "pdf_page,label_raw\n1.5,現金\n", encoding="utf-8-sig"
+        )
+        before = self._snapshot_tree(self.root)
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        with mock.patch.object(
+                v3, "result_manifest_path",
+                side_effect=AssertionError("dry-run created result directory"),
+        ):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["error"]["type"], "PageCoverageError")
+        self.assertIn("tb_rows.csv", payload["error"]["message"])
+        self.assertEqual(self._snapshot_tree(self.root), before)
+
+    def test_replay_only_dry_run_rejects_completed_manifest_missing_fingerprint(
+        self,
+    ) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        manifest_path = run_dir / "import_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["status"] = "completed"
+        manifest["v3_replay_status"] = "completed"
+        manifest["v3"] = {"run_id": "run-1"}
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        before = self._snapshot_tree(self.root)
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        with mock.patch.object(
+                v3, "result_manifest_path",
+                side_effect=AssertionError("dry-run created result directory"),
+        ):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["error"]["type"], "V3IngestError")
+        self.assertIn("missing evidence_fingerprint", payload["error"]["message"])
+        self.assertEqual(self._snapshot_tree(self.root), before)
+
+    def test_replay_only_dry_run_rejects_versioned_run_missing_fingerprint(
+        self,
+    ) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        self._insert_extraction_run(
+            run_dir, {"evidence_fingerprint_version": 1}
+        )
+        before = self._snapshot_tree(self.root)
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        with mock.patch.object(
+                v3, "result_manifest_path",
+                side_effect=AssertionError("dry-run created result directory"),
+        ):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["error"]["type"], "EvidenceChangedError")
+        self.assertIn("missing evidence_fingerprint", payload["error"]["message"])
+        self.assertEqual(self._snapshot_tree(self.root), before)
+
+    def test_replay_only_dry_run_allows_explicit_legacy_run_missing_fingerprint(
+        self,
+    ) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        self._insert_extraction_run(run_dir, {})
+        before = self._snapshot_tree(self.root)
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        with mock.patch.object(
+                v3, "result_manifest_path",
+                side_effect=AssertionError("dry-run created result directory"),
+        ):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "planned")
+        self.assertEqual(payload["fingerprint_status"]["manifest"], "pending")
+        self.assertEqual(
+            payload["fingerprint_status"]["database"], "legacy_missing"
+        )
+        self.assertRegex(payload["fingerprint_status"]["current"], r"^[0-9a-f]{64}$")
+        self.assertEqual(self._snapshot_tree(self.root), before)
+
+    def test_replay_only_rejects_invalid_fingerprint_version_values(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        fingerprint = v3.replay.evidence_fingerprint(run_dir)
+        self._insert_extraction_run(
+            run_dir, {"evidence_fingerprint": fingerprint}
+        )
+        conn = sqlite3.connect(self.db)
+        try:
+            for version in (True, None, "1", 2, 1.0):
+                with self.subTest(version=version):
+                    conn.execute(
+                        "UPDATE extraction_runs SET config_json = ? "
+                        "WHERE run_id = 'run-1'",
+                        (json.dumps({
+                            "evidence_fingerprint": fingerprint,
+                            "evidence_fingerprint_version": version,
+                        }),),
+                    )
+                    conn.commit()
+                    args = self._args(
+                        "--replay-only", "--outdir", str(run_dir),
+                        "--dry-run",
+                    )
+                    stdout = io.StringIO()
+                    with redirect_stdout(stdout):
+                        code = v3.run(args)
+                    self.assertEqual(code, 1)
+                    payload = json.loads(stdout.getvalue())
+                    self.assertEqual(
+                        payload["error"]["type"], "EvidenceChangedError"
+                    )
+                    self.assertIn(
+                        "evidence_fingerprint_version",
+                        payload["error"]["message"],
+                    )
+        finally:
+            conn.close()
+
+    def test_replay_only_accepts_version_one_or_fingerprint_only(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        fingerprint = v3.replay.evidence_fingerprint(run_dir)
+        self._insert_extraction_run(
+            run_dir, {"evidence_fingerprint": fingerprint}
+        )
+        conn = sqlite3.connect(self.db)
+        try:
+            for config in (
+                {
+                    "evidence_fingerprint": fingerprint,
+                    "evidence_fingerprint_version": 1,
+                },
+                {"evidence_fingerprint": fingerprint},
+            ):
+                with self.subTest(config=config):
+                    conn.execute(
+                        "UPDATE extraction_runs SET config_json = ? "
+                        "WHERE run_id = 'run-1'",
+                        (json.dumps(config),),
+                    )
+                    conn.commit()
+                    args = self._args(
+                        "--replay-only", "--outdir", str(run_dir),
+                        "--dry-run",
+                    )
+                    stdout = io.StringIO()
+                    with redirect_stdout(stdout):
+                        code = v3.run(args)
+                    self.assertEqual(code, 0)
+                    payload = json.loads(stdout.getvalue())
+                    self.assertEqual(
+                        payload["fingerprint_status"]["database"], "matched"
+                    )
+        finally:
+            conn.close()
+
+    def test_replay_only_rejects_empty_or_whitespace_config_json(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        self._insert_extraction_run(run_dir, {})
+        conn = sqlite3.connect(self.db)
+        try:
+            for raw in ("", "   "):
+                with self.subTest(config_json=repr(raw)):
+                    conn.execute(
+                        "UPDATE extraction_runs SET config_json = ? "
+                        "WHERE run_id = 'run-1'",
+                        (raw,),
+                    )
+                    conn.commit()
+                    args = self._args(
+                        "--replay-only", "--outdir", str(run_dir),
+                        "--dry-run",
+                    )
+                    stdout = io.StringIO()
+                    with redirect_stdout(stdout):
+                        code = v3.run(args)
+                    self.assertEqual(code, 1)
+                    payload = json.loads(stdout.getvalue())
+                    self.assertEqual(payload["error"]["type"], "ValueError")
+                    self.assertIn("empty", payload["error"]["message"])
+        finally:
+            conn.close()
+
+    def test_replay_only_allows_null_config_json_legacy(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        self._insert_extraction_run(run_dir, {})
+        conn = sqlite3.connect(self.db)
+        conn.execute(
+            "UPDATE extraction_runs SET config_json = NULL WHERE run_id = 'run-1'"
+        )
+        conn.commit()
+        conn.close()
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            code = v3.run(args)
+        self.assertEqual(code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "planned")
+        self.assertEqual(
+            payload["fingerprint_status"]["database"], "legacy_missing"
+        )
+
+    def test_replay_only_dry_run_rejects_changed_stored_fingerprint(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        self._insert_source_document("2026-99", run_dir)
+        conn = sqlite3.connect(self.db)
+        conn.execute(
+            "INSERT INTO extraction_runs("
+            "run_id,source_document_id,config_json,started_at,completed_at,"
+            "run_status,run_report_uri) VALUES(?,?,?,?,?,?,?)",
+            (
+                "run-1", "doc-2026-99",
+                json.dumps({"evidence_fingerprint": "0" * 64}),
+                "2026-11-21T00:00:00+00:00", "2026-11-21T00:00:00+00:00",
+                "completed", str((run_dir / "run_report.json").resolve()),
+            ),
+        )
+        conn.commit()
+        conn.close()
+        before = self._snapshot_tree(self.root)
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        with mock.patch.object(
+                v3, "result_manifest_path",
+                side_effect=AssertionError("dry-run created result directory"),
+        ):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            json.loads(stdout.getvalue())["error"]["type"],
+            "EvidenceChangedError",
+        )
+        self.assertEqual(self._snapshot_tree(self.root), before)
+
+    def test_replay_only_dry_run_rejects_changed_manifest_fingerprint(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        manifest_path = run_dir / "import_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["v3"] = {"evidence_fingerprint": "0" * 64}
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        before = self._snapshot_tree(self.root)
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        with mock.patch.object(
+                v3, "result_manifest_path",
+                side_effect=AssertionError("dry-run created result directory"),
+        ):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                code = v3.run(args)
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            json.loads(stdout.getvalue())["error"]["type"],
+            "EvidenceChangedError",
+        )
+        self.assertEqual(self._snapshot_tree(self.root), before)
+
     def test_replay_only_corrupt_manifest_is_not_overwritten(self) -> None:
         run_dir = self._replay_fixture(issue_key="2026-99")
         manifest_path = run_dir / "import_manifest.json"
         manifest_path.write_text("{corrupt", encoding="utf-8")
-        before = manifest_path.read_bytes()
+        before = self._snapshot_tree(self.root)
         args = self._args(
             "--replay-only", "--outdir", str(run_dir), "--dry-run",
         )
-        with redirect_stdout(io.StringIO()):
-            code = v3.run(args)
+        with mock.patch.object(
+                v3, "result_manifest_path",
+                side_effect=AssertionError("dry-run created result directory"),
+        ):
+            with redirect_stdout(io.StringIO()):
+                code = v3.run(args)
         self.assertEqual(code, 1)
-        self.assertEqual(manifest_path.read_bytes(), before)
+        self.assertEqual(manifest_path.read_bytes(), b"{corrupt")
+        self.assertEqual(self._snapshot_tree(self.root), before)
 
     def test_replay_only_dry_run_failure_preserves_manifest(self) -> None:
         run_dir = self._replay_fixture(issue_key="2026-99")
         manifest_path = run_dir / "import_manifest.json"
-        before = manifest_path.read_bytes()
         documents = run_dir / "documents.csv"
         target = self.root / "outside-dry.csv"
         target.write_text(documents.read_text(), encoding="utf-8")
         documents.unlink()
         os.symlink(target, documents)
+        before = self._snapshot_tree(self.root)
         args = self._args(
             "--replay-only", "--outdir", str(run_dir), "--dry-run",
         )
-        with redirect_stdout(io.StringIO()):
-            code = v3.run(args)
+        with mock.patch.object(
+                v3, "result_manifest_path",
+                side_effect=AssertionError("dry-run created result directory"),
+        ):
+            with redirect_stdout(io.StringIO()):
+                code = v3.run(args)
         self.assertEqual(code, 1)
-        self.assertEqual(manifest_path.read_bytes(), before)
+        self.assertEqual(self._snapshot_tree(self.root), before)
 
     def test_replay_only_rejects_symlink_artifact(self) -> None:
         run_dir = self._replay_fixture(issue_key="2026-99")
@@ -555,6 +979,22 @@ class V3IngestOrchestrationTests(unittest.TestCase):
         with mock.patch.object(v3, "run_capture", return_value=(0, stdout, "")):
             with self.assertRaises(v3.V3IngestError):
                 v3.run_replay(self.db, out_dir, "2026-99", out_dir / "log")
+
+    def test_replay_result_fingerprint_must_match_artifacts(self) -> None:
+        run_dir = self.root / "fingerprint-contract"
+        run_dir.mkdir()
+        self._write_ocr_artifacts(run_dir, "a" * 64)
+        stdout = json.dumps({
+            "status": "ok", "run_id": "run_1",
+            "gazette_issue_id": "issue_1", "source_document_id": "doc_1",
+            "already_present": False, "evidence_fingerprint": "f" * 64,
+            "pdf_pages": 1, "ocr_pages_observed": 1,
+            "ocr_page_coverage": "full", "run_status": "completed",
+        })
+        with mock.patch.object(v3, "run_capture", return_value=(0, stdout, "")):
+            with self.assertRaises(v3.V3IngestError) as ctx:
+                v3.run_replay(self.db, run_dir, "2026-99", run_dir / "log")
+        self.assertIn("evidence_fingerprint", str(ctx.exception))
 
     def test_temp_names_are_unique_for_same_job_id(self) -> None:
         source = self.root / "unique.pdf"

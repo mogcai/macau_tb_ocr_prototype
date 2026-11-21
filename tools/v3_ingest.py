@@ -189,12 +189,12 @@ def resolve_v3_input(args: argparse.Namespace) -> Path:
     return input_dir
 
 
-def validate_v3_db(db_path: Path) -> None:
+def validate_v3_db(db_path: Path, *, read_only: bool = False) -> None:
     if not db_path.is_file():
         raise V3IngestError(f"V3 database not found: {db_path}")
     if "baseline" in db_path.parts:
         raise V3IngestError("refusing to write to a baseline snapshot")
-    conn = sqlite3.connect(db_path)
+    conn = connect_v3(db_path, read_only=read_only)
     try:
         names = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
@@ -202,7 +202,6 @@ def validate_v3_db(db_path: Path) -> None:
         missing = REQUIRED_TABLES - names
         if missing:
             raise V3IngestError(f"not a V3 database; missing tables: {sorted(missing)}")
-        conn.execute("PRAGMA foreign_keys = ON")
     finally:
         conn.close()
 
@@ -371,8 +370,13 @@ def promote_no_clobber(temp: Path, dest: Path, sha256: str) -> Path:
     raise V3IngestError(f"cannot reserve a unique PDF destination for {dest}")
 
 
-def connect_v3(db_path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
+def connect_v3(db_path: Path, *, read_only: bool = False) -> sqlite3.Connection:
+    if read_only:
+        uri = f"file:{urllib.parse.quote(str(db_path))}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+        conn.execute("PRAGMA query_only = ON")
+    else:
+        conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -485,6 +489,7 @@ def run_replay(
     *,
     expected_coverage: dict[str, Any] | None = None,
 ) -> dict:
+    expected_fingerprint = replay.evidence_fingerprint(out_dir)
     code, stdout, stderr = run_capture([
         sys.executable, str(ROOT / "tools" / "replay_runs_to_v3.py"),
         "--v3-db", str(db_path), "--run-dir", str(out_dir),
@@ -512,6 +517,10 @@ def run_replay(
     fingerprint = str(result["evidence_fingerprint"])
     if not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
         raise V3IngestError("V3 replay evidence_fingerprint is invalid")
+    if fingerprint != expected_fingerprint:
+        raise V3IngestError(
+            "V3 replay evidence_fingerprint does not match the run artifacts"
+        )
     if result["run_status"] not in ("completed", "partial"):
         raise V3IngestError(f"V3 replay run_status is invalid: {result['run_status']}")
     if expected_coverage is not None:
@@ -869,12 +878,51 @@ def _run_diagnostic(args: argparse.Namespace) -> int:
         return 1
 
 
+def _manifest_fingerprint_state(
+    manifest: dict[str, Any],
+    fingerprint: str,
+) -> str:
+    """Return ``matched`` or ``pending`` for the manifest fingerprint.
+
+    A manifest that records a completed replay must contain the fingerprint.
+    Only a run that has not reached replay completion may omit it.
+    """
+    v3_meta = manifest.get("v3")
+    stored = (
+        replay.text(v3_meta.get("evidence_fingerprint"))
+        if isinstance(v3_meta, dict) else ""
+    )
+    if stored:
+        if not re.fullmatch(r"[0-9a-f]{64}", stored):
+            raise V3IngestError(
+                "replay-only manifest has an invalid evidence_fingerprint"
+            )
+        if stored != fingerprint:
+            raise replay.EvidenceChangedError(
+                "manifest evidence fingerprint does not match the run artifacts"
+            )
+        return "matched"
+    completed = (
+        manifest.get("status") == "completed"
+        or manifest.get("v3_replay_status") == "completed"
+        or (isinstance(v3_meta, dict) and bool(v3_meta.get("run_id")))
+    )
+    if completed:
+        raise V3IngestError(
+            "completed manifest is missing evidence_fingerprint; "
+            "refusing replay-only"
+        )
+    return "pending"
+
+
 def _replay_only_prepare(
     args: argparse.Namespace,
     out_dir: Path,
     v3_db: Path,
     manifest_path: Path,
-) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    *,
+    read_only: bool = False,
+) -> tuple[dict[str, Any], str, dict[str, Any], dict[str, str]]:
     _ensure_artifact_in_run(manifest_path, out_dir)
     manifest = replay.read_manifest(out_dir)
     if not manifest:
@@ -924,7 +972,13 @@ def _replay_only_prepare(
         "partial" if coverage["ocr_failed_pages"] > 0 else "completed"
     )
 
-    with contextlib.closing(connect_v3(v3_db)) as conn:
+    fingerprint = replay.evidence_fingerprint(out_dir)
+    manifest_fingerprint_state = _manifest_fingerprint_state(manifest, fingerprint)
+
+    with contextlib.closing(connect_v3(v3_db, read_only=read_only)) as conn:
+        database_fingerprint_state = replay.check_stored_evidence_fingerprint(
+            conn, report_path, fingerprint
+        )
         state = duplicate_state(conn, str(manifest.get("pdf_sha256")), issue_key)
         if state["same_issue_hash"]:
             pass
@@ -940,7 +994,12 @@ def _replay_only_prepare(
                     "already_imported_content_conflict",
                     "replay-only requires decision_type=reprocess for cross-issue content",
                 )
-    return manifest, issue_key, expected_coverage
+    fingerprint_status = {
+        "current": fingerprint,
+        "manifest": manifest_fingerprint_state,
+        "database": database_fingerprint_state,
+    }
+    return manifest, issue_key, expected_coverage, fingerprint_status
 
 
 def _run_replay_only(args: argparse.Namespace) -> int:
@@ -960,7 +1019,7 @@ def _run_replay_only(args: argparse.Namespace) -> int:
     manifest_path = out_dir / "import_manifest.json"
     v3_db = resolve_v3_db(args)
     try:
-        validate_v3_db(v3_db)
+        validate_v3_db(v3_db, read_only=args.dry_run)
     except Exception as exc:  # noqa: BLE001
         result.update({"status": "failed", "error": {
             "type": type(exc).__name__, "message": str(exc)
@@ -970,8 +1029,8 @@ def _run_replay_only(args: argparse.Namespace) -> int:
 
     if args.dry_run:
         try:
-            manifest, issue_key, _ = _replay_only_prepare(
-                args, out_dir, v3_db, manifest_path
+            manifest, issue_key, _, fingerprint_status = _replay_only_prepare(
+                args, out_dir, v3_db, manifest_path, read_only=True
             )
         except OperatorDecision as exc:
             result.update({"status": exc.status, "error": {
@@ -992,6 +1051,8 @@ def _run_replay_only(args: argparse.Namespace) -> int:
             "run_dir": str(out_dir),
             "manifest_path": str(manifest_path),
             "pdf_sha256": manifest.get("pdf_sha256"),
+            "evidence_fingerprint": fingerprint_status["current"],
+            "fingerprint_status": fingerprint_status,
             "v3": None,
             "message": "V3 replay-only preflight valid; no lock, replay or DB write",
         })
@@ -1000,8 +1061,8 @@ def _run_replay_only(args: argparse.Namespace) -> int:
 
     try:
         with import_lock(v3_db):
-            manifest, issue_key, expected_coverage = _replay_only_prepare(
-                args, out_dir, v3_db, manifest_path
+            manifest, issue_key, expected_coverage, fingerprint_status = (
+                _replay_only_prepare(args, out_dir, v3_db, manifest_path)
             )
             replay_result = run_replay(
                 v3_db, out_dir, issue_key, out_dir / "replay.log",
@@ -1027,6 +1088,8 @@ def _run_replay_only(args: argparse.Namespace) -> int:
                 "run_dir": str(out_dir),
                 "manifest_path": str(manifest_path),
                 "pdf_sha256": manifest.get("pdf_sha256"),
+                "evidence_fingerprint": replay_result.get("evidence_fingerprint"),
+                "fingerprint_status": fingerprint_status,
                 "v3": {
                     "run_id": replay_result.get("run_id"),
                     "already_present": replay_result.get("already_present"),
@@ -1099,7 +1162,7 @@ def _run_planned(args: argparse.Namespace) -> int:
     job_id = job_id_for(args)
     result = base_result(args, job_id, None)
     try:
-        validate_v3_db(resolve_v3_db(args))
+        validate_v3_db(resolve_v3_db(args), read_only=True)
         input_dir = resolve_v3_input(args)
         if not input_dir.exists():
             raise V3IngestError(f"input directory does not exist: {input_dir}")

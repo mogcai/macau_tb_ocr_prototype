@@ -366,6 +366,113 @@ def evidence_fingerprint(run_dir: Path) -> str:
     return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
 
 
+def stored_evidence_fingerprint_state(
+    conn: sqlite3.Connection,
+    run_report_path: Path,
+) -> dict[str, Any]:
+    """Describe the fingerprint state stored for an existing run.
+
+    ``legacy`` is true only when the run has neither an
+    ``evidence_fingerprint`` nor an ``evidence_fingerprint_version`` key.
+    That is the explicit legacy baseline policy from the ingestion spec:
+    the first controlled replay may establish a fingerprint, but the run
+    is never silently treated as already verified.
+    """
+    row = find_existing_run(conn, run_report_path)
+    if row is None:
+        return {
+            "exists": False, "fingerprint": None, "version": None,
+            "version_present": False, "legacy": False,
+        }
+    raw_value = row["config_json"]
+    if raw_value is None:
+        # No config_json at all: historical run without a baseline.
+        return {
+            "exists": True, "fingerprint": None, "version": None,
+            "version_present": False, "legacy": True,
+        }
+    raw = text(raw_value)
+    if not raw:
+        raise ValueError("extraction_runs.config_json is empty")
+    try:
+        config = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("extraction_runs.config_json is invalid JSON") from exc
+    if not isinstance(config, dict):
+        raise ValueError("extraction_runs.config_json is not a JSON object")
+    version_present = "evidence_fingerprint_version" in config
+    fingerprint = text(config.get("evidence_fingerprint")) or None
+    return {
+        "exists": True,
+        "fingerprint": fingerprint,
+        "version": config.get("evidence_fingerprint_version"),
+        "version_present": version_present,
+        "legacy": (
+            "evidence_fingerprint" not in config
+            and not version_present
+        ),
+    }
+
+
+def check_stored_evidence_fingerprint(
+    conn: sqlite3.Connection,
+    run_report_path: Path,
+    fingerprint: str,
+) -> str:
+    """Return ``matched``, ``legacy_missing`` or ``not_stored``.
+
+    A stored mismatch always raises ``EvidenceChangedError``.  A versioned
+    run with no fingerprint is corrupt and is rejected rather than treated
+    as a legacy baseline.
+    """
+    state = stored_evidence_fingerprint_state(conn, run_report_path)
+    if not state["exists"]:
+        return "not_stored"
+    if state["version_present"]:
+        version = state["version"]
+        if type(version) is not int or version != 1:
+            raise EvidenceChangedError(
+                f"unsupported stored evidence_fingerprint_version: {version!r}"
+            )
+    stored = state["fingerprint"]
+    if stored:
+        if not re.fullmatch(r"[0-9a-f]{64}", stored):
+            raise EvidenceChangedError(
+                f"stored evidence_fingerprint is invalid for "
+                f"{run_report_path.parent.name}"
+            )
+        if stored != fingerprint:
+            raise EvidenceChangedError(
+                f"evidence changed for {run_report_path.parent.name}: "
+                f"stored {stored}, current {fingerprint}"
+            )
+        return "matched"
+    if state["legacy"]:
+        return "legacy_missing"
+    raise EvidenceChangedError(
+        f"existing run {run_report_path.parent.name} is missing "
+        "evidence_fingerprint; refusing to treat it as verified"
+    )
+
+
+def validate_tb_row_pages(
+    rows_csv: list[dict[str, str]],
+    pdf_pages: int,
+) -> None:
+    """Strict mode: every TB row must cite an integer page inside the PDF."""
+    for index, row in enumerate(rows_csv, start=1):
+        page = strict_int(row.get("pdf_page"))
+        if page is None:
+            raise PageCoverageError(
+                f"tb_rows.csv row {index} has invalid pdf_page: "
+                f"{row.get('pdf_page')!r}"
+            )
+        if not (1 <= page <= pdf_pages):
+            raise PageCoverageError(
+                f"tb_rows.csv row {index} page {page} is outside 1-{pdf_pages}"
+            )
+
+
 def page_number(value: Any) -> int | None:
     raw = text(value)
     if not raw.isdigit():
@@ -412,6 +519,22 @@ def validate_page_coverage(
             )
         invalid = [status for status in statuses if status not in
                    ("completed", "failed", "skipped")]
+        validate_tb_row_pages(rows_csv, pdf_pages)
+        status_by_page = {
+            page: text(row.get("ocr_status")).lower()
+            for row in documents
+            if (page := page_number(row.get("pdf_page"))) is not None
+        }
+        for page in sorted({
+            page for row in rows_csv
+            if (page := strict_int(row.get("pdf_page"))) is not None
+        }):
+            if status_by_page.get(page) in (
+                "failed", "skipped", "not_applicable",
+            ):
+                raise PageCoverageError(
+                    f"page {page} is {status_by_page[page]} but has extracted rows"
+                )
         if invalid:
             raise PageCoverageError(f"invalid ocr_status values: {sorted(set(invalid))}")
         coverage = "full"
@@ -922,28 +1045,9 @@ def replay_run(
     for index, row in enumerate(rows_csv, start=1):
         page = page_number(row.get("pdf_page"))
         if page is None:
-            if strict:
-                raise PageCoverageError(
-                    f"tb_rows.csv row {index} has invalid pdf_page: "
-                    f"{row.get('pdf_page')!r}"
-                )
+            # Strict rows were already validated by validate_page_coverage().
             continue
-        if strict and (pdf_pages is None or not (1 <= page <= pdf_pages)):
-            raise PageCoverageError(
-                f"tb_rows.csv row {index} page {page} is outside 1-{pdf_pages}"
-            )
         rows_by_page[page].append((index, row))
-    if strict:
-        status_by_page = {
-            page: text(row.get("ocr_status")).lower()
-            for row in documents
-            if (page := page_number(row.get("pdf_page"))) is not None
-        }
-        for page in rows_by_page:
-            if status_by_page.get(page) in ("failed", "skipped", "not_applicable"):
-                raise PageCoverageError(
-                    f"page {page} is {status_by_page[page]} but has extracted rows"
-                )
 
     inserted = 0
     skipped = 0

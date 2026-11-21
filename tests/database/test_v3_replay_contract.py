@@ -364,15 +364,48 @@ class V3ReplayContractTests(unittest.TestCase):
             replay_run(self.conn, self.run_dir, legacy_runs={})
 
     def test_strict_invalid_tb_row_page_is_rejected(self) -> None:
-        self.write_run(tb_rows=[{
-            "pdf_page": "2.5", "label_raw": "x", "label_normalized": "x",
-            "label_role": "item", "parent_label_raw": "", "debit_raw": "",
-            "credit_raw": "", "debit_amount": "", "credit_amount": "",
-            "debit_parse_status": "blank", "credit_parse_status": "blank",
-            "row_confidence": "0.9",
-        }])
+        for invalid in ("2.5", "", "abc", "0", "3", "-1"):
+            with self.subTest(page=invalid):
+                self.write_run(tb_rows=[{
+                    "pdf_page": invalid, "label_raw": "x", "label_normalized": "x",
+                    "label_role": "item", "parent_label_raw": "", "debit_raw": "",
+                    "credit_raw": "", "debit_amount": "", "credit_amount": "",
+                    "debit_parse_status": "blank", "credit_parse_status": "blank",
+                    "row_confidence": "0.9",
+                }])
+                with self.assertRaises(PageCoverageError):
+                    replay_run(self.conn, self.run_dir, legacy_runs={})
+                self.conn.rollback()
+
+    def test_strict_rows_on_skipped_page_are_rejected(self) -> None:
+        self.write_run(
+            document_statuses={1: "completed", 2: "skipped"},
+            tb_rows=[{
+                "pdf_page": "2", "label_raw": "x", "label_normalized": "x",
+                "label_role": "item", "parent_label_raw": "", "debit_raw": "",
+                "credit_raw": "", "debit_amount": "", "credit_amount": "",
+                "debit_parse_status": "blank", "credit_parse_status": "blank",
+                "row_confidence": "0.9",
+            }],
+        )
         with self.assertRaises(PageCoverageError):
             replay_run(self.conn, self.run_dir, legacy_runs={})
+        self.conn.rollback()
+
+    def test_strict_rows_on_not_applicable_page_are_rejected(self) -> None:
+        self.write_run(
+            document_statuses={1: "completed", 2: "not_applicable"},
+            tb_rows=[{
+                "pdf_page": "2", "label_raw": "x", "label_normalized": "x",
+                "label_role": "item", "parent_label_raw": "", "debit_raw": "",
+                "credit_raw": "", "debit_amount": "", "credit_amount": "",
+                "debit_parse_status": "blank", "credit_parse_status": "blank",
+                "row_confidence": "0.9",
+            }],
+        )
+        with self.assertRaises(PageCoverageError) as ctx:
+            replay_run(self.conn, self.run_dir, legacy_runs={})
+        self.assertIn("has extracted rows", str(ctx.exception))
         self.conn.rollback()
 
     def test_pdf_hash_mismatch_is_rejected(self) -> None:
