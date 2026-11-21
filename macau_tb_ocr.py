@@ -2160,6 +2160,140 @@ def write_excel(path: Path, rows: list[dict[str, Any]], docs: list[dict[str, Any
     wb.save(path)
 
 
+class PageCoverageError(ValueError):
+    """Raised when full-page records do not cover the PDF exactly once."""
+
+
+def _safe_page_text(doc: fitz.Document, page_index: int) -> str:
+    try:
+        return doc[page_index].get_text("text")
+    except Exception:
+        return ""
+
+
+def _safe_page_meta(page_text: str, page_number: int) -> dict[str, Any]:
+    try:
+        return extract_metadata(page_text or "", page_number)
+    except Exception:
+        return {
+            "pdf_page": page_number,
+            "printed_page": "",
+            "bank_name": "",
+            "statement_date": "",
+            "publication_date": "",
+            "bank_name_source": "unavailable",
+        }
+
+
+def make_page_record(
+    page_text: str,
+    page_number: int,
+    *,
+    status: str,
+    skip_reason: str = "",
+    error_message: str = "",
+    is_tb_page: bool = False,
+) -> dict[str, Any]:
+    record = _safe_page_meta(page_text, page_number)
+    record.update({
+        "ocr_status": status,
+        "skip_reason": skip_reason,
+        "error_message": error_message,
+        "is_tb_page": is_tb_page,
+        "metadata_status": (
+            "not_applicable" if status == "skipped"
+            else "ocr_failed" if status == "failed"
+            else record.get("metadata_status", "")
+        ),
+    })
+    if status == "skipped":
+        record["bank_name"] = ""
+        record["statement_date"] = ""
+        record["bank_name_source"] = "not_applicable"
+    return record
+
+
+def finalize_full_page_records(
+    records: list[dict[str, Any]],
+    doc: fitz.Document,
+    page_start: int,
+    page_end: int,
+    failure: tuple[int, bool, Exception] | None = None,
+) -> list[dict[str, Any]]:
+    """Fill every missing page record and sort the result by pdf_page."""
+    by_page: dict[int, dict[str, Any]] = {}
+    for row in records:
+        try:
+            page_number = int(row["pdf_page"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PageCoverageError(f"invalid pdf_page in page record: {row!r}") from exc
+        if page_number in by_page:
+            raise PageCoverageError(f"duplicate page record for page {page_number}")
+        if not (page_start < page_number <= page_end):
+            raise PageCoverageError(
+                f"page {page_number} is outside the requested range "
+                f"{page_start + 1}-{page_end}"
+            )
+        by_page[page_number] = row
+
+    failure_index, failure_is_tb, failure_exc = failure or (None, False, None)
+    for page_index in range(page_start, page_end):
+        page_number = page_index + 1
+        if page_number in by_page:
+            if failure_index == page_index and failure_exc is not None:
+                by_page[page_number].update({
+                    "ocr_status": "failed",
+                    "skip_reason": "",
+                    "error_message": f"{type(failure_exc).__name__}: {failure_exc}"[:500],
+                    "is_tb_page": bool(failure_is_tb),
+                    "metadata_status": "ocr_failed",
+                })
+            continue
+
+        page_text = _safe_page_text(doc, page_index)
+        if failure_index == page_index and failure_exc is not None:
+            record = make_page_record(
+                page_text, page_number,
+                status="failed",
+                error_message=f"{type(failure_exc).__name__}: {failure_exc}"[:500],
+                is_tb_page=bool(failure_is_tb),
+            )
+        elif failure_index is not None and page_index > failure_index:
+            record = make_page_record(
+                page_text, page_number,
+                status="skipped",
+                skip_reason="not_processed_after_failure",
+            )
+        else:
+            record = make_page_record(
+                page_text, page_number,
+                status="skipped",
+                skip_reason="not_tb_page",
+            )
+        records.append(record)
+        by_page[page_number] = record
+
+    records.sort(key=lambda row: int(row["pdf_page"]))
+    return records
+
+
+def validate_page_records(records: list[dict[str, Any]], pdf_pages: int) -> None:
+    pages: list[int] = []
+    for row in records:
+        try:
+            pages.append(int(row["pdf_page"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PageCoverageError(f"invalid pdf_page in page record: {row!r}") from exc
+    if len(pages) != len(set(pages)):
+        raise PageCoverageError("duplicate pdf_page records")
+    expected = list(range(1, pdf_pages + 1))
+    if pages != expected:
+        raise PageCoverageError(
+            f"page records do not cover 1-{pdf_pages}: got {pages[:5]}"
+            + ("..." if len(pages) > 5 else "")
+        )
+
+
 def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
     pdf_path = Path(args.pdf).expanduser().resolve()
     if not pdf_path.exists():
@@ -2177,246 +2311,298 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
     tb_rows: list[dict[str, Any]] = []
     raw_rows: list[dict[str, Any]] = []
     page_start, page_end = parse_page_range(args.pages, len(doc))
-
-    for page_index in range(page_start, page_end):
-        page = doc[page_index]
-        page_text = page.get_text("text")
-        large_images = []
-        for item in page.get_images(full=True):
-            try:
-                pix = fitz.Pixmap(doc, int(item[0]))
-                if pix.width >= 1200 and pix.height >= 900:
-                    large_images.append((pix.width * pix.height, int(item[0])))
-            except Exception:
-                continue
-        if not is_tb_page(page_text, bool(large_images)):
-            continue
-
-        meta = extract_metadata(page_text, page_index + 1)
-        image_path = images_dir / f"page_{page_index + 1:04d}_table.png"
-        table_image = extract_best_embedded_image(doc, page, page_index + 1, image_path)
-        langs = detect_languages(page_text) if args.ocr_langs == "auto" else [x.strip() for x in args.ocr_langs.split(",") if x.strip()]
-        docs_record = {
-            **meta,
-            "image_width": table_image.width,
-            "image_height": table_image.height,
-            "image_xref": table_image.xref or "",
-            "embedded_image": table_image.extracted_from_embedded_image,
-            "ocr_languages": ",".join(langs),
-            "ocr_status": "extracted_only" if args.inspect_only else "pending",
-            "metadata_status": "ocr_or_manual_review" if (not meta.get("bank_name") or not meta.get("statement_date")) else "metadata_extracted",
-            "image_path": str(image_path),
-            "header_fallback_requested": args.header_fallback,
-            "header_fallback_status": (
-                "inspect_only" if args.inspect_only else "not_needed"
-            ),
-        }
-        document_rows.append(docs_record)
-
+    if args.full_page_records:
         if args.inspect_only:
-            continue
+            raise ValueError("--full-page-records cannot be combined with --inspect-only")
+        if args.pages.strip().lower() != "all":
+            raise ValueError("--full-page-records requires --pages all")
+        if len(doc) == 0:
+            raise ValueError("--full-page-records requires at least one PDF page")
 
-        b1, b2, label_x0, boundary_source = detect_column_layout(image_path)
-        vision_diagnostics: dict[str, Any] = {}
-        if args.engine == "vision":
-            all_boxes, vision_diagnostics = run_vision_ocr(
-                image_path, langs, (b1, b2), level=args.vision_level,
-                minimum_text_height=args.vision_minimum_text_height,
-                preprocess=args.vision_preprocess == "on",
-                language_correction=args.vision_language_correction,
-                label_x0=label_x0,
-            )
-        else:
-            all_boxes = []
-            for lang in langs:
-                boxes = run_ocr(image_path, lang, args.engine, args.device, args.ocr_version, engines)
-                all_boxes.extend(boxes)
-        all_boxes = dedupe_boxes(all_boxes)
-        header_boxes = [b for b in all_boxes if b.region == "header"]
-        if not header_boxes:
-            header_boxes = [b for b in all_boxes if b.cy <= table_image.height * 0.24]
-        table_boxes = [b for b in all_boxes if b.region == "table"]
-        # Fill missing/embedded-only entity name and date from the dedicated header ROI.
-        header_lines = ocr_boxes_to_lines(header_boxes, table_image.height * 0.24)
-        ocr_header_text = "\n".join(header_lines)
-        if meta.get("bank_name_source") == "image_header_check":
-            heading_pos = next((
-                i for i, x in enumerate(header_lines)
-                if BALANCETE_HEADING_RE.search(x)
-            ), None)
-            # Only take pre-title lines when the image itself actually contains a
-            # statement title. Do not mistake the table's column header for a bank.
-            name_lines = header_lines[:heading_pos] if heading_pos is not None else []
-            if name_lines:
-                meta["bank_name"] = " | ".join(name_lines[:2])
-                meta["bank_name_source"] = "ocr_header"
+    current_page_index: int | None = None
+    current_page_is_tb = False
+    page_failure: tuple[int, bool, Exception] | None = None
+    page_tb_start = 0
+    page_raw_start = 0
+
+    try:
+        for page_index in range(page_start, page_end):
+            current_page_index = page_index
+            current_page_is_tb = False
+            page_tb_start = len(tb_rows)
+            page_raw_start = len(raw_rows)
+            page = doc[page_index]
+            page_text = page.get_text("text")
+            large_images = []
+            for item in page.get_images(full=True):
+                try:
+                    pix = fitz.Pixmap(doc, int(item[0]))
+                    if pix.width >= 1200 and pix.height >= 900:
+                        large_images.append((pix.width * pix.height, int(item[0])))
+                except Exception:
+                    continue
+            page_is_tb = is_tb_page(page_text, bool(large_images))
+            current_page_is_tb = page_is_tb
+            if not page_is_tb:
+                if args.full_page_records:
+                    document_rows.append(make_page_record(
+                        page_text,
+                        page_index + 1,
+                        status="skipped",
+                        skip_reason="not_tb_page",
+                    ))
+                continue
+
+            meta = extract_metadata(page_text, page_index + 1)
+            image_path = images_dir / f"page_{page_index + 1:04d}_table.png"
+            table_image = extract_best_embedded_image(doc, page, page_index + 1, image_path)
+            langs = detect_languages(page_text) if args.ocr_langs == "auto" else [x.strip() for x in args.ocr_langs.split(",") if x.strip()]
+            docs_record = {
+                **meta,
+                "image_width": table_image.width,
+                "image_height": table_image.height,
+                "image_xref": table_image.xref or "",
+                "embedded_image": table_image.extracted_from_embedded_image,
+                "ocr_languages": ",".join(langs),
+                "ocr_status": "extracted_only" if args.inspect_only else "pending",
+                "metadata_status": "ocr_or_manual_review" if (not meta.get("bank_name") or not meta.get("statement_date")) else "metadata_extracted",
+                "image_path": str(image_path),
+                "header_fallback_requested": args.header_fallback,
+                "header_fallback_status": (
+                    "inspect_only" if args.inspect_only else "not_needed"
+                ),
+            }
+            if args.full_page_records:
+                docs_record.update({
+                    "skip_reason": "",
+                    "error_message": "",
+                    "is_tb_page": True,
+                })
+            document_rows.append(docs_record)
+
+            if args.inspect_only:
+                continue
+
+            b1, b2, label_x0, boundary_source = detect_column_layout(image_path)
+            vision_diagnostics: dict[str, Any] = {}
+            if args.engine == "vision":
+                all_boxes, vision_diagnostics = run_vision_ocr(
+                    image_path, langs, (b1, b2), level=args.vision_level,
+                    minimum_text_height=args.vision_minimum_text_height,
+                    preprocess=args.vision_preprocess == "on",
+                    language_correction=args.vision_language_correction,
+                    label_x0=label_x0,
+                )
             else:
-                meta["bank_name_source"] = "missing_in_pdf_and_image_header"
-        if not meta.get("statement_date"):
-            meta["statement_date"] = parse_statement_date(ocr_header_text)
-        if args.header_fallback == "auto" and (
-            not meta.get("bank_name") or not meta.get("statement_date")
-        ):
-            fallback_diagnostics, fallback_boxes = recover_header_metadata(
-                page, images_dir, page_index + 1, langs,
-                engine=args.engine,
-                level=args.vision_level,
-                minimum_text_height=args.vision_minimum_text_height,
-                preprocess=args.vision_preprocess == "on",
-                language_correction=args.vision_language_correction,
-                engines=engines,
-                device=args.device,
-                ocr_version=args.ocr_version,
-            )
-            if (
-                fallback_diagnostics.get("header_fallback_bank_name")
-                and not meta.get("bank_name")
+                all_boxes = []
+                for lang in langs:
+                    boxes = run_ocr(image_path, lang, args.engine, args.device, args.ocr_version, engines)
+                    all_boxes.extend(boxes)
+            all_boxes = dedupe_boxes(all_boxes)
+            header_boxes = [b for b in all_boxes if b.region == "header"]
+            if not header_boxes:
+                header_boxes = [b for b in all_boxes if b.cy <= table_image.height * 0.24]
+            table_boxes = [b for b in all_boxes if b.region == "table"]
+            # Fill missing/embedded-only entity name and date from the dedicated header ROI.
+            header_lines = ocr_boxes_to_lines(header_boxes, table_image.height * 0.24)
+            ocr_header_text = "\n".join(header_lines)
+            if meta.get("bank_name_source") == "image_header_check":
+                heading_pos = next((
+                    i for i, x in enumerate(header_lines)
+                    if BALANCETE_HEADING_RE.search(x)
+                ), None)
+                # Only take pre-title lines when the image itself actually contains a
+                # statement title. Do not mistake the table's column header for a bank.
+                name_lines = header_lines[:heading_pos] if heading_pos is not None else []
+                if name_lines:
+                    meta["bank_name"] = " | ".join(name_lines[:2])
+                    meta["bank_name_source"] = "ocr_header"
+                else:
+                    meta["bank_name_source"] = "missing_in_pdf_and_image_header"
+            if not meta.get("statement_date"):
+                meta["statement_date"] = parse_statement_date(ocr_header_text)
+            if args.header_fallback == "auto" and (
+                not meta.get("bank_name") or not meta.get("statement_date")
             ):
-                meta["bank_name"] = fallback_diagnostics["header_fallback_bank_name"]
-                # This name came from the full PDF page header, not the embedded
-                # table image; keep the provenance explicit.
-                meta["bank_name_source"] = "ocr_full_page_header"
-            if (
-                fallback_diagnostics.get("header_fallback_statement_date")
-                and not meta.get("statement_date")
-            ):
-                meta["statement_date"] = fallback_diagnostics[
-                    "header_fallback_statement_date"
-                ]
-            fallback_image = fallback_diagnostics.get("header_fallback_image", "")
-            for box in fallback_boxes:
+                fallback_diagnostics, fallback_boxes = recover_header_metadata(
+                    page, images_dir, page_index + 1, langs,
+                    engine=args.engine,
+                    level=args.vision_level,
+                    minimum_text_height=args.vision_minimum_text_height,
+                    preprocess=args.vision_preprocess == "on",
+                    language_correction=args.vision_language_correction,
+                    engines=engines,
+                    device=args.device,
+                    ocr_version=args.ocr_version,
+                )
+                if (
+                    fallback_diagnostics.get("header_fallback_bank_name")
+                    and not meta.get("bank_name")
+                ):
+                    meta["bank_name"] = fallback_diagnostics["header_fallback_bank_name"]
+                    # This name came from the full PDF page header, not the embedded
+                    # table image; keep the provenance explicit.
+                    meta["bank_name_source"] = "ocr_full_page_header"
+                if (
+                    fallback_diagnostics.get("header_fallback_statement_date")
+                    and not meta.get("statement_date")
+                ):
+                    meta["statement_date"] = fallback_diagnostics[
+                        "header_fallback_statement_date"
+                    ]
+                fallback_image = fallback_diagnostics.get("header_fallback_image", "")
+                for box in fallback_boxes:
+                    raw_rows.append({
+                        **meta,
+                        "language": box.language,
+                        "region": "header_fallback",
+                        "text": box.text,
+                        "confidence": round(box.score, 4),
+                        "x0": round(box.x0, 2), "y0": round(box.y0, 2),
+                        "x1": round(box.x1, 2), "y1": round(box.y1, 2),
+                        "image_path": fallback_image,
+                    })
+                document_rows[-1].update(fallback_diagnostics)
+            elif args.header_fallback == "off":
+                document_rows[-1]["header_fallback_status"] = "off"
+            meta["metadata_status"] = "metadata_extracted" if (meta.get("bank_name") and meta.get("statement_date")) else "needs_manual_review"
+            document_rows[-1].update({k: meta.get(k, "") for k in (
+                "bank_name", "statement_date", "bank_name_source", "metadata_status"
+            )})
+            for box in all_boxes:
                 raw_rows.append({
                     **meta,
                     "language": box.language,
-                    "region": "header_fallback",
+                    "region": box.region,
                     "text": box.text,
                     "confidence": round(box.score, 4),
                     "x0": round(box.x0, 2), "y0": round(box.y0, 2),
                     "x1": round(box.x1, 2), "y1": round(box.y1, 2),
-                    "image_path": fallback_image,
+                    "image_path": str(image_path),
                 })
-            document_rows[-1].update(fallback_diagnostics)
-        elif args.header_fallback == "off":
-            document_rows[-1]["header_fallback_status"] = "off"
-        meta["metadata_status"] = "metadata_extracted" if (meta.get("bank_name") and meta.get("statement_date")) else "needs_manual_review"
-        document_rows[-1].update({k: meta.get(k, "") for k in (
-            "bank_name", "statement_date", "bank_name_source", "metadata_status"
-        )})
-        for box in all_boxes:
-            raw_rows.append({
-                **meta,
-                "language": box.language,
-                "region": box.region,
-                "text": box.text,
-                "confidence": round(box.score, 4),
-                "x0": round(box.x0, 2), "y0": round(box.y0, 2),
-                "x1": round(box.x1, 2), "y1": round(box.y1, 2),
-                "image_path": str(image_path),
-            })
-        row_bands: list[tuple[float, float]] = []
-        row_structure_source = "clustered"
-        row_structure_guard = ""
-        if args.row_structure != "clustered":
-            candidate_bands, candidate_source = detect_row_bands(image_path, (b1, b2))
-            if candidate_source == "projection" and candidate_bands:
-                heights = [b.height for b in table_boxes if b.height > 2]
-                median_box = statistics.median(heights) if heights else 0.0
-                clusters = _cluster_boxes(table_boxes, max(8.0, median_box * 0.58))
-                band_heights = [y1 - y0 for y0, y1 in candidate_bands]
-                band_count_ok = 0.6 * len(clusters) <= len(candidate_bands) <= 1.3 * len(clusters)
-                band_height_ok = not median_box or statistics.median(band_heights) <= 1.5 * median_box
-                # A band holding two reading clusters means the projection merged
-                # table rows; using it would silently drop a row.
-                per_band: list[int] = [0] * len(candidate_bands)
-                for cluster in clusters:
-                    for index, (y0, y1) in enumerate(candidate_bands):
-                        if y0 <= cluster["cy"] < y1:
-                            per_band[index] += 1
-                            break
-                single_row_bands = not per_band or max(per_band) <= 1
-                if not band_count_ok:
-                    row_structure_guard = "band_count_mismatch"
-                elif not band_height_ok:
-                    row_structure_guard = "band_height_mismatch"
-                elif not single_row_bands:
-                    row_structure_guard = "band_merged_rows"
-                if args.row_structure == "projection" or not row_structure_guard:
-                    row_bands = candidate_bands
-                    row_structure_source = "projection"
-        rows = group_boxes_into_rows(
-            table_boxes, table_image.width, table_image.height, (b1, b2),
-            row_bands=row_bands or None,
-        )
-        second_pass_diagnostics: dict[str, Any] = {
-            "amount_second_pass_status": "off",
-            "amount_second_pass_cells": 0,
-            "amount_second_pass_filled": 0,
-            "amount_second_pass_seconds": 0.0,
-        }
-        if args.amount_second_pass == "ink" and args.engine == "vision":
-            page_profile = infer_number_format(
-                [value for row in rows
-                 for value in (row.get("debit_raw", ""), row.get("credit_raw", ""))]
+            row_bands: list[tuple[float, float]] = []
+            row_structure_source = "clustered"
+            row_structure_guard = ""
+            if args.row_structure != "clustered":
+                candidate_bands, candidate_source = detect_row_bands(image_path, (b1, b2))
+                if candidate_source == "projection" and candidate_bands:
+                    heights = [b.height for b in table_boxes if b.height > 2]
+                    median_box = statistics.median(heights) if heights else 0.0
+                    clusters = _cluster_boxes(table_boxes, max(8.0, median_box * 0.58))
+                    band_heights = [y1 - y0 for y0, y1 in candidate_bands]
+                    band_count_ok = 0.6 * len(clusters) <= len(candidate_bands) <= 1.3 * len(clusters)
+                    band_height_ok = not median_box or statistics.median(band_heights) <= 1.5 * median_box
+                    # A band holding two reading clusters means the projection merged
+                    # table rows; using it would silently drop a row.
+                    per_band: list[int] = [0] * len(candidate_bands)
+                    for cluster in clusters:
+                        for index, (y0, y1) in enumerate(candidate_bands):
+                            if y0 <= cluster["cy"] < y1:
+                                per_band[index] += 1
+                                break
+                    single_row_bands = not per_band or max(per_band) <= 1
+                    if not band_count_ok:
+                        row_structure_guard = "band_count_mismatch"
+                    elif not band_height_ok:
+                        row_structure_guard = "band_height_mismatch"
+                    elif not single_row_bands:
+                        row_structure_guard = "band_merged_rows"
+                    if args.row_structure == "projection" or not row_structure_guard:
+                        row_bands = candidate_bands
+                        row_structure_source = "projection"
+            rows = group_boxes_into_rows(
+                table_boxes, table_image.width, table_image.height, (b1, b2),
+                row_bands=row_bands or None,
             )
-            page_format = (
-                args.number_format
-                if args.number_format in {"comma_dot", "dot_comma"}
-                else page_profile["number_format"]
-            )
-            second_pass_diagnostics = second_pass_amount_cells(
+            second_pass_diagnostics: dict[str, Any] = {
+                "amount_second_pass_status": "off",
+                "amount_second_pass_cells": 0,
+                "amount_second_pass_filled": 0,
+                "amount_second_pass_seconds": 0.0,
+            }
+            if args.amount_second_pass == "ink" and args.engine == "vision":
+                page_profile = infer_number_format(
+                    [value for row in rows
+                     for value in (row.get("debit_raw", ""), row.get("credit_raw", ""))]
+                )
+                page_format = (
+                    args.number_format
+                    if args.number_format in {"comma_dot", "dot_comma"}
+                    else page_profile["number_format"]
+                )
+                second_pass_diagnostics = second_pass_amount_cells(
+                    rows, image_path, table_image.width, table_image.height, (b1, b2),
+                    page_format, args.confidence_threshold,
+                )
+            verifier_diagnostics = attach_amount_verifier(
                 rows, image_path, table_image.width, table_image.height, (b1, b2),
-                page_format, args.confidence_threshold,
+                args.amount_verifier,
             )
-        verifier_diagnostics = attach_amount_verifier(
-            rows, image_path, table_image.width, table_image.height, (b1, b2),
-            args.amount_verifier,
+            rows = validate_rows(
+                rows, args.confidence_threshold,
+                number_format_override=args.number_format,
+                chinese_label_normalization=args.chinese_label_normalization,
+                repair_ocr_separators=args.repair_ocr_separators,
+                amount_verifier=verifier_diagnostics.get("amount_verifier_status") == "ran",
+                amount_second_pass=second_pass_diagnostics.get("amount_second_pass_status") == "ran",
+            )
+            label_diagnostics: dict[str, Any] = {}
+            if args.label_standardization:
+                lexicon = load_label_lexicon(args.label_lexicon)
+                if lexicon:
+                    label_diagnostics = standardize_labels(rows, lexicon)
+                    build_label_hierarchy(rows)
+                    label_diagnostics["label_orphan_children"] = sum(
+                        1 for row in rows if row.get("label_role") == "orphan_child"
+                    )
+                    label_diagnostics["label_continuation_rows"] = detect_label_continuations(
+                        rows, lexicon
+                    )
+                    apply_label_review(rows)
+                else:
+                    label_diagnostics = {"label_standard_status": "lexicon_missing"}
+            if rows:
+                document_rows[-1]["number_format_detected"] = rows[0].get("number_format", "")
+                document_rows[-1]["number_format_confidence"] = rows[0].get("number_format_confidence", "")
+                document_rows[-1]["number_format_evidence"] = rows[0].get("number_format_evidence", "")
+            document_rows[-1].update(vision_diagnostics)
+            document_rows[-1].update(verifier_diagnostics)
+            document_rows[-1].update(second_pass_diagnostics)
+            document_rows[-1].update(label_diagnostics)
+            document_rows[-1]["row_structure_source"] = row_structure_source
+            document_rows[-1]["row_structure_guard"] = row_structure_guard
+            document_rows[-1]["row_band_count"] = len(row_bands)
+            document_rows[-1]["label_column_x0"] = round(label_x0, 4)
+            for row in rows:
+                row["column_boundary_source"] = boundary_source
+                if str(boundary_source).startswith("fallback"):
+                    current = row.get("review_reason", "")
+                    row["review_reason"] = ";".join(x for x in (current, "fallback_column_boundaries") if x)
+                    row["review_status"] = "needs_review"
+                tb_rows.append(make_export_row(meta, row, image_path))
+            document_rows[-1]["ocr_status"] = "completed"
+            document_rows[-1]["ocr_box_count"] = len(all_boxes)
+            document_rows[-1]["table_row_count"] = len(rows)
+            document_rows[-1]["review_row_count"] = sum(r["review_status"] == "needs_review" for r in rows)
+    except Exception as exc:
+        if not args.full_page_records:
+            raise
+        failure_page = current_page_index if current_page_index is not None else page_start
+        page_failure = (failure_page, current_page_is_tb, exc)
+        # Do not keep partial evidence from the failed page.
+        del tb_rows[page_tb_start:]
+        del raw_rows[page_raw_start:]
+
+    if args.full_page_records:
+        document_rows = finalize_full_page_records(
+            document_rows, doc, page_start, page_end, page_failure
         )
-        rows = validate_rows(
-            rows, args.confidence_threshold,
-            number_format_override=args.number_format,
-            chinese_label_normalization=args.chinese_label_normalization,
-            repair_ocr_separators=args.repair_ocr_separators,
-            amount_verifier=verifier_diagnostics.get("amount_verifier_status") == "ran",
-            amount_second_pass=second_pass_diagnostics.get("amount_second_pass_status") == "ran",
-        )
-        label_diagnostics: dict[str, Any] = {}
-        if args.label_standardization:
-            lexicon = load_label_lexicon(args.label_lexicon)
-            if lexicon:
-                label_diagnostics = standardize_labels(rows, lexicon)
-                build_label_hierarchy(rows)
-                label_diagnostics["label_orphan_children"] = sum(
-                    1 for row in rows if row.get("label_role") == "orphan_child"
-                )
-                label_diagnostics["label_continuation_rows"] = detect_label_continuations(
-                    rows, lexicon
-                )
-                apply_label_review(rows)
-            else:
-                label_diagnostics = {"label_standard_status": "lexicon_missing"}
-        if rows:
-            document_rows[-1]["number_format_detected"] = rows[0].get("number_format", "")
-            document_rows[-1]["number_format_confidence"] = rows[0].get("number_format_confidence", "")
-            document_rows[-1]["number_format_evidence"] = rows[0].get("number_format_evidence", "")
-        document_rows[-1].update(vision_diagnostics)
-        document_rows[-1].update(verifier_diagnostics)
-        document_rows[-1].update(second_pass_diagnostics)
-        document_rows[-1].update(label_diagnostics)
-        document_rows[-1]["row_structure_source"] = row_structure_source
-        document_rows[-1]["row_structure_guard"] = row_structure_guard
-        document_rows[-1]["row_band_count"] = len(row_bands)
-        document_rows[-1]["label_column_x0"] = round(label_x0, 4)
-        for row in rows:
-            row["column_boundary_source"] = boundary_source
-            if str(boundary_source).startswith("fallback"):
-                current = row.get("review_reason", "")
-                row["review_reason"] = ";".join(x for x in (current, "fallback_column_boundaries") if x)
-                row["review_status"] = "needs_review"
-            tb_rows.append(make_export_row(meta, row, image_path))
-        document_rows[-1]["ocr_status"] = "completed"
-        document_rows[-1]["ocr_box_count"] = len(all_boxes)
-        document_rows[-1]["table_row_count"] = len(rows)
-        document_rows[-1]["review_row_count"] = sum(r["review_status"] == "needs_review" for r in rows)
+        validate_page_records(document_rows, len(doc))
+
+    tb_pages_detected = (
+        sum(1 for row in document_rows if row.get("is_tb_page") is True)
+        if args.full_page_records else len(document_rows)
+    )
 
     # Write exports.
     write_csv(out_dir / "documents.csv", document_rows)
@@ -2431,7 +2617,7 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
         "source_pdf_sha256": source_pdf_sha256,
         "source_pdf_size": source_pdf_size,
         "pdf_pages": len(doc),
-        "tb_pages_detected": len(document_rows),
+        "tb_pages_detected": tb_pages_detected,
         "tb_rows_extracted": len(tb_rows),
         "rows_for_review": sum(r.get("review_status") == "needs_review" for r in tb_rows),
         "mode": "inspect_only" if args.inspect_only else "ocr",
@@ -2455,6 +2641,22 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
         "repair_ocr_separators": args.repair_ocr_separators,
         "languages": args.ocr_langs,
     }
+    if args.full_page_records:
+        report.update({
+            "full_page_records": True,
+            "page_records": len(document_rows),
+            "ocr_pages_observed": len(document_rows),
+            "ocr_completed_pages": sum(
+                1 for row in document_rows if row.get("ocr_status") == "completed"
+            ),
+            "ocr_skipped_pages": sum(
+                1 for row in document_rows if row.get("ocr_status") == "skipped"
+            ),
+            "ocr_failed_pages": sum(
+                1 for row in document_rows if row.get("ocr_status") == "failed"
+            ),
+            "ocr_page_coverage": "full",
+        })
     (out_dir / "run_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     doc.close()
     return report
@@ -2516,6 +2718,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="停用有分組證據的 OCR 千分位標點修復")
     p.set_defaults(repair_ocr_separators=True)
     p.add_argument("--confidence-threshold", type=float, default=0.88, help="低於此 OCR 信心值會進入覆核清單")
+    p.add_argument(
+        "--full-page-records",
+        action="store_true",
+        help="每頁寫入一條 documents.csv 記錄（V3 coverage）；需要 --pages all",
+    )
     p.add_argument("--inspect-only", action="store_true", help="只抽取內嵌圖片及 metadata，不執行 OCR")
     return p
 
