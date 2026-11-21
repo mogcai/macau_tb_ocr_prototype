@@ -5,6 +5,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import sqlite3
 import sys
 import tempfile
@@ -293,6 +294,69 @@ class V3ReplayContractTests(unittest.TestCase):
         self.assertEqual(result["ocr_page_coverage"], "unknown")
         self.assertIsNone(result["pdf_pages"])
 
+    def test_strict_missing_tb_rows_is_rejected(self) -> None:
+        self.write_run()
+        (self.run_dir / "tb_rows.csv").unlink()
+        with self.assertRaises(ValueError):
+            replay_run(self.conn, self.run_dir, legacy_runs={})
+        self.conn.rollback()
+
+    def test_strict_symlink_evidence_is_rejected(self) -> None:
+        self.write_run()
+        documents = self.run_dir / "documents.csv"
+        target = self.root / "real-documents.csv"
+        target.write_text(documents.read_text(), encoding="utf-8")
+        documents.unlink()
+        os.symlink(target, documents)
+        with self.assertRaises(ValueError):
+            replay_run(self.conn, self.run_dir, legacy_runs={})
+        self.conn.rollback()
+
+    def test_symlink_manifest_is_rejected(self) -> None:
+        self.write_run()
+        manifest = self.run_dir / "import_manifest.json"
+        target = self.root / "real-manifest.json"
+        target.write_text(manifest.read_text(), encoding="utf-8")
+        manifest.unlink()
+        os.symlink(target, manifest)
+        with self.assertRaises(replay_module.ManifestError):
+            replay_run(self.conn, self.run_dir, legacy_runs={})
+        self.conn.rollback()
+
+    def test_header_only_tb_rows_is_valid_strict(self) -> None:
+        self.write_run()
+        rows = self.run_dir / "tb_rows.csv"
+        rows.write_text(
+            "pdf_page,label_raw,label_normalized,label_role,parent_label_raw,"
+            "debit_raw,credit_raw,debit_amount,credit_amount,"
+            "debit_parse_status,credit_parse_status,row_confidence\n",
+            encoding="utf-8-sig",
+        )
+        result = self.replay()
+        self.assertEqual(result["status"] if "status" in result else "ok", "ok")
+        self.assertEqual(
+            self.conn.execute("SELECT COUNT(*) FROM extracted_rows").fetchone()[0], 0
+        )
+
+    def test_v3_manifest_missing_version_cannot_use_legacy_fallback(self) -> None:
+        with self.assertRaises(replay_module.ManifestError):
+            replay_module.validate_manifest({
+                "target": "v3", "issue_key": "2026-99",
+            })
+
+    def test_invalid_manifest_origin_is_rejected(self) -> None:
+        with self.assertRaises(replay_module.ManifestError):
+            replay_module.validate_manifest({
+                "manifest_version": 2, "target": "v3",
+                "issue_key": "2026-99", "manifest_origin": "guess",
+            })
+
+    def test_reconstructed_manifest_does_not_disable_strict_mode(self) -> None:
+        self.assertTrue(replay_module.manifest_is_strict({
+            "manifest_version": 2, "target": "v3",
+            "manifest_origin": "reconstructed",
+        }))
+
     def test_corrupt_manifest_is_rejected_not_downgraded(self) -> None:
         self.write_run()
         (self.run_dir / "import_manifest.json").write_text("{not json", encoding="utf-8")
@@ -327,8 +391,14 @@ class V3ReplayContractTests(unittest.TestCase):
         report = json.loads(report_path.read_text())
         report["pdf_pages"] = 3
         report_path.write_text(json.dumps(report), encoding="utf-8")
-        with self.assertRaises(PageCoverageError):
+        with (self.run_dir / "documents.csv").open(
+            "a", newline="", encoding="utf-8-sig"
+        ) as handle:
+            writer = csv.writer(handle)
+            writer.writerow([3, 103, "skipped"])
+        with self.assertRaises(PageCoverageError) as ctx:
             replay_run(self.conn, self.run_dir, legacy_runs={})
+        self.assertIn("actual PDF", str(ctx.exception))
         self.conn.rollback()
 
     def test_explicit_issue_key_must_match_manifest_and_directory(self) -> None:

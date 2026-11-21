@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import errno
 import hashlib
@@ -380,6 +381,96 @@ class V3IngestOrchestrationTests(unittest.TestCase):
         )
         replay_call.assert_not_called()
 
+    def test_run_directory_race_does_not_overwrite_other_manifest(self) -> None:
+        out_dir = self.root / "raced-out"
+        args = self._args(
+            "https://images.bo.dsaj.gov.mo/bo/ii/2026/99/anotariais-99-2026.pdf",
+            "--outdir", str(out_dir),
+        )
+        source = self._make_pdf(1)
+        sha = hashlib.sha256(source.read_bytes()).hexdigest()
+
+        def fake_download(args, input_dir, job_id):
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "import_manifest.json").write_text(
+                "OTHER PROCESS", encoding="utf-8"
+            )
+            temp = self.root / "race.tmp"
+            temp.write_bytes(source.read_bytes())
+            return {
+                "temp": temp, "source_url": args.source, "source_kind": "url",
+                "source_filename": "anotariais-99-2026.pdf",
+                "bytes": len(source.read_bytes()), "sha256": sha,
+            }
+
+        result_path = self.root / "race-result.json"
+        with mock.patch.object(v3, "resolve_v3_input", return_value=self.root), \
+                mock.patch.object(v3, "download_source", side_effect=fake_download), \
+                mock.patch.object(v3, "result_manifest_path", return_value=result_path), \
+                mock.patch.object(v3, "run_capture") as capture:
+            with redirect_stdout(io.StringIO()):
+                code = v3.run(args)
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            (out_dir / "import_manifest.json").read_text(encoding="utf-8"),
+            "OTHER PROCESS",
+        )
+        capture.assert_not_called()
+
+    def test_full_dry_run_performs_read_only_preflight(self) -> None:
+        source = self.root / "anotariais-99-2026.pdf"
+        doc = fitz.open()
+        doc.new_page()
+        doc.save(source)
+        doc.close()
+        out_dir = self.root / "dry-out"
+        args = self._args(
+            str(source), "--dry-run", "--allow-local-source",
+            "--outdir", str(out_dir),
+        )
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            code = v3.run(args)
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(stdout.getvalue())["status"], "planned")
+        self.assertFalse(out_dir.exists())
+
+    def test_replay_only_acquires_lock_before_manifest_read(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        args = self._args("--replay-only", "--outdir", str(run_dir))
+        state = {"locked": False, "prepared": False}
+
+        @contextlib.contextmanager
+        def fake_lock(db):
+            state["locked"] = True
+            try:
+                yield
+            finally:
+                state["locked"] = False
+
+        def fake_prepare(*a, **kw):
+            state["prepared"] = True
+            self.assertTrue(state["locked"])
+            return {}, "2026-99", {
+                "pdf_pages": 1, "ocr_pages_observed": 1,
+                "ocr_page_coverage": "full", "run_status": "completed",
+            }
+
+        replay_result = {
+            "status": "ok", "run_id": "run_1",
+            "gazette_issue_id": "g", "source_document_id": "d",
+            "evidence_fingerprint": "f" * 64, "pdf_pages": 1,
+            "ocr_pages_observed": 1, "ocr_page_coverage": "full",
+            "run_status": "completed", "already_present": False,
+        }
+        with mock.patch.object(v3, "import_lock", fake_lock), \
+                mock.patch.object(v3, "_replay_only_prepare", side_effect=fake_prepare), \
+                mock.patch.object(v3, "run_replay", return_value=replay_result):
+            with redirect_stdout(io.StringIO()):
+                code = v3.run(args)
+        self.assertEqual(code, 0)
+        self.assertTrue(state["prepared"])
+
     def test_replay_only_same_issue_retry_allowed(self) -> None:
         run_dir = self._replay_fixture(issue_key="2026-99")
         self._insert_source_document("2026-99", run_dir)
@@ -409,6 +500,36 @@ class V3IngestOrchestrationTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(stdout.getvalue())["status"], "planned")
         replay_call.assert_not_called()
+
+    def test_replay_only_corrupt_manifest_is_not_overwritten(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        manifest_path = run_dir / "import_manifest.json"
+        manifest_path.write_text("{corrupt", encoding="utf-8")
+        before = manifest_path.read_bytes()
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        with redirect_stdout(io.StringIO()):
+            code = v3.run(args)
+        self.assertEqual(code, 1)
+        self.assertEqual(manifest_path.read_bytes(), before)
+
+    def test_replay_only_dry_run_failure_preserves_manifest(self) -> None:
+        run_dir = self._replay_fixture(issue_key="2026-99")
+        manifest_path = run_dir / "import_manifest.json"
+        before = manifest_path.read_bytes()
+        documents = run_dir / "documents.csv"
+        target = self.root / "outside-dry.csv"
+        target.write_text(documents.read_text(), encoding="utf-8")
+        documents.unlink()
+        os.symlink(target, documents)
+        args = self._args(
+            "--replay-only", "--outdir", str(run_dir), "--dry-run",
+        )
+        with redirect_stdout(io.StringIO()):
+            code = v3.run(args)
+        self.assertEqual(code, 1)
+        self.assertEqual(manifest_path.read_bytes(), before)
 
     def test_replay_only_rejects_symlink_artifact(self) -> None:
         run_dir = self._replay_fixture(issue_key="2026-99")
@@ -462,9 +583,14 @@ class V3IngestOrchestrationTests(unittest.TestCase):
             v3.download_source(args, self.root, "job")
         big = self.root / "big.pdf"
         big.write_bytes(b"%PDF-" + b"x" * 100)
+        big_args = self._args(
+            str(big), "--outdir", str(self.root / "out-big"),
+            "--allow-local-source",
+        )
         with mock.patch.object(v3, "MAX_PDF_BYTES", 20):
             with self.assertRaises(v3.V3IngestError):
-                v3.download_source(args, self.root, "job2")
+                v3.download_source(big_args, self.root, "job2")
+        self.assertEqual(list(self.root.glob(".local-*.part")), [])
 
     def test_url_policy_rejects_private_address_and_port(self) -> None:
         with mock.patch.object(v3.socket, "getaddrinfo", return_value=[
@@ -500,6 +626,15 @@ class V3IngestOrchestrationTests(unittest.TestCase):
         result = json.loads(stdout.getvalue())
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["operation"], "replay_only")
+
+    def test_reserve_run_dir_collision_preserves_owner(self) -> None:
+        out_dir = self.root / "owned"
+        v3.reserve_run_dir(out_dir, "owner-a")
+        owner_path = out_dir / v3.OWNER_FILE
+        before = owner_path.read_text(encoding="utf-8")
+        with self.assertRaises(FileExistsError):
+            v3.reserve_run_dir(out_dir, "owner-b")
+        self.assertEqual(owner_path.read_text(encoding="utf-8"), before)
 
     def test_import_lock_is_exclusive(self) -> None:
         with v3.import_lock(self.db):

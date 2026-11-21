@@ -524,6 +524,22 @@ def run_replay(
     return result
 
 
+OWNER_FILE = ".import_owner.json"
+
+
+def reserve_run_dir(out_dir: Path, job_id: str) -> None:
+    """Atomically reserve a new run directory and record its owner."""
+    out_dir.mkdir(parents=True, exist_ok=False)
+    owner = {
+        "job_id": job_id,
+        "pid": os.getpid(),
+        "reserved_at": now(),
+    }
+    (out_dir / OWNER_FILE).write_text(
+        json.dumps(owner, ensure_ascii=False), encoding="utf-8"
+    )
+
+
 def result_manifest_path(kind: str, job_id: str) -> Path:
     root = ROOT / ("output_import_failed" if kind == "failed" else "output_import_results")
     root.mkdir(parents=True, exist_ok=True)
@@ -649,6 +665,7 @@ def _run_full(args: argparse.Namespace) -> int:
     pdf_info: dict | None = None
     out_dir: Path | None = None
     manifest: dict[str, Any] | None = None
+    run_dir_reserved = False
     try:
         validate_v3_db(v3_db)
         input_dir = resolve_v3_input(args)
@@ -666,7 +683,8 @@ def _run_full(args: argparse.Namespace) -> int:
                 dest = input_dir / pdf_info["source_filename"]
                 final_pdf = promote_no_clobber(pdf_info["temp"], dest, pdf_info["sha256"])
                 pdf_info["path"] = str(final_pdf)
-            out_dir.mkdir(parents=True, exist_ok=False)
+            reserve_run_dir(out_dir, job_id)
+            run_dir_reserved = True
             log_path = out_dir / "import.log"
             ocr_cmd = imp.build_ocr_command(args, Path(pdf_info["path"]), out_dir) + [
                 "--full-page-records", "--pages", "all",
@@ -750,7 +768,7 @@ def _run_full(args: argparse.Namespace) -> int:
         result.update({"status": "failed", "issue_key": issue_key, "error": {
             "type": type(exc).__name__, "message": str(exc)
         }})
-        if out_dir is not None and out_dir.is_dir():
+        if run_dir_reserved and out_dir is not None and out_dir.is_dir():
             failed_manifest = manifest or {
                 "manifest_version": 2,
                 "manifest_origin": "written",
@@ -799,7 +817,7 @@ def _run_diagnostic(args: argparse.Namespace) -> int:
             pdf_info["temp"], input_dir / pdf_info["source_filename"], pdf_info["sha256"]
         )
         pdf_info["path"] = str(final_pdf)
-        out_dir.mkdir(parents=True, exist_ok=False)
+        reserve_run_dir(out_dir, job_id)
         log_path = out_dir / "import.log"
         operation = "download_only" if args.download_only else "inspect_only"
         if args.inspect_only:
@@ -851,6 +869,80 @@ def _run_diagnostic(args: argparse.Namespace) -> int:
         return 1
 
 
+def _replay_only_prepare(
+    args: argparse.Namespace,
+    out_dir: Path,
+    v3_db: Path,
+    manifest_path: Path,
+) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    _ensure_artifact_in_run(manifest_path, out_dir)
+    manifest = replay.read_manifest(out_dir)
+    if not manifest:
+        raise V3IngestError("replay-only requires import_manifest.json")
+    replay.validate_manifest(manifest)
+    if not re.fullmatch(
+        r"[0-9a-f]{64}", str(manifest.get("pdf_sha256") or "").strip()
+    ):
+        raise V3IngestError("replay-only manifest has an invalid pdf_sha256")
+    operation = manifest.get("operation")
+    if operation not in (None, "full_import", "replay_only"):
+        raise V3IngestError(f"replay-only does not accept operation {operation}")
+    if manifest.get("status") not in ("running", "failed", "completed"):
+        raise V3IngestError(f"replay-only does not accept status {manifest.get('status')}")
+    issue_key = replay.resolve_issue_key(out_dir, manifest, args.issue_key)
+    if Path(manifest.get("run_dir", "")).resolve() != out_dir:
+        raise V3IngestError("manifest run_dir does not match --outdir")
+
+    report_path = out_dir / "run_report.json"
+    documents_path = out_dir / "documents.csv"
+    rows_path = out_dir / "tb_rows.csv"
+    _ensure_artifact_in_run(report_path, out_dir)
+    _ensure_artifact_in_run(documents_path, out_dir)
+    _ensure_artifact_in_run(rows_path, out_dir)
+    report = replay.read_json(report_path)
+    if not report:
+        raise V3IngestError("replay-only run_report.json is invalid")
+    if report.get("source_pdf_sha256") != manifest.get("pdf_sha256"):
+        raise V3IngestError("run_report SHA-256 does not match the manifest")
+
+    pdf_path = Path(manifest.get("pdf_path", ""))
+    if pdf_path.is_symlink():
+        raise V3IngestError("manifest PDF path is a symlink")
+    if not pdf_path.is_file() or sha256_file(pdf_path) != manifest.get("pdf_sha256"):
+        raise V3IngestError("manifest PDF hash does not match the source file")
+    actual_pages = replay.actual_pdf_pages(pdf_path)
+    if actual_pages is None or actual_pages != replay.strict_int(report.get("pdf_pages")):
+        raise V3IngestError("actual PDF page count does not match run_report.pdf_pages")
+
+    documents = replay.read_csv(documents_path)
+    rows = replay.read_csv(rows_path)
+    coverage = replay.validate_page_coverage(
+        report, documents, rows, strict=replay.manifest_is_strict(manifest)
+    )
+    expected_coverage = dict(coverage)
+    expected_coverage["run_status"] = (
+        "partial" if coverage["ocr_failed_pages"] > 0 else "completed"
+    )
+
+    with contextlib.closing(connect_v3(v3_db)) as conn:
+        state = duplicate_state(conn, str(manifest.get("pdf_sha256")), issue_key)
+        if state["same_issue_hash"]:
+            pass
+        elif state["issue_docs"]:
+            if manifest.get("decision_type") != "new_version":
+                raise OperatorDecision(
+                    "new_source_version_required",
+                    "replay-only requires decision_type=new_version for this issue",
+                )
+        elif state["same_hash"]:
+            if manifest.get("decision_type") != "reprocess":
+                raise OperatorDecision(
+                    "already_imported_content_conflict",
+                    "replay-only requires decision_type=reprocess for cross-issue content",
+                )
+    return manifest, issue_key, expected_coverage
+
+
 def _run_replay_only(args: argparse.Namespace) -> int:
     job_id = job_id_for(args)
     result = base_result(args, job_id, None)
@@ -867,84 +959,50 @@ def _run_replay_only(args: argparse.Namespace) -> int:
     out_dir = args.outdir.expanduser().resolve()
     manifest_path = out_dir / "import_manifest.json"
     v3_db = resolve_v3_db(args)
-    manifest: dict[str, Any] = {}
     try:
         validate_v3_db(v3_db)
-        _ensure_artifact_in_run(manifest_path, out_dir)
-        manifest = replay.read_manifest(out_dir)
-        if not manifest:
-            raise V3IngestError("replay-only requires import_manifest.json")
-        replay.validate_manifest(manifest)
-        if not re.fullmatch(
-            r"[0-9a-f]{64}", str(manifest.get("pdf_sha256") or "").strip()
-        ):
-            raise V3IngestError("replay-only manifest has an invalid pdf_sha256")
-        if manifest.get("manifest_version") != 2 or manifest.get("target") != "v3":
-            raise V3IngestError("replay-only manifest must be v2 target v3")
-        operation = manifest.get("operation")
-        if operation not in (None, "full_import", "replay_only"):
-            raise V3IngestError(f"replay-only does not accept operation {operation}")
-        if manifest.get("status") not in ("running", "failed", "completed"):
-            raise V3IngestError(f"replay-only does not accept status {manifest.get('status')}")
-        issue_key = replay.resolve_issue_key(out_dir, manifest, args.issue_key)
-        if Path(manifest.get("run_dir", "")).resolve() != out_dir:
-            raise V3IngestError("manifest run_dir does not match --outdir")
-        report_path = out_dir / "run_report.json"
-        documents_path = out_dir / "documents.csv"
-        rows_path = out_dir / "tb_rows.csv"
-        _ensure_artifact_in_run(report_path, out_dir)
-        _ensure_artifact_in_run(documents_path, out_dir)
-        _ensure_artifact_in_run(rows_path, out_dir)
-        report = replay.read_json(report_path)
-        if report.get("source_pdf_sha256") != manifest.get("pdf_sha256"):
-            raise V3IngestError("run_report SHA-256 does not match the manifest")
-        pdf_path = Path(manifest.get("pdf_path", ""))
-        if pdf_path.is_symlink():
-            raise V3IngestError("manifest PDF path is a symlink")
-        if not pdf_path.is_file() or sha256_file(pdf_path) != manifest.get("pdf_sha256"):
-            raise V3IngestError("manifest PDF hash does not match the source file")
-        actual_pages = replay.actual_pdf_pages(pdf_path)
-        if actual_pages is None or actual_pages != replay.strict_int(report.get("pdf_pages")):
-            raise V3IngestError("actual PDF page count does not match run_report.pdf_pages")
-        documents = replay.read_csv(out_dir / "documents.csv")
-        rows = replay.read_csv(out_dir / "tb_rows.csv")
-        coverage = replay.validate_page_coverage(
-            report, documents, rows, strict=replay.manifest_is_strict(manifest)
-        )
-        expected_coverage = dict(coverage)
-        expected_coverage["run_status"] = (
-            "partial" if coverage["ocr_failed_pages"] > 0 else "completed"
-        )
-        with contextlib.closing(connect_v3(v3_db)) as conn:
-            state = duplicate_state(conn, str(manifest.get("pdf_sha256")), issue_key)
-            if state["same_issue_hash"]:
-                pass
-            elif state["issue_docs"]:
-                if manifest.get("decision_type") != "new_version":
-                    raise OperatorDecision(
-                        "new_source_version_required",
-                        "replay-only requires decision_type=new_version for this issue",
-                    )
-            elif state["same_hash"]:
-                if manifest.get("decision_type") != "reprocess":
-                    raise OperatorDecision(
-                        "already_imported_content_conflict",
-                        "replay-only requires decision_type=reprocess for cross-issue content",
-                    )
-        if args.dry_run:
-            result.update({
-                "status": "planned",
-                "operation": "replay_only",
-                "issue_key": issue_key,
-                "run_dir": str(out_dir),
-                "manifest_path": str(manifest_path),
-                "pdf_sha256": manifest.get("pdf_sha256"),
-                "v3": None,
-                "message": "V3 replay-only preflight valid; no lock, replay or DB write",
-            })
-            emit(args, result, manifest_path)
-            return 0
+    except Exception as exc:  # noqa: BLE001
+        result.update({"status": "failed", "error": {
+            "type": type(exc).__name__, "message": str(exc)
+        }})
+        emit(args, result, None)
+        return 1
+
+    if args.dry_run:
+        try:
+            manifest, issue_key, _ = _replay_only_prepare(
+                args, out_dir, v3_db, manifest_path
+            )
+        except OperatorDecision as exc:
+            result.update({"status": exc.status, "error": {
+                "type": type(exc).__name__, "message": str(exc)
+            }})
+            emit(args, result, None)
+            return 0 if exc.status == "already_imported" else 3
+        except Exception as exc:  # noqa: BLE001
+            result.update({"status": "failed", "error": {
+                "type": type(exc).__name__, "message": str(exc)
+            }})
+            emit(args, result, None)
+            return 1
+        result.update({
+            "status": "planned",
+            "operation": "replay_only",
+            "issue_key": issue_key,
+            "run_dir": str(out_dir),
+            "manifest_path": str(manifest_path),
+            "pdf_sha256": manifest.get("pdf_sha256"),
+            "v3": None,
+            "message": "V3 replay-only preflight valid; no lock, replay or DB write",
+        })
+        emit(args, result, manifest_path)
+        return 0
+
+    try:
         with import_lock(v3_db):
+            manifest, issue_key, expected_coverage = _replay_only_prepare(
+                args, out_dir, v3_db, manifest_path
+            )
             replay_result = run_replay(
                 v3_db, out_dir, issue_key, out_dir / "replay.log",
                 expected_coverage=expected_coverage,
@@ -959,6 +1017,7 @@ def _run_replay_only(args: argparse.Namespace) -> int:
                 "gazette_issue_id": replay_result.get("gazette_issue_id"),
                 "already_present": replay_result.get("already_present"),
                 "evidence_fingerprint": replay_result.get("evidence_fingerprint"),
+                "run_status": replay_result.get("run_status"),
             }
             imp.write_manifest(out_dir, manifest)
             result.update({
@@ -982,32 +1041,20 @@ def _run_replay_only(args: argparse.Namespace) -> int:
         result.update({"status": exc.status, "error": {
             "type": type(exc).__name__, "message": str(exc)
         }})
-        result_path = result_manifest_path("results", job_id)
-        imp.write_manifest(result_path.parent, {
-            **result, "target": "v3", "job_id": job_id,
-            "manifest_version": 2, "status": exc.status,
-            "operation": "replay_only",
-        })
-        emit(args, result, result_path)
+        emit(args, result, None)
         return 0 if exc.status == "already_imported" else 3
     except ImportLocked as exc:
-        result.update({"status": "import_locked", "error": {"type": type(exc).__name__, "message": str(exc)}})
+        result.update({"status": "import_locked", "error": {
+            "type": type(exc).__name__, "message": str(exc)
+        }})
         emit(args, result, None)
         return 3
     except Exception as exc:  # noqa: BLE001
-        result.update({"status": "failed", "error": {"type": type(exc).__name__, "message": str(exc)}})
-        if manifest_path.is_file():
-            manifest["status"] = "failed"
-            manifest["v3_replay_status"] = "failed"
-            manifest["finished_at"] = now()
-            manifest["error_type"] = type(exc).__name__
-            manifest["error_message"] = str(exc)
-            imp.write_manifest(out_dir, manifest)
-            emit(args, result, manifest_path)
-        else:
-            emit(args, result, None)
+        result.update({"status": "failed", "error": {
+            "type": type(exc).__name__, "message": str(exc)
+        }})
+        emit(args, result, None)
         return 1
-
 
 def validate_cli(args: argparse.Namespace) -> None:
     if args.db is not None:
@@ -1052,11 +1099,31 @@ def _run_planned(args: argparse.Namespace) -> int:
     job_id = job_id_for(args)
     result = base_result(args, job_id, None)
     try:
-        issue_key = resolve_issue_key(args, args.source) if not args.replay_only else None
-        out_dir = (
-            args.outdir.expanduser().resolve()
-            if args.outdir else resolve_v3_outdir(args, issue_key or "2026-01", job_id)
-        )
+        validate_v3_db(resolve_v3_db(args))
+        input_dir = resolve_v3_input(args)
+        if not input_dir.exists():
+            raise V3IngestError(f"input directory does not exist: {input_dir}")
+        issue_key = resolve_issue_key(args, args.source)
+        out_dir = resolve_v3_outdir(args, issue_key, job_id)
+        if out_dir.exists():
+            raise V3IngestError(f"output directory already exists: {out_dir}")
+        if args.name and Path(args.name).suffix.lower() != ".pdf":
+            raise V3IngestError("--name must end with .pdf")
+        parsed = urllib.parse.urlparse(args.source or "")
+        if parsed.scheme in ("http", "https"):
+            validate_v3_url(args.source)
+        else:
+            if not args.allow_local_source:
+                raise V3IngestError("local source requires --allow-local-source")
+            local = Path(args.source).expanduser()
+            if not local.is_file() or local.is_symlink():
+                raise V3IngestError("local source must be a regular file")
+            if local.suffix.lower() != ".pdf":
+                raise V3IngestError("local source must be a .pdf file")
+            if local.stat().st_size > MAX_PDF_BYTES:
+                raise V3IngestError("local PDF exceeds 250 MB")
+            if not imp.looks_like_pdf(local):
+                raise V3IngestError("local source is not a PDF")
         result.update({
             "status": "planned",
             "issue_key": issue_key,

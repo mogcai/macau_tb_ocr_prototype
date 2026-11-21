@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-21
 **Baseline:** `16864ce4c9127ed787064c3c68b9e86a29835c79`
-**Status:** Corrective patch complete for review; not committed
+**Status:** Phase 2C.1a corrective patch complete for review; not committed
 
 ---
 
@@ -14,15 +14,20 @@
 | P1-02 | Invalid `pdf_pages` leaves existing `page_count` untouched and records `unknown` coverage; no observed-max/1 fallback |
 | P1-03 | Corrupt manifests, unsupported manifest versions and V2 manifests missing `issue_key` are rejected; only absent/legacy V5 manifests are reconstructed |
 | P1-04 | Strict mode rejects blank, non-numeric, fractional and out-of-range `tb_rows.pdf_page` values |
-| P1-05 | Replay-only performs a read-only duplicate/version check before lock/replay |
+| P1-05 | Replay-only acquires the V3 lock before manifest read and performs the read-only duplicate/version check inside that lock |
 | P1-06 | Replay-only requires regular non-symlink artifacts resolving inside the run directory |
-| P1-07 | `--replay-only --dry-run` performs full read-only validation but does not lock, replay or write |
+| P1-07 | `--replay-only --dry-run` performs full read-only validation, does not lock/replay/write, and failures never overwrite the manifest or create result files |
 | P1-08 | Replay verifies the actual PDF SHA-256; strict runs require a readable PDF; legacy missing PDFs are marked unverified |
 | P1-09 | Replay and Importer compare actual PDF page count with `run_report.pdf_pages` before coverage validation |
 | P1-10 | Local PDFs use bounded streaming, 250 MB limit, SHA-256 and `%PDF-` validation |
 | P1-11 | Remote/local temp names use UUIDs and exclusive create |
 | P1-12 | URL policy rejects non-global addresses, non-443 ports and revalidates redirects; DNS-rebinding residual risk is documented rather than claimed as full SSRF protection |
 | P1-13 | Importer validates the replay JSON contract and compares returned page coverage/run status with its own preflight values |
+| P1-14 | Replay-only non-dry-run acquires the V3 lock before reading the manifest and querying duplicate state |
+| P1-15 | Replay-only dry-run and preflight failures never overwrite the original manifest or create result files |
+| P1-16 | Full imports reserve the run directory with an ownership record; only the reserving process may write into it |
+| P1-17 | Direct replay validates all three evidence files are present, regular and non-symlink; manifest symlinks are rejected; header-only `tb_rows.csv` remains valid |
+| P1-18 | V3 manifests missing version, unknown origins or reconstructed origins cannot downgrade strict validation |
 
 ---
 
@@ -38,9 +43,9 @@
 ## Tests
 
 ```text
-Targeted importer/replay/V3/full-page/constraints   86/86 OK
-Non-Workbench suite                                268/268 OK
-Full suite on isolated DB copy                     308 tests, 2 known Workbench failures, 4 skipped
+Targeted importer/replay/V3/full-page/constraints   99/99 OK
+Non-Workbench suite                                281/281 OK
+Full suite on isolated DB copy                     321 tests, 2 known Workbench failures, 4 skipped
 ```
 
 Known Workbench data-state failures remain unchanged:

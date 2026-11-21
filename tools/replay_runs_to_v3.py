@@ -240,8 +240,14 @@ def directory_issue_key(run_dir: Path) -> str | None:
 
 def read_manifest(run_dir: Path) -> dict[str, Any]:
     path = run_dir / "import_manifest.json"
+    if path.is_symlink():
+        raise ManifestError("import_manifest.json must not be a symlink")
     if not path.is_file():
         return {}
+    try:
+        path.resolve().relative_to(run_dir.resolve())
+    except ValueError as exc:
+        raise ManifestError("import_manifest.json escapes the run directory") from exc
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -256,6 +262,13 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
         return
     version = manifest.get("manifest_version")
     if version is None:
+        if (
+            text(manifest.get("target")) == "v3"
+            or manifest.get("manifest_origin")
+            or manifest.get("operation")
+            or manifest.get("job_id")
+        ):
+            raise ManifestError("V3 manifest is missing manifest_version")
         # Legacy V5 manifest: allowed for controlled reconstruction.
         return
     if version != 2:
@@ -266,6 +279,26 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
     if not issue_key:
         raise ManifestError("V2 manifest is missing issue_key")
     canonical_issue_key(issue_key)
+    origin = text(manifest.get("manifest_origin"))
+    if origin and origin not in ("written", "reconstructed"):
+        raise ManifestError(f"unsupported manifest_origin: {origin!r}")
+
+
+def validate_evidence_files(run_dir: Path, *, strict: bool) -> None:
+    root = run_dir.resolve()
+    for name in ("run_report.json", "documents.csv", "tb_rows.csv"):
+        path = run_dir / name
+        if path.is_symlink():
+            raise ValueError(f"evidence file must not be a symlink: {path}")
+        if strict and not path.is_file():
+            raise ValueError(f"strict replay is missing {name}")
+        if path.exists() and not path.is_file():
+            raise ValueError(f"evidence path is not a file: {path}")
+        if path.exists():
+            try:
+                path.resolve().relative_to(root)
+            except ValueError as exc:
+                raise ValueError(f"evidence escapes run directory: {path}") from exc
 
 
 def actual_pdf_pages(path: Path) -> int | None:
@@ -310,10 +343,11 @@ def resolve_issue_key(
 
 
 def manifest_is_strict(manifest: dict[str, Any]) -> bool:
+    # A V2 V3 manifest is strict regardless of manifest_origin. A
+    # reconstructed manifest must not be able to weaken validation.
     return (
         manifest.get("manifest_version") == 2
         and text(manifest.get("target")) == "v3"
-        and text(manifest.get("manifest_origin") or "written") == "written"
     )
 
 
@@ -377,7 +411,7 @@ def validate_page_coverage(
                 f"OCR output contains pages beyond pdf_pages={pdf_pages}"
             )
         invalid = [status for status in statuses if status not in
-                   ("completed", "failed", "skipped", "not_applicable", "extracted_only")]
+                   ("completed", "failed", "skipped")]
         if invalid:
             raise PageCoverageError(f"invalid ocr_status values: {sorted(set(invalid))}")
         coverage = "full"
@@ -691,6 +725,11 @@ def replay_run(
     legacy_runs: dict[str, str],
     issue_key_override: str | None = None,
 ) -> dict[str, Any]:
+    manifest = read_manifest(run_dir)
+    validate_manifest(manifest)
+    strict = manifest_is_strict(manifest)
+    validate_evidence_files(run_dir, strict=strict)
+
     report = read_json(run_dir / "run_report.json")
     if not report:
         raise ValueError(f"run_report.json is missing or invalid in {run_dir}")
@@ -699,9 +738,6 @@ def replay_run(
     if not documents and not rows_csv:
         raise ValueError(f"no documents.csv or tb_rows.csv in {run_dir}")
 
-    manifest = read_manifest(run_dir)
-    validate_manifest(manifest)
-    strict = manifest_is_strict(manifest)
     issue_key = resolve_issue_key(run_dir, manifest, issue_key_override)
     source_url = manifest_source_url(manifest)
 
@@ -836,7 +872,10 @@ def replay_run(
             str(run_dir / "import_manifest.json")
             if (run_dir / "import_manifest.json").is_file() else None
         ),
-        "manifest_origin": "written" if strict else "reconstructed",
+        "manifest_origin": text(
+            manifest.get("manifest_origin")
+            or ("written" if manifest else "reconstructed")
+        ),
         "run_dir": str(run_dir.resolve()),
     }
     if legacy_page_count is not None:
