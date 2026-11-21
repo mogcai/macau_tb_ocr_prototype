@@ -44,7 +44,7 @@ from typing import Any, Iterable
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "data" / "macau_balancete_v3.sqlite"
 DEFAULT_RUNS = ROOT / "outputs" / "runs"
-DEFAULT_V5 = ROOT / "data" / "macau_balancete.sqlite"
+DEFAULT_V5 = ROOT / "archive" / "database" / "macau_balancete.sqlite"
 
 NAMESPACE = uuid.UUID("f6f0d7b6-3e17-5f7b-9f5a-6a4f2f6c1d10")
 ISSUE_RE = re.compile(r"issue(\d+)_(\d{4})", re.I)

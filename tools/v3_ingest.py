@@ -1,4 +1,4 @@
-"""V3 raw-ingestion entry point used by ``tools/import_issue.py --target v3``.
+"""V3 raw-ingestion entry point for ``tools/import_issue.py`` (default target).
 
 This module deliberately stops at raw OCR evidence.  It never creates Statements,
 reviews, mappings, adoptions or publications.
@@ -1121,13 +1121,19 @@ def _run_replay_only(args: argparse.Namespace) -> int:
 
 def validate_cli(args: argparse.Namespace) -> None:
     if args.db is not None:
-        raise V3IngestError("--db is the legacy V5 database option; use --v3-db")
+        raise V3IngestError(
+            "--db is the legacy V5 database option; use --v3-db for V3, "
+            "or add --target v5 for the legacy workflow"
+        )
     for name in (
         "publish", "force_publish", "no_db", "no_ocr", "no_name_map",
         "no_bank_refresh", "overwrite_pdf", "reuse_output",
     ):
         if getattr(args, name, False):
-            raise V3IngestError(f"--{name.replace('_', '-')} is not valid with --target v3")
+            raise V3IngestError(
+                f"--{name.replace('_', '-')} is not valid with --target v3; "
+                "add --target v5 for the legacy V5 workflow"
+            )
     if (
         not args.replay_only
         and not args.download_only

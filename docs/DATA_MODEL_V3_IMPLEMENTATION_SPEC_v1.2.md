@@ -35,7 +35,7 @@ Audit 交付物包括 `SQL_AUDIT_V5.md/.json`、`artifact_manifest.json`、Regis
 
 本文件中的 Audit 數字是 **2026-11-19 project audit baseline**，不是永久常數。任何重跑結果不同，都必須輸出差異及調查原因，不得為符合本文數字而修改資料。
 
-Frozen baseline copy `data/baseline/baseline_v5_20261118.sqlite` 是唯讀基線。原工作資料庫 `data/macau_balancete.sqlite` 在 Legacy Cutover 前仍可能由舊工具使用；v3 Audit / Replay 工具不得寫入原 DB 或 baseline。不得把「baseline copy 唯讀」誤解成「原 v5 工作 DB 已自動唯讀」。
+Frozen baseline copy `data/baseline/baseline_v5_20261118.sqlite` 是唯讀基線。原工作資料庫 `data/macau_balancete.sqlite` 在 Legacy Cutover 前仍可能由舊工具使用（2026-11-21 已封存到 `archive/database/macau_balancete.sqlite`，唯讀）；v3 Audit / Replay 工具不得寫入原 DB 或 baseline。不得把「baseline copy 唯讀」誤解成「原 v5 工作 DB 已自動唯讀」。
 
 ---
 
@@ -1594,7 +1594,7 @@ View 不得把 Proposed Mapping 當作正式 Standard Item。
 **工作：**
 
 1. `data/baseline/baseline_v5_20261118.sqlite` 作永久唯讀基線；v3 工具不得寫入。
-2. 原 `data/macau_balancete.sqlite` 在 Legacy Cutover 前仍可能由舊工具使用；不得誤稱原工作 DB 已唯讀。
+2. 原 `data/macau_balancete.sqlite` 在 Legacy Cutover 前仍可能由舊工具使用（2026-11-21 已封存到 `archive/database/macau_balancete.sqlite`，唯讀）；不得誤稱原工作 DB 已唯讀。
 3. 對 DB、14 個 PDF、每個 Run 的 `tb_rows.csv`、`documents.csv`、`run_report.json`、Labels CSV 計 SHA-256。
 4. 對沒有 `import_manifest.json` 的 Runs，以核心 artifacts 重建 manifest，標記 `reconstructed`。
 5. 凍結文件及 Registry 來源版本；核對 Markdown / CSV item counts，記錄 Drift。

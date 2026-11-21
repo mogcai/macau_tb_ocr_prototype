@@ -31,7 +31,7 @@ line_items.mapping_version
 ```bash
 # after editing labels/standard_label_by_user.cleaned.csv
 python tools/import_user_standard.py build \
-  --db data/macau_balancete.sqlite \
+  --db archive/database/macau_balancete.sqlite \
   --csv labels/standard_label_by_user.cleaned.csv --from-cleaned \
   --report data/user_standard_mapping_report.csv
 ```
@@ -117,7 +117,7 @@ Draft 中 `provisional` 表示：
 
 ```bash
 python tools/standard_line_items.py export \
-  --db data/macau_balancete.sqlite \
+  --db archive/database/macau_balancete.sqlite \
   --csv labels/line_item_standard.csv
 ```
 
@@ -136,7 +136,7 @@ python tools/standard_line_items.py export \
 
 ```bash
 python tools/standard_line_items.py apply \
-  --db data/macau_balancete.sqlite \
+  --db archive/database/macau_balancete.sqlite \
   --csv labels/line_item_standard.csv \
   --by tony
 ```

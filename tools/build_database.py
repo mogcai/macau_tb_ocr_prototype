@@ -9,7 +9,7 @@ Usage::
 
     python tools/build_database.py \
         output_v08_issue45_2026 output_v06_issue44_2026 \
-        --db data/macau_balancete.sqlite
+        --db archive/database/macau_balancete.sqlite
 
 The proposed business key is::
 
@@ -38,6 +38,7 @@ from typing import Any, Iterable
 
 APP_VERSION = "0.7.0"
 SCHEMA_VERSION = 5
+ROOT = Path(__file__).resolve().parents[1]
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 
 SCHEMA_SQL = """
@@ -2247,8 +2248,10 @@ def main(argv: list[str] | None = None) -> int:
         help="one or more OCR output directories (each needs tb_rows.csv)",
     )
     parser.add_argument(
-        "--db", type=Path, default=Path("data/macau_balancete.sqlite"),
-        help="SQLite file to create or update",
+        "--db", type=Path,
+        default=ROOT / "archive" / "database" / "macau_balancete.sqlite",
+        help="SQLite file to create or update (archived V5 copy is read-only; "
+             "pass a working copy path to write)",
     )
     parser.add_argument(
         "--bank-aliases", type=Path,

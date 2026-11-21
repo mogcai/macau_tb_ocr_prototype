@@ -9,7 +9,6 @@ input/
 ground_truth/**/crops/
 data/*
 !data/README.md
-!data/macau_balancete.sqlite
 !data/macau_balancete_import_report.json
 !data/macau_balancete_name_registry_report.json
 !data/name_review_queue.csv

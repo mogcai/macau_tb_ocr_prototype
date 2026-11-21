@@ -138,15 +138,15 @@ alias,canonical,bank_key,note
 ```bash
 python tools/build_database.py \
   outputs/runs/issue45_2026 outputs/runs/issue44_2026 \
-  --db data/macau_balancete.sqlite \
+  --db archive/database/macau_balancete.sqlite \
   --publish --published-by reviewer
 
 # 只有確認要移除部分頁數時：
-python tools/build_database.py output_partial --db data/macau_balancete.sqlite \
+python tools/build_database.py output_partial --db archive/database/macau_balancete.sqlite \
   --publish --force-publish --published-by reviewer
 ```
 
-- 預設 DB：`data/macau_balancete.sqlite`。
+- 預設 DB：`archive/database/macau_balancete.sqlite`（已封存、唯讀；要寫入請先 copy 去工作位置再傳 `--db`）。
 - 同一內容重複匯入會 `skipped_existing`；要覆蓋用 `--replace`。
 - `--replace` 會 snapshot `row_verification`，只有同一 `statement_id + row_order` 及 OCR fingerprint 完全一致才恢復；不一致會 rollback。真的想放棄核實紀錄才加 `--discard-verification`。
 - 每次匯入會寫 `<db stem>_import_report.json`。
@@ -234,7 +234,7 @@ ORDER BY publication_date DESC, bank_name;
 Re-import the edited cleaned file with:
 
 ```bash
-python tools/import_user_standard.py build   --db data/macau_balancete.sqlite   --csv labels/standard_label_by_user.cleaned.csv --from-cleaned   --report data/user_standard_mapping_report.csv
+python tools/import_user_standard.py build   --db archive/database/macau_balancete.sqlite   --csv labels/standard_label_by_user.cleaned.csv --from-cleaned   --report data/user_standard_mapping_report.csv
 ```
 
 ## User standard labels (schema v5)
@@ -250,9 +250,9 @@ python tools/import_user_standard.py build   --db data/macau_balancete.sqlite   
 `tools/name_registry.py` 建立銀行／科目名稱主檔及 review workflow；approved alias 才會寫入 `line_items.line_item_concept_id`。完整流程見 [`NAME_STANDARDIZATION.md`](NAME_STANDARDIZATION.md)。
 
 ```bash
-python tools/name_registry.py build --db data/macau_balancete.sqlite
-python tools/name_registry.py list --db data/macau_balancete.sqlite
-python tools/name_registry.py approve --db data/macau_balancete.sqlite \
+python tools/name_registry.py build --db archive/database/macau_balancete.sqlite
+python tools/name_registry.py list --db archive/database/macau_balancete.sqlite
+python tools/name_registry.py approve --db archive/database/macau_balancete.sqlite \
   --id 124 --by reviewer
 ```
 

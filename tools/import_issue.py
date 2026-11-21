@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
-"""Download a Gazette PDF, run OCR, import the run into SQLite, remap names.
+"""Download a Gazette PDF, run OCR and import the run into SQLite.
 
-Typical use::
+The default target is the V3 operational database::
+
+    python tools/import_issue.py \
+        https://images.bo.dsaj.gov.mo/bo/ii/2026/33/anotariais-33-2026.pdf
+
+The PDF is saved under ``input/`` and every OCR run gets its own unique
+``outputs/runs/issueNN_YYYY__job_<id>/`` directory. V3 imports are raw OCR
+evidence only: they are staging and wait for Workbench page classification.
+
+The legacy V5 workflow must be requested explicitly::
 
     python tools/import_issue.py \
         https://images.bo.dsaj.gov.mo//bo/ii/2026/33/anotariais-33-2026.pdf \
-        --db data/macau_balancete.sqlite --publish
+        --target v5 --db archive/database/macau_balancete.sqlite --publish
 
-The PDF is saved under ``input/`` and every OCR run gets its own new output
-directory. Existing PDFs/output folders are never overwritten unless the
-explicit overwrite flags are used.
+Existing PDFs/output folders are never overwritten unless the explicit
+overwrite flags are used.
 """
 from __future__ import annotations
 
@@ -241,9 +249,12 @@ def write_manifest(out_dir: Path, manifest: dict[str, Any]) -> None:
     )
 
 
+V5_DEFAULT_DB = ROOT / "archive" / "database" / "macau_balancete.sqlite"
+
+
 def resolve_v5_db_path(db_path: Path | None) -> Path:
-    """Preserve the current V5 behaviour: resolve against the process cwd."""
-    return (db_path or Path("data/macau_balancete.sqlite")).expanduser().resolve()
+    """Resolve explicit V5 paths against the cwd; default to the archived DB."""
+    return (db_path or V5_DEFAULT_DB).expanduser().resolve()
 
 
 def resolve_v5_input_dir(input_dir: Path | None) -> Path:
@@ -341,11 +352,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("source", nargs="?", help="PDF URL or local PDF path")
     parser.add_argument(
-        "--target", choices=["v5", "v3", "ocr-only"], default="v5",
-        help="import target (default: v5)",
+        "--target", choices=["v5", "v3", "ocr-only"], default="v3",
+        help="import target (default: v3 operational database)",
     )
-    parser.add_argument("--db", type=Path, default=None)
-    parser.add_argument("--v3-db", type=Path, default=None)
+    parser.add_argument("--db", type=Path, default=None,
+                        help="legacy V5 database (requires --target v5; "
+                             "default: archived read-only copy)")
+    parser.add_argument("--v3-db", type=Path, default=None,
+                        help="V3 database (default: data/macau_balancete_v3.sqlite)")
     parser.add_argument("--input-dir", type=Path, default=None)
     parser.add_argument("--replay-only", action="store_true")
     parser.add_argument("--reprocess", action="store_true")
@@ -356,21 +370,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--allow-outside-output", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--outdir", type=Path,
-                        help="output directory (default: derived from filename)")
+                        help="output directory (V3 default: outputs/runs/issueNN_YYYY__job_<id>)")
     parser.add_argument("--name", help="override downloaded PDF filename")
     parser.add_argument("--pages", default="all",
-                        help="page range passed to OCR (default: all)")
+                        help="page range for OCR (V3 import requires 'all')")
     parser.add_argument("--engine", choices=["vision", "paddle", "tesseract"])
     parser.add_argument("--vision-level", choices=["fast", "accurate"])
     parser.add_argument("--ocr-langs", default="auto")
     parser.add_argument("--publish", action="store_true",
-                        help="publish the imported run after validation")
-    parser.add_argument("--force-publish", action="store_true")
+                        help="publish the imported run (V5 only)")
+    parser.add_argument("--force-publish", action="store_true",
+                        help="allow a partial run to replace published data (V5 only)")
     parser.add_argument("--published-by", default="operator")
-    parser.add_argument("--no-db", action="store_true")
-    parser.add_argument("--no-ocr", action="store_true")
-    parser.add_argument("--no-name-map", action="store_true")
-    parser.add_argument("--no-bank-refresh", action="store_true")
+    parser.add_argument("--no-db", action="store_true", help="V5 only")
+    parser.add_argument("--no-ocr", action="store_true", help="V5 only")
+    parser.add_argument("--no-name-map", action="store_true", help="V5 only")
+    parser.add_argument("--no-bank-refresh", action="store_true", help="V5 only")
     parser.add_argument("--inspect-only", action="store_true",
                         help="download and inspect only; do not OCR/import")
     parser.add_argument("--download-only", action="store_true")
@@ -394,6 +409,17 @@ def run_v5(args: argparse.Namespace) -> int:
         "steps": {},
     }
     try:
+        if (
+            args.db is None
+            and not args.no_db
+            and not args.download_only
+            and not args.inspect_only
+        ):
+            print(
+                "warning: the legacy V5 default database is the archived frozen "
+                f"copy ({V5_DEFAULT_DB}); copy it and pass --db before writing",
+                file=sys.stderr,
+            )
         pdf_info = fetch_pdf(
             args.source,
             resolve_v5_input_dir(args.input_dir),

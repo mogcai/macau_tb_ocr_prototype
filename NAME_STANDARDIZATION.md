@@ -26,7 +26,7 @@
 
 ```bash
 python tools/name_registry.py build \
-  --db data/macau_balancete.sqlite \
+  --db archive/database/macau_balancete.sqlite \
   --lexicon labels/label_lexicon.csv \
   --bank-aliases labels/bank_aliases.csv
 ```
@@ -65,10 +65,10 @@ Approved 後 `banks.registry_status` 會變成 `approved`。
 ## 查看待審候選
 
 ```bash
-python tools/name_registry.py list --db data/macau_balancete.sqlite --limit 30
-python tools/name_registry.py list --db data/macau_balancete.sqlite \
+python tools/name_registry.py list --db archive/database/macau_balancete.sqlite --limit 30
+python tools/name_registry.py list --db archive/database/macau_balancete.sqlite \
   --entity-type line_item --limit 50
-python tools/name_registry.py list --db data/macau_balancete.sqlite \
+python tools/name_registry.py list --db archive/database/macau_balancete.sqlite \
   --match-method bilingual_pair --limit 50
 ```
 
@@ -78,12 +78,12 @@ python tools/name_registry.py list --db data/macau_balancete.sqlite \
 
 ```bash
 python tools/name_registry.py export \
-  --db data/macau_balancete.sqlite \
+  --db archive/database/macau_balancete.sqlite \
   --csv data/name_review_queue.csv
 
 # 人手在 CSV 填 decision: approve / reject
 python tools/name_registry.py import-review \
-  --db data/macau_balancete.sqlite \
+  --db archive/database/macau_balancete.sqlite \
   --csv data/name_review_queue.csv --by tony
 ```
 
@@ -92,7 +92,7 @@ CSV 欄位包括 `review_id`、`entity_type`、`raw_name`、`language`、`occurr
 ## 批准
 
 ```bash
-python tools/name_registry.py approve --db data/macau_balancete.sqlite \
+python tools/name_registry.py approve --db archive/database/macau_balancete.sqlite \
   --id 124 --by tony --note "p17 bilingual pair"
 ```
 
@@ -107,7 +107,7 @@ python tools/name_registry.py approve --db data/macau_balancete.sqlite \
 ## 拒絕
 
 ```bash
-python tools/name_registry.py reject --db data/macau_balancete.sqlite \
+python tools/name_registry.py reject --db archive/database/macau_balancete.sqlite \
   --id 125 --by tony --note "different account"
 ```
 
@@ -118,7 +118,7 @@ python tools/name_registry.py reject --db data/macau_balancete.sqlite \
 如果 OCR run 被 `--replace`，或手動改了 alias：
 
 ```bash
-python tools/name_registry.py remap --db data/macau_balancete.sqlite
+python tools/name_registry.py remap --db archive/database/macau_balancete.sqlite
 ```
 
 ## Mapping status

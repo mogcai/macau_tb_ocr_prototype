@@ -3,11 +3,11 @@
 
 Examples::
 
-    python tools/name_registry.py build --db data/macau_balancete.sqlite
-    python tools/name_registry.py list --db data/macau_balancete.sqlite
-    python tools/name_registry.py approve --db data/macau_balancete.sqlite \
+    python tools/name_registry.py build --db archive/database/macau_balancete.sqlite
+    python tools/name_registry.py list --db archive/database/macau_balancete.sqlite
+    python tools/name_registry.py approve --db archive/database/macau_balancete.sqlite \
         --id 12 --by reviewer
-    python tools/name_registry.py reject --db data/macau_balancete.sqlite \
+    python tools/name_registry.py reject --db archive/database/macau_balancete.sqlite \
         --id 13 --by reviewer --note "different account"
 
 Approved rules are applied to ``line_items.line_item_concept_id``. The OCR
@@ -1183,7 +1183,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     build = sub.add_parser("build", help="seed concepts/aliases and generate reviews")
-    build.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
+    build.add_argument("--db", type=Path, default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     build.add_argument("--lexicon", type=Path,
                        default=Path("labels/label_lexicon.csv"))
     build.add_argument("--bank-aliases", type=Path,
@@ -1193,7 +1193,7 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--report", type=Path)
 
     list_cmd = sub.add_parser("list", help="list pending name mappings")
-    list_cmd.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
+    list_cmd.add_argument("--db", type=Path, default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     list_cmd.add_argument("--entity-type", choices=["bank", "line_item"])
     list_cmd.add_argument("--match-method",
                           choices=["exact", "fuzzy", "bilingual_pair",
@@ -1201,7 +1201,7 @@ def main(argv: list[str] | None = None) -> int:
     list_cmd.add_argument("--limit", type=int, default=30)
 
     approve = sub.add_parser("approve", help="approve a pending mapping")
-    approve.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
+    approve.add_argument("--db", type=Path, default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     approve.add_argument("--id", type=int, required=True)
     approve.add_argument("--by", required=True)
     approve.add_argument("--concept-id", type=int)
@@ -1209,13 +1209,13 @@ def main(argv: list[str] | None = None) -> int:
     approve.add_argument("--note", default="")
 
     reject = sub.add_parser("reject", help="reject a pending mapping")
-    reject.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
+    reject.add_argument("--db", type=Path, default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     reject.add_argument("--id", type=int, required=True)
     reject.add_argument("--by", required=True)
     reject.add_argument("--note", default="")
 
     export = sub.add_parser("export", help="export pending mappings to CSV")
-    export.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
+    export.add_argument("--db", type=Path, default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     export.add_argument("--csv", type=Path,
                         default=Path("data/name_review_queue.csv"))
     export.add_argument("--entity-type", choices=["bank", "line_item"])
@@ -1225,7 +1225,7 @@ def main(argv: list[str] | None = None) -> int:
         "import-review", help="apply decisions from an exported CSV"
     )
     import_decisions.add_argument("--db", type=Path,
-                                  default=Path("data/macau_balancete.sqlite"))
+                                  default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     import_decisions.add_argument("--csv", type=Path, required=True)
     import_decisions.add_argument("--by", required=True)
 
@@ -1233,14 +1233,14 @@ def main(argv: list[str] | None = None) -> int:
         "refresh-banks", help="refresh canonical bank fields and aliases only"
     )
     refresh.add_argument("--db", type=Path,
-                         default=Path("data/macau_balancete.sqlite"))
+                         default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     refresh.add_argument("--bank-aliases", type=Path,
                          default=Path("labels/bank_aliases.csv"))
     refresh.add_argument("--bank-translations", type=Path,
                          default=Path("labels/bank_name_translations.csv"))
 
     remap = sub.add_parser("remap", help="re-apply approved aliases to line_items")
-    remap.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
+    remap.add_argument("--db", type=Path, default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
 
     args = parser.parse_args(argv)
 

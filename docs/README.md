@@ -29,7 +29,7 @@
 
 ## Legacy V5 docs (still at repo root)
 
-These remain at the root because agent / CLI docs still point at them. They describe the **legacy** SQLite path (`data/macau_balancete.sqlite`), not the operational V3 DB.
+These remain at the root because agent / CLI docs still point at them. They describe the **legacy** V5 SQLite path, which is now archived at `archive/database/macau_balancete.sqlite`; the operational database is V3.
 
 - `DATABASE.md`, `IMPORT_ISSUE.md`, `NAME_STANDARDIZATION.md`, `STANDARD_LINE_ITEMS.md`
 - `MACOS_SETUP.md`, `MACOS_VISION_OCR.md`

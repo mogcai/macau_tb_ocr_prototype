@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Importer default target is now V3:** `tools/import_issue.py` defaults to `--target v3`, resolves `data/macau_balancete_v3.sqlite` from `ROOT`, writes unique `outputs/runs/issueNN_YYYY__job_<id>` folders, and stops at raw OCR evidence (staging, awaiting Workbench page classification). It does not classify pages, create statements, approve mappings or publish.
+- **Legacy V5 is explicit and archived:** `--target v5` keeps the old V5 workflow (`build_database.py`, bank refresh, name remap, optional `--publish`), now pointing at the frozen copy `archive/database/macau_balancete.sqlite`. V5-only flags (`--db`, `--publish`, `--no-bank-refresh`, …) fail under the V3 target with a hint to add `--target v5`.
+- **Docs:** `IMPORT_ISSUE.md` rewritten V3-first with a V5 legacy section; `README.md`, `README_zh_HK.md`, `README_AGENT.md` and `SKILL.md` updated; the ingestion spec records the deliberate default change.
+- **Tests:** `tests/test_import_issue.py` covers default V3 routing, explicit V5 routing and V5-flag rejection.
+
 ## v0.7.0
 
 - **One-command issue import:** added `tools/import_issue.py`. It downloads a Gazette PDF URL into `input/`, runs OCR into a new `output_issueNN_YYYY/`, imports the run into SQLite, refreshes bank canonical fields, and re-applies user standard labels.

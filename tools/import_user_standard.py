@@ -12,11 +12,11 @@ The raw OCR fields are never changed. The result is stored separately:
 Usage::
 
     python tools/import_user_standard.py build \
-        --db data/macau_balancete.sqlite \
+        --db archive/database/macau_balancete.sqlite \
         --csv labels/standard_label_by_user.csv
 
     python tools/import_user_standard.py report \
-        --db data/macau_balancete.sqlite \
+        --db archive/database/macau_balancete.sqlite \
         --csv data/user_standard_mapping_report.csv
 """
 from __future__ import annotations
@@ -668,7 +668,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
     build = sub.add_parser("build", help="import the user standard CSV")
-    build.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
+    build.add_argument("--db", type=Path, default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     build.add_argument("--csv", type=Path,
                        default=Path("labels/standard_label_by_user.csv"))
     build.add_argument("--cleaned-csv", type=Path,
@@ -683,14 +683,14 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--report", type=Path,
                        default=Path("data/user_standard_mapping_report.csv"))
     report = sub.add_parser("report", help="write the current mapping report")
-    report.add_argument("--db", type=Path, default=Path("data/macau_balancete.sqlite"))
+    report.add_argument("--db", type=Path, default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     report.add_argument("--csv", type=Path,
                         default=Path("data/user_standard_mapping_report.csv"))
     remap = sub.add_parser(
         "map", help="re-apply existing standard labels to line_items"
     )
     remap.add_argument("--db", type=Path,
-                       default=Path("data/macau_balancete.sqlite"))
+                       default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     remap.add_argument("--report", type=Path,
                        default=Path("data/user_standard_mapping_report.csv"))
     args = parser.parse_args(argv)

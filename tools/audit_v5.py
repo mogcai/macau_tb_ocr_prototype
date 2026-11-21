@@ -1615,7 +1615,7 @@ def build_markdown(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", type=Path, default=ROOT / "data" / "macau_balancete.sqlite")
+    parser.add_argument("--db", type=Path, default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     parser.add_argument("--out", type=Path, default=ROOT / "docs" / "audit")
     args = parser.parse_args()
 

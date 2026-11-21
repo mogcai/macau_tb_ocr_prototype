@@ -95,16 +95,46 @@ class ImportIssueTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             imp.fetch_pdf(str(source), self.root / "input")
 
-    def test_v5_cli_defaults_are_preserved(self):
+    def test_cli_default_target_is_v3(self):
         args = imp.build_parser().parse_args(["https://example.test/a.pdf"])
-        self.assertEqual(args.target, "v5")
+        self.assertEqual(args.target, "v3")
         self.assertIsNone(args.db)
+        self.assertIsNone(args.v3_db)
         self.assertIsNone(args.input_dir)
         self.assertEqual(imp.resolve_v5_input_dir(None), Path("input"))
         self.assertEqual(
             imp.resolve_v5_db_path(None),
-            (Path.cwd() / "data" / "macau_balancete.sqlite").resolve(),
+            (imp.ROOT / "archive" / "database" / "macau_balancete.sqlite").resolve(),
         )
+
+    def test_v5_cli_is_still_reachable_explicitly(self):
+        args = imp.build_parser().parse_args([
+            "--target", "v5", "https://example.test/a.pdf",
+        ])
+        self.assertEqual(args.target, "v5")
+
+    def test_default_target_routes_to_v3_ingest(self):
+        with mock.patch("tools.v3_ingest.run", return_value=0) as run_v3, \
+                mock.patch("builtins.print"):
+            code = imp.main(["https://example.test/anotariais-33-2026.pdf"])
+        self.assertEqual(code, 0)
+        run_v3.assert_called_once()
+        routed = run_v3.call_args.args[0]
+        self.assertEqual(routed.target, "v3")
+
+    def test_default_target_rejects_legacy_v5_flags(self):
+        with mock.patch("builtins.print"):
+            code = imp.main([
+                "https://example.test/anotariais-33-2026.pdf",
+                "--db", str(self.root / "v5.sqlite"),
+            ])
+        self.assertEqual(code, 2)
+        with mock.patch("builtins.print"):
+            code = imp.main([
+                "https://example.test/anotariais-33-2026.pdf",
+                "--publish",
+            ])
+        self.assertEqual(code, 2)
 
     def test_v5_main_download_only_still_works(self):
         source = self.root / "source.pdf"
@@ -114,6 +144,7 @@ class ImportIssueTests(unittest.TestCase):
         with mock.patch("builtins.print"):
             code = imp.main([
                 str(source),
+                "--target", "v5",
                 "--input-dir", str(input_dir),
                 "--outdir", str(out_dir),
                 "--download-only",
@@ -145,6 +176,7 @@ class ImportIssueTests(unittest.TestCase):
         with mock.patch("builtins.print"):
             code = imp.main([
                 str(source),
+                "--target", "v5",
                 "--v3-db", str(self.root / "v3.sqlite"),
             ])
         self.assertEqual(code, 2)

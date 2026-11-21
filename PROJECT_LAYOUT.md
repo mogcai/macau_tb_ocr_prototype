@@ -12,9 +12,10 @@ tools/                       CLI: ingest, replay, registry, worksheets, GT
 database/v3/                 V3 DDL migrations (source of truth for schema files)
 data/
   macau_balancete_v3.sqlite  Operational V3 database
-  macau_balancete.sqlite     Frozen legacy V5 (replay / historical tools)
   baseline/                  Read-only MVP / v5 baselines
   README.md                  DB roles
+archive/database/
+  macau_balancete.sqlite     Frozen legacy V5 (replay / historical tools)
 docs/                        Active specs + audit worksheets  → docs/README.md
 outputs/runs/                Current OCR run folders
 labels/                      Lexicon / standards / aliases
@@ -46,5 +47,5 @@ archive/                     → archive/README.md
 | OCR raw extraction | Run folder under `outputs/runs/` + `label_raw` / `*_raw` |
 | Operational statements / review | V3 DB + workbench |
 | V3 schema files | `database/v3/*.sql` |
-| Legacy V5 observations | `data/macau_balancete.sqlite` (frozen) |
+| Legacy V5 observations | `archive/database/macau_balancete.sqlite` (frozen) |
 | Agent behaviour | `AGENTS.md` + `SKILL.md` |

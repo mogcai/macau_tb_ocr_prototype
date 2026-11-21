@@ -7,12 +7,12 @@ standard account; bilingual / combined OCR strings are aliases.
 Examples::
 
     python tools/standard_line_items.py export \
-        --db data/macau_balancete.sqlite \
+        --db archive/database/macau_balancete.sqlite \
         --csv labels/line_item_standard.csv
 
     # edit status to approved, then apply
     python tools/standard_line_items.py apply \
-        --db data/macau_balancete.sqlite \
+        --db archive/database/macau_balancete.sqlite \
         --csv labels/line_item_standard.csv --by tony
 """
 from __future__ import annotations
@@ -308,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
 
     export = sub.add_parser("export", help="export the current standard draft")
     export.add_argument("--db", type=Path,
-                        default=Path("data/macau_balancete.sqlite"))
+                        default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     export.add_argument("--csv", type=Path,
                         default=Path("labels/line_item_standard.csv"))
     export.add_argument("--pt-zh-map", type=Path,
@@ -316,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
 
     apply = sub.add_parser("apply", help="apply an edited standard master")
     apply.add_argument("--db", type=Path,
-                       default=Path("data/macau_balancete.sqlite"))
+                       default=ROOT / "archive" / "database" / "macau_balancete.sqlite")
     apply.add_argument("--csv", type=Path,
                        default=Path("labels/line_item_standard.csv"))
     apply.add_argument("--by", required=True)

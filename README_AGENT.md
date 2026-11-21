@@ -6,6 +6,16 @@ Read `AGENTS.md` first, then this file and `SKILL.md` before processing any PDF.
 
 Extract bank/financial-institution Balancete pages from Macau Government Gazette PDFs into Excel/CSV. Preserve the original image and raw OCR values, normalize account-label script and numeric values into separate fields, and route uncertain rows to human review. Operational review / adoption is on the V3 database and workbench; legacy V5 SQLite is frozen.
 
+## Importer target (default V3)
+
+`python tools/import_issue.py <URL>` now targets the V3 operational database
+(`data/macau_balancete_v3.sqlite`) and stops at raw OCR evidence: staging, no
+page classification, no statements, no mapping, no publish. Use
+`--target v5 --db archive/database/macau_balancete.sqlite` for the frozen legacy V5
+workflow; V5-only flags (`--db`, `--publish`, `--no-bank-refresh`, …) are
+rejected under the V3 target with a hint to add `--target v5`. See
+`IMPORT_ISSUE.md`.
+
 ## v0.7.0 changes
 
 - Added `tools/import_issue.py`: PDF URL → input → OCR → output → SQLite → bank refresh → user-standard remap.
@@ -166,7 +176,7 @@ After individual runs are inspected:
 ```bash
 python tools/build_database.py \
   outputs/runs/issue45_2026 outputs/runs/issue44_2026 \
-  --db data/macau_balancete.sqlite \
+  --db archive/database/macau_balancete.sqlite \
   --publish --published-by reviewer
 ```
 
@@ -239,7 +249,7 @@ On macOS, engine defaults to Vision. On non-macOS, it defaults to Paddle. Paddle
 Database importer options:
 
 ```text
---db data/macau_balancete.sqlite
+--db archive/database/macau_balancete.sqlite
 --replace
 --discard-verification
 --publish

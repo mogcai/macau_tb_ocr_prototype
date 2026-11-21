@@ -1,6 +1,6 @@
 # 澳門公報 Balancete OCR Prototype v0.7.0
 
-> 目錄／現行 vs 歸檔：見 [`PROJECT_LAYOUT.md`](PROJECT_LAYOUT.md)。遷移期／DeepSeek 時代舊文件喺 [`archive/`](archive/)。操作中 DB 係 V3（`data/macau_balancete_v3.sqlite`）。
+> 目錄／現行 vs 歸檔：見 [`PROJECT_LAYOUT.md`](PROJECT_LAYOUT.md)。遷移期／DeepSeek 時代舊文件喺 [`archive/`](archive/)。操作中 DB 係 V3（`data/macau_balancete_v3.sqlite`）。`tools/import_issue.py` 預設 `--target v3`；legacy V5 要明確加 `--target v5`。
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV，並可整合成 SQLite 資料庫作跨期分析。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
 
@@ -290,7 +290,7 @@ Excel sheets：`TB_Rows`、`Review_Queue`、`Documents`、`OCR_Raw`。
 ```bash
 python tools/build_database.py \
   outputs/runs/issue45_2026 outputs/runs/issue44_2026 \
-  --db data/macau_balancete.sqlite
+  --db archive/database/macau_balancete.sqlite
 ```
 
 匯入後主要 view：

@@ -24,7 +24,7 @@ After this upgrade, the Importer supports three targets:
 | `v3` | Standard new ingestion workflow | Downloads, OCRs, then replays raw OCR evidence into V3 |
 | `ocr-only` | Download and OCR without database import | No V5 or V3 database writes |
 
-**Backward compatibility:** if `--target` is omitted, behaviour remains equivalent to the existing V5 command. Do not silently change the default to V3.
+**Default target (changed after V2.4 baseline):** `--target` now defaults to `v3`, because the operational database is V3. The V5 workflow is unchanged but must be requested explicitly with `--target v5`. The original V2.4 requirement kept `v5` as the silent default for backward compatibility; that requirement was superseded deliberately on 2026-11-21, together with its documentation and tests. This is an intentional, documented behaviour change, not an accidental default flip.
 
 The V3 target must never pass the V3 database path to `tools/build_database.py`.
 
@@ -86,7 +86,7 @@ The V2.4 implementation must explicitly change the behaviours identified in this
 
 The existing `tools/import_issue.py` currently has these path semantics:
 
-- `--db` defaults to `Path("data/macau_balancete.sqlite")`, relative to the process current working directory;
+- `--db` defaults to `ROOT/archive/database/macau_balancete.sqlite` (the frozen legacy V5 archive); an explicitly supplied `--db` path retains the legacy cwd-relative resolution;
 - `--input-dir` defaults to `Path("input")`, also relative to the current working directory;
 - when `--outdir` is omitted, `output_dir_for()` returns an absolute directory under `ROOT/outputs/runs/`;
 - an explicitly supplied relative `--outdir` is resolved against the current working directory;
@@ -99,7 +99,7 @@ Other V5 behaviour to preserve:
 - URL and local PDF sources are accepted, including `http://` sources;
 - existing flags and their current semantics remain available;
 - `tests/test_import_issue.py` includes a local HTTP server on `127.0.0.1`;
-- V5 default behaviour remains the default when `--target` is omitted.
+- V5 behaviour is preserved when `--target v5` is supplied explicitly.
 
 ---
 
@@ -179,7 +179,7 @@ Add:
 --target {v5,v3,ocr-only}
 ```
 
-Default: `v5`.
+Default: `v3` (changed from the V2.4 baseline `v5`; see §1).
 
 ### 4.2 V3 database option
 
@@ -250,7 +250,7 @@ Incompatible options must fail with a clear message. Do not silently ignore flag
 
 The parser may use `default=None` for `--db`, `--input-dir` and `--v3-db` so that explicit arguments can be distinguished from defaults. Resolve the defaults per target:
 
-- V5 `--db`: `Path("data/macau_balancete.sqlite")`, resolved against cwd, matching current behaviour.
+- V5 `--db`: default `ROOT/archive/database/macau_balancete.sqlite`; an explicit path is resolved against cwd as before.
 - V5 `--input-dir`: `Path("input")`, resolved against cwd, matching current behaviour.
 - V5 omitted `--outdir`: retain `output_dir_for()` under `ROOT/outputs/runs`.
 - V5 explicit relative `--outdir`: resolve against cwd, matching current behaviour.
@@ -316,10 +316,10 @@ python tools/import_issue.py \
   --json
 ```
 
-Existing V5 invocation remains valid and unchanged:
+Existing V5 invocation must now name its target explicitly:
 
 ```bash
-python tools/import_issue.py "<URL>"
+python tools/import_issue.py "<URL>" --target v5
 ```
 
 ---
@@ -1259,8 +1259,8 @@ V5 manifests keep their existing legacy top-level shape (`source`, `pdf`, `outdi
 
 ### 12.1 V5 backward compatibility
 
-- Existing `tests/test_import_issue.py` passes unchanged.
-- Existing V5 invocations with no `--target` behave as V5.
+- V5 tests remain green after naming `--target v5` explicitly (the default changed to V3).
+- V5 invocations without `--target` are rejected by the V3 preflight with a hint to add `--target v5`; they must not silently run as V5.
 - V5 `--db` and `--input-dir` defaults remain cwd-relative.
 - V5 omitted `--outdir` still uses `ROOT/outputs/runs/...` through `output_dir_for()`.
 - Explicit relative V5 `--outdir` remains cwd-relative.

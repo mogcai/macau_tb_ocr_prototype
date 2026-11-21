@@ -260,7 +260,7 @@ Stores unmodified OCR text, actual recognition language, header/table region, co
 
 ```bash
 python tools/build_database.py outputs/runs/issue45_2026 outputs/runs/issue44_2026 \
-  --db data/macau_balancete.sqlite
+  --db archive/database/macau_balancete.sqlite
 ```
 
 - Tables: `runs`, `banks`, `bank_aliases`, `statements`, `line_items`, `row_verification`.
@@ -282,7 +282,7 @@ python tools/build_database.py outputs/runs/issue45_2026 outputs/runs/issue44_20
 - **OCR repair priority:** an approved `ocr_repair` alias for `label_raw` wins over a non-empty but wrong `label_standard`.
 - **OCR repair aliases:** `labels/user_standard_ocr_repairs.csv` maps only obvious merged strings/typos; ambiguous or genuinely new names stay unmapped.
 - **Cleaned user standard:** use `--from-cleaned` to import the edited `standard_label_by_user.cleaned.csv`; raw fallback maps blank `label_standard` through `label_raw`.
-- **One-command import:** `tools/import_issue.py` downloads a Gazette PDF URL, runs OCR, imports SQLite and remaps names. New issues are staging until `--publish`.
+- **One-command import:** `tools/import_issue.py` defaults to `--target v3` and imports raw OCR evidence into the operational V3 database; the run stays staging until Workbench classification. The legacy V5 workflow (SQLite import, bank refresh, name remap, `--publish`) requires explicit `--target v5`.
 - **User standard import:** `tools/import_user_standard.py` loads `labels/standard_label_by_user.csv` into `standard_labels` / `standard_label_aliases` and maps `line_items.user_standard_label_id`; unmatched labels stay visible in `v_user_standard_unmapped`.
 - **Standard master:** `tools/standard_line_items.py export` writes `labels/line_item_standard.csv`; `apply` only loads `status=approved` rows. Bilingual/combined OCR strings are aliases, not concepts.
 - **Name registry:** use `export` / `import-review` for the CSV review workflow. Bank Chinese-name seeds are proposed (`translation_seed`) until approved. Bank aliases and line-item concepts are separate from OCR. Same-language lexicon aliases are approved seeds; bilingual pairs are pending candidates. Only approved aliases populate `line_items.line_item_concept_id`.

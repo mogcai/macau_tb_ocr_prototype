@@ -10,7 +10,7 @@
 
 本專案以 Python 開發，並針對澳門公報中常見的中文、葡文及英文銀行財務表格作 OCR 處理。
 
-**現況（2026-11）：** 操作中的資料庫係 V3（`data/macau_balancete_v3.sqlite` + `workbench/`）。Legacy V5 SQLite 同遷移期文件已凍結／搬入 `archive/`，唔好當正式發布路徑。詳見 [`PROJECT_LAYOUT.md`](PROJECT_LAYOUT.md)。
+**現況（2026-11）：** 操作中的資料庫係 V3（`data/macau_balancete_v3.sqlite` + `workbench/`）。Legacy V5 SQLite 同遷移期文件已凍結／搬入 `archive/`，唔好當正式發布路徑。`tools/import_issue.py` 預設 `--target v3`，只會匯入 raw OCR evidence 等 Workbench 分類；舊 V5 流程要明確加 `--target v5`。詳見 [`PROJECT_LAYOUT.md`](PROJECT_LAYOUT.md) 同 [`IMPORT_ISSUE.md`](IMPORT_ISSUE.md)。
 
 ## 版本簡介
 
@@ -260,7 +260,7 @@ OCR 結果應保留原始文字、辨識結果及數字正規化資料。
 ```bash
 python tools/build_database.py \
   outputs/runs/issue45_2026 outputs/runs/issue44_2026 \
-  --db data/macau_balancete.sqlite
+  --db archive/database/macau_balancete.sqlite
 ```
 
 之後用 view 查詢：
