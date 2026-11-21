@@ -160,12 +160,16 @@ def summary() -> dict[str, Any]:
         data = {
             "db_path": str(V3_DB),
             "statements_active": _count(conn, "SELECT COUNT(*) FROM statements WHERE statement_status='active'"),
-            "statements_held": _count(conn, "SELECT COUNT(*) FROM statements WHERE statement_status<>'active'"),
+            "statements_held": _count(
+                conn,
+                "SELECT COUNT(*) FROM statements "
+                "WHERE statement_status NOT IN ('active', 'excluded')",
+            ),
             "current_rows": _count(conn, "SELECT COUNT(*) FROM v_current_statement_rows"),
             "held_rows": _count(
                 conn,
                 "SELECT COUNT(*) FROM statement_rows sr JOIN statements s ON s.statement_id=sr.statement_id "
-                "WHERE s.statement_status<>'active' "
+                "WHERE s.statement_status NOT IN ('active', 'excluded') "
                 f"AND sr.statement_extraction_id = {_current_extraction_sql('sr')}",
             ),
             "field_verifications": _count(conn, "SELECT COUNT(*) FROM field_verifications"),
@@ -213,7 +217,7 @@ def list_statements(status: str = "all", limit: int = 200) -> list[dict[str, Any
         if status == "active":
             where = "WHERE s.statement_status='active'"
         elif status == "held":
-            where = "WHERE s.statement_status<>'active'"
+            where = "WHERE s.statement_status NOT IN ('active', 'excluded')"
         params.append(limit)
         rows = conn.execute(
             f"""
@@ -1185,7 +1189,7 @@ def review_queue() -> list[dict[str, Any]]:
             FROM statements s
             JOIN reporting_entities e ON e.entity_id=s.reporting_entity_id
             LEFT JOIN effective er ON er.statement_id=s.statement_id
-            WHERE s.statement_status <> 'active'
+            WHERE s.statement_status NOT IN ('active', 'excluded')
             GROUP BY s.statement_id, s.statement_date, s.publication_date,
                      s.reporting_scope, s.statement_status, e.canonical_zh,
                      e.entity_key, s.currency, s.unit_scale, s.amount_decimal_places
@@ -1205,6 +1209,7 @@ def review_queue() -> list[dict[str, Any]]:
                 and int(data["invalid_mapping_rows"] or 0) == 0
                 and data["unmapped_rows"] == 0
             )
+            data["can_discard"] = data.get("review_status") in (None, "pending")
             data["mapping_blockers"] = ";".join(
                 part for part in (
                     f"mapping_conflict={data['mapping_conflict_rows']}" if data["mapping_conflict_rows"] else "",

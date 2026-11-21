@@ -12,8 +12,102 @@
       <tr><th>Publication date</th><td>{{ document.publication_date or "—" }}</td></tr>
       <tr><th>PDF SHA-256</th><td><code>{{ document.sha256 }}</code></td></tr>
       <tr><th>Pages</th><td>{{ pages | length }}{% if pending_pages %} · <span class="bad">{{ pending_pages }} still proposed</span>{% endif %}</td></tr>
+      <tr><th>Latest OCR run</th><td><code>{{ latest_run_id or "—" }}</code></td></tr>
     </tbody>
   </table>
+</section>
+
+<section class="panel {% if ocr_quality and ocr_quality.warning %}panel-warn{% endif %}">
+  <h2>OCR quality preview</h2>
+  {% if ocr_quality %}
+  <p class="sub">
+    Review the latest OCR evidence before classifying or building.
+    {% if ocr_quality.warning %}
+    <span class="bad">Warning: {{ ocr_quality.warning_reasons | join(", ") }}.</span>
+    Consider reprocessing OCR instead of building statements.
+    {% else %}
+    <span class="ok">No structural OCR warning from empty labels / amount-in-label checks.</span>
+    {% endif %}
+  </p>
+  <div class="cards">
+    <div class="card"><div class="label">Rows</div><div class="value">{{ ocr_quality.rows }}</div></div>
+    <div class="card"><div class="label">Review</div><div class="value">{% if ocr_quality.review_rate is not none %}{{ (ocr_quality.review_rate * 100) | round(0) }}%{% else %}—{% endif %}</div><div class="hint">{{ ocr_quality.review_rows }} rows</div></div>
+    <div class="card"><div class="label">Empty labels</div><div class="value {% if ocr_quality.empty_label_rate and ocr_quality.empty_label_rate >= 0.1 %}bad{% endif %}">{% if ocr_quality.empty_label_rate is not none %}{{ (ocr_quality.empty_label_rate * 100) | round(0) }}%{% else %}—{% endif %}</div><div class="hint">{{ ocr_quality.empty_labels }} rows</div></div>
+    <div class="card"><div class="label">Amount in label</div><div class="value {% if ocr_quality.amount_in_label %}bad{% endif %}">{{ ocr_quality.amount_in_label }}</div></div>
+    <div class="card"><div class="label">Debit / credit cells</div><div class="value">{{ ocr_quality.debit_cells }} / {{ ocr_quality.credit_cells }}</div></div>
+  </div>
+  {% if ocr_quality.top_review_reasons %}
+  <p class="sub">Top review reasons:
+    {% for item in ocr_quality.top_review_reasons %}
+    <span class="pill">{{ item.reason }} · {{ item.count }}</span>
+    {% endfor %}
+  </p>
+  {% endif %}
+  <details class="ocr-pages">
+    <summary>Per-page OCR summary</summary>
+    <div class="table-scroll">
+      <table class="compact">
+        <thead>
+          <tr>
+            <th>Page</th><th>Rows</th><th>Empty label</th><th>Amt in label</th>
+            <th>Review</th><th>Debit</th><th>Credit</th><th>label_x0</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for page in ocr_quality.pages %}
+          <tr>
+            <td>p{{ page.pdf_page }}</td>
+            <td>{{ page.rows }}</td>
+            <td class="{% if page.empty_label_rate and page.empty_label_rate >= 0.1 %}bad{% endif %}">
+              {{ page.empty_labels }}{% if page.empty_label_rate is not none %} ({{ (page.empty_label_rate * 100) | round(0) }}%){% endif %}
+            </td>
+            <td class="{% if page.amount_in_label %}bad{% endif %}">{{ page.amount_in_label }}</td>
+            <td>{{ page.review_rows }}</td>
+            <td>{{ page.debit_cells }}</td>
+            <td>{{ page.credit_cells }}</td>
+            <td><code>{{ page.label_column_x0 or "—" }}</code></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% else %}
+  <p class="muted">No OCR run folder / <code>tb_rows.csv</code> is available for this document yet.</p>
+  {% endif %}
+
+  {% if can_import or can_review_statement %}
+  <div class="actions intake-ocr-actions">
+    {% if can_review_statement and discardable_statements %}
+    <form id="discard-pending-form" class="inline-form">
+      <input type="text" name="reason" required
+             placeholder="Reason to discard pending statements"
+             class="reason-input">
+      <button type="submit" class="secondary">Discard pending statements ({{ discardable_statements | length }})</button>
+    </form>
+    {% endif %}
+    {% if can_import %}
+    <form id="reprocess-form" class="inline-form">
+      <input type="text" name="reason" required
+             placeholder="Reason to reprocess OCR"
+             class="reason-input">
+      {% if discardable_statements %}
+      <label class="auto-inline">
+        <input type="checkbox" name="discard_pending" checked>
+        also discard {{ discardable_statements | length }} pending statement(s)
+      </label>
+      {% endif %}
+      <button type="submit" {% if not can_reprocess %}disabled title="Adopted statements block reprocess"{% endif %}>
+        Reprocess OCR
+      </button>
+    </form>
+    {% endif %}
+  </div>
+  {% if adopted_statement_count %}
+  <p class="sub bad">{{ adopted_statement_count }} adopted statement(s) block OCR reprocess for this document.</p>
+  {% endif %}
+  <div id="ocr-action-result" class="build-result"></div>
+  {% endif %}
 </section>
 
 {% if not can_classify %}
@@ -259,6 +353,59 @@
           " row(s), excluded " + result.rows_excluded +
           " row(s). Auto-map: " + (mapping.status || "unknown") +
           ". <a href='/review'>Open Review Queue</a></p>";
+      } catch (error) {
+        output.innerHTML = "<p class='bad'>" + error.message + "</p>";
+      }
+    });
+  }
+  const discardForm = document.getElementById("discard-pending-form");
+  if (discardForm) {
+    discardForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const output = document.getElementById("ocr-action-result");
+      const reason = discardForm.reason.value.trim();
+      if (!reason) return;
+      if (!window.confirm("Discard " + {{ discardable_statements | length }} + " pending statement(s) and return OCR rows to intake?")) {
+        return;
+      }
+      output.textContent = "Discarding pending statements…";
+      try {
+        const result = await postJson(
+          "/api/intake/{{ document.source_document_id }}/discard-pending",
+          {reason: reason},
+        );
+        output.innerHTML =
+          "<p class='ok'>Discarded " + result.discarded_count +
+          " statement(s); released " + (result.rows_released_from_page_role || 0) +
+          " page-role row(s).</p>";
+        window.location.reload();
+      } catch (error) {
+        output.innerHTML = "<p class='bad'>" + error.message + "</p>";
+      }
+    });
+  }
+  const reprocessForm = document.getElementById("reprocess-form");
+  if (reprocessForm) {
+    reprocessForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const output = document.getElementById("ocr-action-result");
+      const reason = reprocessForm.reason.value.trim();
+      if (!reason) return;
+      const discardPending = Boolean(
+        reprocessForm.discard_pending && reprocessForm.discard_pending.checked
+      );
+      output.textContent = "Starting OCR reprocess…";
+      try {
+        const result = await postJson(
+          "/api/intake/{{ document.source_document_id }}/reprocess",
+          {reason: reason, discard_pending: discardPending},
+        );
+        const job = result.job || {};
+        output.innerHTML =
+          "<p class='ok'>Reprocess job queued: <a href='/imports/" +
+          job.job_id + "'><code>" + (job.job_id || "").slice(0, 10) +
+          "</code></a>.</p>";
+        window.location.href = "/imports/" + job.job_id;
       } catch (error) {
         output.innerHTML = "<p class='bad'>" + error.message + "</p>";
       }

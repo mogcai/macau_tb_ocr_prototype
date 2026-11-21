@@ -57,6 +57,22 @@
   Workbench page classification. It is not financial verification.</p>
 </section>
 
+{% if ocr_quality %}
+<section class="panel {% if ocr_quality.warning %}panel-warn{% endif %}">
+  <h2>OCR quality preview</h2>
+  <p class="sub">
+    {{ ocr_quality.rows }} rows ·
+    review {% if ocr_quality.review_rate is not none %}{{ (ocr_quality.review_rate * 100) | round(0) }}%{% else %}—{% endif %} ·
+    empty labels {% if ocr_quality.empty_label_rate is not none %}{{ (ocr_quality.empty_label_rate * 100) | round(0) }}%{% else %}—{% endif %} ·
+    amount-in-label {{ ocr_quality.amount_in_label }}
+    {% if ocr_quality.warning %}<span class="bad"> · warning</span>{% endif %}
+  </p>
+  {% if source_document_id %}
+  <p class="sub"><a href="/intake/{{ source_document_id }}">Open Intake to classify or reprocess</a></p>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if can_import and job.status in ("failed", "interrupted", "completed", "needs_decision") %}
 <section class="panel">
   <h2>Actions</h2>

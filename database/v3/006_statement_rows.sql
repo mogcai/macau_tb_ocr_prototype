@@ -38,8 +38,11 @@ CREATE TABLE IF NOT EXISTS statement_rows (
     FOREIGN KEY (statement_extraction_id, statement_id)
         REFERENCES statement_extractions(statement_extraction_id, statement_id)
         ON DELETE RESTRICT,
-    FOREIGN KEY (extracted_row_id, statement_extraction_id)
-        REFERENCES extracted_rows(extracted_row_id, statement_extraction_id)
+    -- Single-column FK so a discarded build can keep statement_rows as a
+    -- historical snapshot while extracted_rows return to unassigned
+    -- (statement_extraction_id cleared). See 018_discard_statement_assignment.sql.
+    FOREIGN KEY (extracted_row_id)
+        REFERENCES extracted_rows(extracted_row_id)
         ON DELETE RESTRICT,
     FOREIGN KEY (parent_row_id, statement_id, statement_extraction_id)
         REFERENCES statement_rows(statement_row_id, statement_id, statement_extraction_id)
