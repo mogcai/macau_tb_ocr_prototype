@@ -12,10 +12,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from workbench import import_jobs, service
+from workbench import import_jobs, intake, service
 from workbench.permissions import (
-    DEFAULT_ROLE, ROLES, can_adopt, can_catalogue, can_import, can_map,
-    can_publish, can_review_statement, can_verify,
+    DEFAULT_ROLE, ROLES, can_adopt, can_catalogue, can_classify, can_import,
+    can_map, can_publish, can_review_statement, can_verify,
 )
 
 
@@ -82,6 +82,15 @@ class ImportDecisionPayload(BaseModel):
     reason: str
 
 
+class PageDecisionPayload(BaseModel):
+    page_role: str
+    decision: str
+    entity_id: str | None = None
+    statement_date: str | None = None
+    statement_type: str = "balance_sheet"
+    note: str = ""
+
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 STATIC = Path(__file__).resolve().parent / "static"
@@ -127,6 +136,7 @@ def template_context(request: Request, **extra: Any) -> dict[str, Any]:
         "can_map": can_map(role),
         "can_catalogue": can_catalogue(role),
         "can_import": can_import(role),
+        "can_classify": can_classify(role),
         **extra,
     }
 
@@ -670,6 +680,91 @@ def import_detail_page(request: Request, job_id: str) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "import_detail.html",
+        template_context(request, **detail),
+    )
+
+
+@app.get("/api/intake")
+def api_intake() -> list[dict[str, Any]]:
+    return intake.list_batches()
+
+
+@app.get("/api/intake/{source_document_id}")
+def api_intake_batch(source_document_id: str) -> dict[str, Any]:
+    try:
+        return intake.batch_detail(source_document_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/intake/{source_document_id}/pages/{document_page_id}")
+def api_intake_decide(
+    source_document_id: str,
+    document_page_id: str,
+    payload: PageDecisionPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_classify(role):
+        raise HTTPException(status_code=403, detail="classify capability is required")
+    try:
+        return intake.save_page_decision(
+            source_document_id,
+            document_page_id,
+            page_role=payload.page_role,
+            decision=payload.decision,
+            entity_id=payload.entity_id,
+            statement_date=payload.statement_date,
+            statement_type=payload.statement_type,
+            note=payload.note,
+            actor=actor_from(request),
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except intake.IntakeConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/intake/{source_document_id}/build")
+def api_intake_build(
+    source_document_id: str,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_classify(role):
+        raise HTTPException(status_code=403, detail="classify capability is required")
+    try:
+        return intake.build_statements(source_document_id, actor_from(request))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except intake.IntakeConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/intake", response_class=HTMLResponse)
+def intake_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "intake.html",
+        template_context(request, batches=intake.list_batches()),
+    )
+
+
+@app.get("/intake/{source_document_id}", response_class=HTMLResponse)
+def intake_batch_page(request: Request, source_document_id: str) -> HTMLResponse:
+    try:
+        detail = intake.batch_detail(source_document_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return templates.TemplateResponse(
+        request,
+        "intake_batch.html",
         template_context(request, **detail),
     )
 

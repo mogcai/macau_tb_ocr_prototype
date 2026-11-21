@@ -7,10 +7,10 @@ from __future__ import annotations
 
 ROLES = {
     "viewer": {"read"},
-    "reviewer": {"read", "verify", "review", "map", "import"},
-    "adopter": {"read", "verify", "review", "map", "import", "adopt"},
+    "reviewer": {"read", "verify", "review", "map", "import", "classify"},
+    "adopter": {"read", "verify", "review", "map", "import", "classify", "adopt"},
     "publisher": {"read", "publish"},
-    "admin": {"read", "verify", "review", "map", "import", "adopt", "publish", "catalogue"},
+    "admin": {"read", "verify", "review", "map", "import", "classify", "adopt", "publish", "catalogue"},
 }
 DEFAULT_ROLE = "viewer"
 
@@ -41,6 +41,10 @@ def can_publish(role: str) -> bool:
 
 def can_import(role: str) -> bool:
     return "import" in capabilities(role)
+
+
+def can_classify(role: str) -> bool:
+    return "classify" in capabilities(role)
 
 
 def can_catalogue(role: str) -> bool:

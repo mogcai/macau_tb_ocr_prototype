@@ -121,3 +121,16 @@ table.data.compact { min-width: 1120px; }
 .source-cell code { word-break: break-all; }
 .job-log { background: #0b1220; color: #e5e7eb; border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.45; max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 .actions-form { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+/* Import intake */
+.intake-table td { vertical-align: middle; }
+.intake-table .sample-cell { max-width: 340px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.page-decision { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.page-decision select, .page-decision input {
+  padding: 4px 6px; border: 1px solid var(--line); border-radius: 5px;
+  font-size: 11px; color: var(--ink); background: #fff; max-width: 190px;
+}
+.page-decision input[type="date"] { max-width: 130px; }
+.page-decision .note-input { max-width: 180px; }
+.page-decision .row-error { flex-basis: 100%; }
+tr.intake-locked td { background: #f9fafb; }
+.build-result p { margin: 10px 0 0; }

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Import intake · Macau Banking Workbench{% endblock %}
+{% block content %}
+<h1>Import intake</h1>
+<p class="muted">
+  Imported PDFs arrive as raw OCR evidence. Classify the pages here, record the
+  reporting entity and statement date for financial-statement pages, then build
+  the logical statements. Only after that will the Review Queue show them.
+</p>
+
+<section class="panel">
+  <h2>Batches awaiting intake</h2>
+  {% if batches %}
+  <div class="table-scroll">
+    <table class="data compact">
+      <thead>
+        <tr>
+          <th>Issue</th>
+          <th>Document</th>
+          <th>Pages</th>
+          <th>To classify</th>
+          <th>Approved FS</th>
+          <th>Unassigned rows</th>
+          <th>Included rows</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for batch in batches %}
+        <tr>
+          <td>{{ batch.issue_key }}</td>
+          <td class="source-cell"><code>{{ batch.original_filename or batch.source_document_id }}</code>
+            <div class="sub">{{ batch.publication_date or "publication date unknown" }}</div>
+          </td>
+          <td>{{ batch.pages }}</td>
+          <td>{% if batch.proposed_pages %}<span class="pill status-needs_decision">{{ batch.proposed_pages }}</span>{% else %}0{% endif %}</td>
+          <td>{{ batch.approved_financial_pages }}</td>
+          <td>{{ batch.unassigned_rows }}</td>
+          <td>{{ batch.included_rows }}</td>
+          <td><a class="button" href="/intake/{{ batch.source_document_id }}">Open intake</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No batches awaiting intake. Import an issue first, or all
+  imported pages are already classified.</p>
+  {% endif %}
+</section>
+{% endblock %}

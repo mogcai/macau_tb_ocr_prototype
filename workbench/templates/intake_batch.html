@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}Intake {{ document.issue_key }} · Macau Banking Workbench{% endblock %}
+{% block content %}
+<p class="sub"><a href="/intake">&larr; All intake batches</a></p>
+<h1>Intake · {{ document.issue_key }}</h1>
+
+<section class="panel">
+  <table class="kv">
+    <tbody>
+      <tr><th>Source document</th><td><code>{{ document.original_filename or document.source_document_id }}</code></td></tr>
+      <tr><th>Issue</th><td>{{ document.issue_key }}</td></tr>
+      <tr><th>Publication date</th><td>{{ document.publication_date or "—" }}</td></tr>
+      <tr><th>PDF SHA-256</th><td><code>{{ document.sha256 }}</code></td></tr>
+      <tr><th>Pages</th><td>{{ pages | length }}{% if pending_pages %} · <span class="bad">{{ pending_pages }} still proposed</span>{% endif %}</td></tr>
+    </tbody>
+  </table>
+</section>
+
+{% if not can_classify %}
+<section class="panel">
+  <p class="muted">Your role is <strong>{{ role }}</strong>. The classify
+  capability is required; switch to reviewer, adopter or admin.</p>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Page classification</h2>
+  <p class="sub">Approve financial-statement pages with an entity and statement
+  date. Reject or reclassify everything else so no page stays <code>proposed</code>.
+  Sample labels come from the raw OCR rows.</p>
+  <div class="table-scroll">
+    <table class="data compact intake-table">
+      <thead>
+        <tr>
+          <th>Page</th>
+          <th>Current</th>
+          <th>Rows</th>
+          <th>Sample labels</th>
+          <th>Decision</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for page in pages %}
+        <tr class="{% if page.included_rows %}intake-locked{% endif %}">
+          <td><strong>p{{ page.pdf_page }}</strong>
+            {% if page.printed_page %}<div class="sub">printed {{ page.printed_page }}</div>{% endif %}
+          </td>
+          <td>
+            <span class="pill">{{ page.page_role }}</span>
+            <span class="pill">{{ page.classification_status }}</span>
+            {% if page.included_rows %}<div class="sub">assigned: {{ page.included_rows }} rows</div>{% endif %}
+            {% if page.decision_note %}<div class="sub">{{ page.decision_note }}</div>{% endif %}
+          </td>
+          <td>{{ page.total_rows }}
+            <div class="sub">unassigned {{ page.unassigned_rows }}</div>
+          </td>
+          <td class="sample-cell">{{ page.sample_labels or "—" }}</td>
+          <td>
+            {% if can_classify and not page.included_rows %}
+            <form class="page-decision" data-page-id="{{ page.document_page_id }}">
+              <select name="page_role">
+                {% for role in ["financial_statement", "cover", "contents", "audit_report", "shareholder_list", "other", "unknown"] %}
+                <option value="{{ role }}" {% if page.page_role == role %}selected{% endif %}>{{ role }}</option>
+                {% endfor %}
+              </select>
+              <select name="decision">
+                <option value="approve" {% if page.classification_status == "approved" %}selected{% endif %}>approve</option>
+                <option value="reject" {% if page.classification_status == "rejected" %}selected{% endif %}>reject</option>
+              </select>
+              <select name="entity_id">
+                <option value="">— entity (FS only) —</option>
+                {% for entity in entities %}
+                <option value="{{ entity.entity_id }}"
+                  {% if page.reporting_entity_id == entity.entity_id %}selected{% endif %}>
+                  {{ entity.canonical_zh or entity.canonical_pt or entity.entity_key }} · {{ entity.entity_type }}
+                </option>
+                {% endfor %}
+              </select>
+              <input type="date" name="statement_date"
+                     value="{{ page.statement_date or '' }}" title="statement date">
+              <select name="statement_type">
+                {% for item in ["balance_sheet", "income_statement", "cash_flow", "other_financial_statement", "unknown"] %}
+                <option value="{{ item }}" {% if (page.statement_type or "balance_sheet") == item %}selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+              </select>
+              <input type="text" name="note" placeholder="note (required to reject)"
+                     value="" class="note-input">
+              <button type="submit" class="save-row">Save</button>
+              <div class="row-error"></div>
+            </form>
+            {% else %}
+            <span class="sub">read-only</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Statements to build</h2>
+  {% if preview_error %}
+  <p class="bad">{{ preview_error }}</p>
+  {% elif preview %}
+  <table class="compact">
+    <thead><tr><th>Entity</th><th>Statement date</th><th>Type</th><th>Pages</th><th>Rows</th></tr></thead>
+    <tbody>
+      {% for group in preview %}
+      <tr>
+        <td>{{ group.entity_name }}</td>
+        <td>{{ group.statement_date }}</td>
+        <td>{{ group.statement_type }}</td>
+        <td>{{ group.page_numbers | join(", ") }}</td>
+        <td>{{ group.row_count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Approve at least one financial-statement page to build statements.</p>
+  {% endif %}
+
+  {% if can_classify %}
+  <div class="actions">
+    <button id="build-button" {% if not can_build %}disabled{% endif %}>Build statements</button>
+    <span class="sub">
+      {% if pending_pages %}Classify all {{ pending_pages }} remaining page(s) first.{% endif %}
+      Build is idempotent and never changes raw OCR values. It also runs the
+      first-pass Standard Item auto-map (proposed mappings only).
+    </span>
+  </div>
+  <div id="build-result" class="build-result"></div>
+  {% endif %}
+</section>
+
+<script>
+(function () {
+  async function postJson(url, body) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || ("HTTP " + response.status));
+    }
+    return data;
+  }
+  document.querySelectorAll("form.page-decision").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const box = form.querySelector(".row-error");
+      box.textContent = "";
+      box.classList.remove("visible");
+      const formData = new FormData(form);
+      const pageId = form.dataset.pageId;
+      const body = {
+        page_role: formData.get("page_role"),
+        decision: formData.get("decision"),
+        entity_id: formData.get("entity_id") || null,
+        statement_date: formData.get("statement_date") || null,
+        statement_type: formData.get("statement_type"),
+        note: formData.get("note") || "",
+      };
+      try {
+        await postJson(
+          "/api/intake/{{ document.source_document_id }}/pages/" + pageId,
+          body,
+        );
+        window.location.reload();
+      } catch (error) {
+        box.textContent = error.message;
+        box.classList.add("visible");
+      }
+    });
+  });
+  const build = document.getElementById("build-button");
+  if (build) {
+    build.addEventListener("click", async () => {
+      const output = document.getElementById("build-result");
+      output.textContent = "Building statements…";
+      try {
+        const result = await postJson(
+          "/api/intake/{{ document.source_document_id }}/build",
+        );
+        const mapping = result.mapping || {};
+        output.innerHTML =
+          "<p class='ok'>Created " + result.statements_created +
+          " statement(s), assigned " + result.rows_assigned +
+          " row(s), excluded " + result.rows_excluded +
+          " row(s). Auto-map: " + (mapping.status || "unknown") +
+          ". <a href='/review'>Open Review Queue</a></p>";
+      } catch (error) {
+        output.innerHTML = "<p class='bad'>" + error.message + "</p>";
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

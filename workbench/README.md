@@ -27,6 +27,7 @@ Open <http://127.0.0.1:8000>.
 8. Audit trail
 9. Read-only MVP snapshot visibility
 10. Import issue jobs (background V3 raw ingestion, URL or PDF upload)
+11. Import intake: page classification, reporting entity/date, statement creation
 
 The 89-item user catalogue is seeded into `standard_items`; statement rows have
 `proposed` mappings from the first-pass auto-map.  Review Queue rows show
@@ -48,10 +49,10 @@ or public deployment.  Run the service on `127.0.0.1` only.
 | Role | Capabilities |
 |---|---|
 | `viewer` | read |
-| `reviewer` | read, verify, review, map, import |
-| `adopter` | read, verify, review, map, import, adopt |
+| `reviewer` | read, verify, review, map, import, classify |
+| `adopter` | read, verify, review, map, import, classify, adopt |
 | `publisher` | read, publish |
-| `admin` | read, verify, review, map, import, adopt, publish, catalogue |
+| `admin` | read, verify, review, map, import, classify, adopt, publish, catalogue |
 
 Adoption and publish are deliberately separate.  The publish endpoint returns
 `501 Not Implemented` until the publication quality gate is defined.  This is a
@@ -86,6 +87,12 @@ GET  /api/imports/{job_id}
 GET  /api/imports/{job_id}/log
 POST /api/imports/{job_id}/retry                   # failed/interrupted only
 POST /api/imports/{job_id}/decision                # reprocess / new_version + reason
+GET  /intake                                       # Import intake batch list
+GET  /intake/{source_document_id}                  # Page classification + build
+GET  /api/intake
+GET  /api/intake/{source_document_id}
+POST /api/intake/{source_document_id}/pages/{document_page_id}  # classify, reviewer+
+POST /api/intake/{source_document_id}/build                     # create statements
 GET  /catalogue                                  # Standard List page
 POST /api/catalogue/items                        # create draft item, admin
 POST /api/catalogue/items/{id}/approve           # admin
@@ -129,6 +136,35 @@ and the job log tail.
 - Job logs: `outputs/import_jobs/<job_id>.log`.
 - On startup, jobs left `queued`/`running` by a previous process are marked
   `interrupted`, never silently re-run. **Retry** reruns the stored argv.
+
+## Import intake
+
+A finished import creates raw rows only. `/intake` lists documents that still
+have `proposed` pages or `unassigned` rows. For each page a reviewer:
+
+1. picks the page role and approves or rejects it (reject requires a note);
+2. for an approved `financial_statement` page, records the approved reporting
+   entity, statement date and statement type.
+
+Decisions are written to `document_pages` plus `page_statement_decisions`
+(migration `database/v3/017_page_statement_decisions.sql`) and audited in
+`audit_events`. Every page must be classified before **Build statements** runs.
+
+Building creates `statements`, `statement_extractions`, `statement_pages` and
+`statement_rows`, assigns the raw `extracted_rows` (`included`), and marks rows
+on non-financial/rejected pages `excluded_page_role`. Row fingerprints reuse the
+P2-C rules. The build is idempotent: an existing statement extraction is reused
+and raw OCR values are never changed. Classification is refused once a page is
+already assigned to a statement.
+
+After the build, the existing first-pass auto-map
+(`tools/p1_auto_map_standard_items.py --apply`) creates **proposed** Standard
+Item mappings only. It never approves a mapping. Statements then appear in the
+Review Queue like any other statement.
+
+Identity rules: `reporting_scope` comes from the approved entity type, currency
+is `MOP` and `unit_scale` is 1 under the Macau domain rule, and the identity key
+is `entity_key|statement_date|statement_type|scope`.
 
 ## Important
 
@@ -237,4 +273,6 @@ unsaved edits, and leaving the page prompts for confirmation.
 This is a scaffold, not production authentication.  It does not yet implement
 login, real user accounts, PDF rendering, or publish quality gates.  Import
 supports one PDF per job (URL or upload); batch folder import and job
-cancellation are not implemented yet.
+cancellation are not implemented yet.  Intake builds statements synchronously
+from a single source document and does not yet support splitting one document
+into several runs.
