@@ -521,13 +521,22 @@ def _steps(job: dict[str, Any]) -> list[dict[str, str]]:
 
 
 def job_detail(job_id: str) -> dict[str, Any]:
+    from workbench.ocr_quality import summarize_run_dir
+
     job = get_job(job_id)
     manifest = _read_manifest(job.get("manifest_path"))
+    run_dir = job.get("run_dir") or (manifest or {}).get("run_dir")
+    ocr_quality = summarize_run_dir(run_dir) if run_dir else None
+    source_document_id = None
+    if isinstance(manifest, dict):
+        source_document_id = (manifest.get("v3") or {}).get("source_document_id")
     return {
         "job": job,
         "steps": _steps(job),
         "manifest": manifest or None,
         "log_tail": _log_tail(job.get("log_path")),
+        "ocr_quality": ocr_quality,
+        "source_document_id": source_document_id,
     }
 
 

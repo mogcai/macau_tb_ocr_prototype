@@ -95,6 +95,15 @@ class AutoClassifyPayload(BaseModel):
     classify_empty_pages: bool = True
 
 
+class ReprocessOcrPayload(BaseModel):
+    reason: str
+    discard_pending: bool = False
+
+
+class DiscardPayload(BaseModel):
+    reason: str
+
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 STATIC = Path(__file__).resolve().parent / "static"
@@ -767,6 +776,76 @@ def api_intake_build(
         raise HTTPException(status_code=403, detail="classify capability is required")
     try:
         return intake.build_statements(source_document_id, actor_from(request))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except intake.IntakeConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/intake/{source_document_id}/reprocess", status_code=202)
+def api_intake_reprocess(
+    source_document_id: str,
+    payload: ReprocessOcrPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> JSONResponse:
+    role = role_from(request, x_workbench_role)
+    if not can_import(role):
+        raise HTTPException(status_code=403, detail="import capability is required")
+    try:
+        result = intake.reprocess_ocr(
+            source_document_id,
+            actor_from(request),
+            reason=payload.reason,
+            discard_pending=payload.discard_pending,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except intake.IntakeConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(result, status_code=202)
+
+
+@app.post("/api/intake/{source_document_id}/discard-pending")
+def api_intake_discard_pending(
+    source_document_id: str,
+    payload: DiscardPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_review_statement(role):
+        raise HTTPException(status_code=403, detail="review capability is required")
+    try:
+        return intake.discard_pending_for_document(
+            source_document_id, actor_from(request), reason=payload.reason
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except intake.IntakeConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/review/{statement_id}/discard")
+def api_review_discard(
+    statement_id: str,
+    payload: DiscardPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_review_statement(role):
+        raise HTTPException(status_code=403, detail="review capability is required")
+    try:
+        return intake.discard_pending_statement(
+            statement_id, actor_from(request), reason=payload.reason
+        )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except intake.IntakeConflict as exc:
