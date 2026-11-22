@@ -1611,13 +1611,60 @@ def build_statements(source_document_id: str, actor: str) -> dict[str, Any]:
                     ),
                 )
 
-            for page_order, page in enumerate(group["pages"], start=1):
-                page_id = page["document_page_id"]
-                if not conn.execute(
-                    "SELECT 1 FROM statement_pages WHERE statement_id = ? "
+            desired = [
+                (page_order, page["document_page_id"])
+                for page_order, page in enumerate(group["pages"], start=1)
+            ]
+            existing_pages = {
+                row["document_page_id"]: row["page_order"]
+                for row in conn.execute(
+                    "SELECT document_page_id, page_order FROM statement_pages "
+                    "WHERE statement_id = ?",
+                    (statement_id,),
+                ).fetchall()
+            }
+            desired_ids = {page_id for _order, page_id in desired}
+            for page_id in set(existing_pages) - desired_ids:
+                still_assigned = conn.execute(
+                    "SELECT 1 FROM extracted_rows WHERE statement_id = ? "
+                    "AND document_page_id = ? LIMIT 1",
+                    (statement_id, page_id),
+                ).fetchone()
+                if still_assigned:
+                    raise IntakeConflict(
+                        f"page {page_id} no longer belongs to statement "
+                        f"{statement_id}, but its rows are still assigned; "
+                        "discard that statement first"
+                    )
+                conn.execute(
+                    "DELETE FROM statement_pages WHERE statement_id = ? "
                     "AND document_page_id = ?",
                     (statement_id, page_id),
-                ).fetchone():
+                )
+                existing_pages.pop(page_id, None)
+            if existing_pages:
+                # Park the old order above the desired range so renumbering a
+                # page that moved within the statement cannot hit the
+                # UNIQUE(statement_id, page_order) index.
+                conn.execute(
+                    "UPDATE statement_pages SET is_primary = 0 "
+                    "WHERE statement_id = ?",
+                    (statement_id,),
+                )
+                conn.execute(
+                    "UPDATE statement_pages SET page_order = page_order + 1000000000 "
+                    "WHERE statement_id = ?",
+                    (statement_id,),
+                )
+            for page_order, page_id in desired:
+                if page_id in existing_pages:
+                    conn.execute(
+                        "UPDATE statement_pages SET page_order = ?, is_primary = ? "
+                        "WHERE statement_id = ? AND document_page_id = ?",
+                        (page_order, 1 if page_order == 1 else 0,
+                         statement_id, page_id),
+                    )
+                else:
                     conn.execute(
                         """
                         INSERT INTO statement_pages(

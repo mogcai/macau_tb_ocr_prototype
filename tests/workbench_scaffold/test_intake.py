@@ -636,6 +636,37 @@ class IntakeTests(_IntakeTestBase):
             statement_id, {item["statement_id"] for item in service.review_queue()}
         )
 
+    def test_rebuild_after_moving_a_page_to_another_statement(self) -> None:
+        self._classify_all()
+        intake.build_statements(DOC_ID, "tester")
+        intake.discard_pending_for_document(
+            DOC_ID, "tester", reason="reclassify page 2"
+        )
+        self._save(
+            2,
+            page_role="financial_statement",
+            decision="approve",
+            entity_id=self.second["entity_id"],
+            statement_date="2099-12-31",
+        )
+        rebuilt = intake.build_statements(DOC_ID, "tester")
+        target = next(
+            item for item in rebuilt["statements"]
+            if item["entity_name"] == _entity_name(self.second)
+        )
+        self.assertEqual(target["pages"], [1, 2, 3])
+        conn = sqlite3.connect(self.db)
+        try:
+            links = conn.execute(
+                "SELECT page_order, is_primary FROM statement_pages "
+                "WHERE statement_id = ? ORDER BY page_order",
+                (target["statement_id"],),
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual([row[0] for row in links], [1, 2, 3])
+        self.assertEqual(sum(row[1] for row in links), 1)
+
     def test_rebuild_refuses_discarded_statement_with_review(self) -> None:
         self._classify_all()
         first = intake.build_statements(DOC_ID, "tester")
