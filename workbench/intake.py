@@ -171,6 +171,102 @@ CREATE TABLE statement_rows (
 """
 
 
+def _schema_objects(conn: sqlite3.Connection, kind: str) -> list[tuple[str, str]]:
+    rows = conn.execute(
+        "SELECT name, sql FROM sqlite_master "
+        "WHERE type = ? AND sql IS NOT NULL ORDER BY name",
+        (kind,),
+    ).fetchall()
+    return [(row[0], row[1]) for row in rows]
+
+
+def _assert_no_dangling_statement_rows_refs(conn: sqlite3.Connection) -> None:
+    """Refuse to run on a database left broken by the old rename migration."""
+    row = conn.execute(
+        "SELECT type, name FROM sqlite_master "
+        "WHERE sql LIKE '%statement_rows__pre_discard_fk%' LIMIT 1"
+    ).fetchone()
+    if row is None:
+        return
+    db_path = _target_db_path()
+    raise RuntimeError(
+        "database schema references the dropped table "
+        f"statement_rows__pre_discard_fk ({row[0]} {row[1]}). Repair it with: "
+        f"python tools/repair_statement_rows_refs.py --db {db_path} --apply"
+    )
+
+
+def _rebuild_statement_rows_without_composite_fk(conn: sqlite3.Connection) -> None:
+    """Rebuild `statement_rows` without renaming the old parent table.
+
+    Renaming a parent table makes SQLite rewrite every incoming reference,
+    including foreign keys of child tables, views and triggers.  This rebuild
+    creates the replacement first, drops views/triggers for the duration of
+    the transaction, then swaps the tables so no reference is ever retargeted.
+
+    The whole rebuild is one transaction: any failure leaves the database
+    untouched.  The commit only happens when `PRAGMA foreign_key_check` is
+    clean.
+    """
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(statement_rows)")]
+    views = _schema_objects(conn, "view")
+    triggers = _schema_objects(conn, "trigger")
+    index_sql = [
+        row[0]
+        for row in conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='index' "
+            "AND tbl_name='statement_rows' AND sql IS NOT NULL ORDER BY name"
+        ).fetchall()
+    ]
+    new_table = "statement_rows__discard_new"
+    create_sql = _STATEMENT_ROWS_DISCARD_DDL.replace(
+        "CREATE TABLE statement_rows", f"CREATE TABLE {new_table}", 1
+    )
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        for name, _sql in triggers:
+            conn.execute(f'DROP TRIGGER "{name}"')
+        for name, _sql in views:
+            conn.execute(f'DROP VIEW "{name}"')
+
+        conn.execute(create_sql)
+        new_columns = [row[1] for row in conn.execute(f"PRAGMA table_info({new_table})")]
+        if new_columns != columns:
+            raise RuntimeError(
+                "statement_rows rebuild column mismatch: "
+                f"{columns} != {new_columns}"
+            )
+        column_list = ", ".join(f'"{column}"' for column in columns)
+        conn.execute(
+            f"INSERT INTO {new_table} ({column_list}) "
+            f"SELECT {column_list} FROM statement_rows"
+        )
+        conn.execute("DROP TABLE statement_rows")
+        conn.execute(f"ALTER TABLE {new_table} RENAME TO statement_rows")
+        for statement in index_sql:
+            conn.execute(statement)
+        for _name, sql in triggers:
+            conn.execute(sql)
+        for _name, sql in views:
+            conn.execute(sql)
+
+        errors = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if errors:
+            sample = [tuple(row) for row in errors[:5]]
+            raise RuntimeError(
+                f"statement_rows FK migration failed checks: {sample}"
+            )
+        conn.execute("COMMIT")
+    except Exception:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+
+
 def _migrate_statement_rows_discard_fk(conn: sqlite3.Connection) -> None:
     """Rebuild statement_rows to drop the composite extracted_rows FK.
 
@@ -183,46 +279,7 @@ def _migrate_statement_rows_discard_fk(conn: sqlite3.Connection) -> None:
     ).fetchone()
     if row is None or _COMPOSITE_STATEMENT_ROW_FK not in (row[0] or ""):
         return
-
-    conn.execute("PRAGMA foreign_keys=OFF")
-    conn.executescript(
-        """
-        DROP TRIGGER IF EXISTS trg_statement_rows_no_update;
-        DROP TRIGGER IF EXISTS trg_statement_rows_no_delete;
-        ALTER TABLE statement_rows RENAME TO statement_rows__pre_discard_fk;
-        """
-    )
-    conn.executescript(_STATEMENT_ROWS_DISCARD_DDL)
-    conn.executescript(
-        """
-        INSERT INTO statement_rows
-        SELECT * FROM statement_rows__pre_discard_fk;
-        DROP TABLE statement_rows__pre_discard_fk;
-
-        CREATE INDEX IF NOT EXISTS idx_statement_rows_extraction_order
-            ON statement_rows(statement_extraction_id, statement_order);
-        CREATE INDEX IF NOT EXISTS idx_statement_rows_statement_extraction
-            ON statement_rows(statement_id, statement_extraction_id);
-        CREATE INDEX IF NOT EXISTS idx_statement_rows_fingerprint
-            ON statement_rows(row_fingerprint);
-
-        CREATE TRIGGER IF NOT EXISTS trg_statement_rows_no_update
-        BEFORE UPDATE ON statement_rows
-        BEGIN
-            SELECT RAISE(ABORT, 'statement_rows is append-only');
-        END;
-
-        CREATE TRIGGER IF NOT EXISTS trg_statement_rows_no_delete
-        BEFORE DELETE ON statement_rows
-        BEGIN
-            SELECT RAISE(ABORT, 'statement_rows is append-only');
-        END;
-        """
-    )
-    conn.execute("PRAGMA foreign_keys=ON")
-    errors = conn.execute("PRAGMA foreign_key_check").fetchall()
-    if errors:
-        raise RuntimeError(f"statement_rows FK migration failed checks: {errors[:5]}")
+    _rebuild_statement_rows_without_composite_fk(conn)
 
 
 def ensure_schema() -> None:
@@ -233,6 +290,7 @@ def ensure_schema() -> None:
     try:
         for path in SCHEMA_FILES:
             conn.executescript(path.read_text(encoding="utf-8"))
+        _assert_no_dangling_statement_rows_refs(conn)
         _migrate_statement_rows_discard_fk(conn)
         conn.commit()
     finally:
@@ -714,7 +772,7 @@ def _find_reprocess_job(source_document_id: str) -> dict[str, Any]:
     sha = document.get("sha256")
     issue_key = document.get("issue_key")
     candidates = [
-        job for job in import_jobs.list_jobs(limit=200)
+        job for job in import_jobs.list_jobs(limit=1000)
         if job.get("status") in import_jobs.TERMINAL_STATUSES
         and (
             (sha and job.get("pdf_sha256") == sha)
@@ -738,6 +796,23 @@ def _find_reprocess_job(source_document_id: str) -> dict[str, Any]:
     pool = sha_matches or candidates
     pool.sort(key=lambda job: job.get("created_at") or "", reverse=True)
     return pool[0]
+
+
+def _assert_reprocess_job_ready(job: dict[str, Any]) -> None:
+    """Fail before any discard when the reprocess job cannot actually start."""
+    from workbench import import_jobs
+
+    if job.get("status") not in import_jobs.TERMINAL_STATUSES:
+        raise IntakeConflict(
+            "wait for the current import job to finish before reprocessing OCR"
+        )
+    if job.get("source_kind") == "upload":
+        source = job.get("source")
+        if not source or not Path(source).is_file():
+            raise IntakeError(
+                "the uploaded source PDF for this document is no longer available; "
+                "reprocess from /imports instead"
+            )
 
 
 def reprocess_ocr(
@@ -776,12 +851,16 @@ def reprocess_ocr(
             "discard pending statements before reprocessing OCR "
             f"({len(pending)} statement(s)); pass discard_pending=true to do both"
         )
+    # Resolve and validate the reprocess job before discarding anything: a
+    # missing job or PDF must leave the pending statements untouched.
+    job_row = _find_reprocess_job(source_document_id)
+    _assert_reprocess_job_ready(job_row)
+
     if pending and discard_pending:
         discarded = discard_pending_for_document(
             source_document_id, actor, reason=f"before OCR reprocess: {reason}"
         )
 
-    job_row = _find_reprocess_job(source_document_id)
     try:
         job = import_jobs.decision_job(
             job_row["job_id"],
@@ -792,12 +871,41 @@ def reprocess_ocr(
     except import_jobs.ImportJobConflict as exc:
         raise IntakeConflict(str(exc)) from exc
     except import_jobs.ImportJobError as exc:
+        if discarded:
+            raise IntakeError(
+                f"{exc} — the pending statement(s) were already discarded; "
+                "run reprocess again to queue the job"
+            ) from exc
         raise IntakeError(str(exc)) from exc
     return {
         "source_document_id": source_document_id,
         "job": job,
         "discarded": discarded,
     }
+
+
+def _rebuild_blocker(conn: sqlite3.Connection, statement_id: str) -> str | None:
+    """Why a discarded statement must not be reopened by a rebuild."""
+    review = conn.execute(
+        "SELECT review_status FROM statement_reviews WHERE statement_id = ?",
+        (statement_id,),
+    ).fetchone()
+    if review is not None and review["review_status"] == "reviewed":
+        return "reviewed; reopen the review first"
+    adopted = conn.execute(
+        "SELECT adopted_statement_extraction_id FROM statements WHERE statement_id = ?",
+        (statement_id,),
+    ).fetchone()
+    if adopted is not None and adopted["adopted_statement_extraction_id"]:
+        return "an extraction is already adopted"
+    published = conn.execute(
+        "SELECT 1 FROM publication_records WHERE statement_id = ? "
+        "AND publication_status = 'published' LIMIT 1",
+        (statement_id,),
+    ).fetchone()
+    if published is not None:
+        return "a publication is already published"
+    return None
 
 
 def _assert_discardable(
@@ -1285,6 +1393,7 @@ def build_statements(source_document_id: str, actor: str) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "statements_created": 0,
         "statements_existing": 0,
+        "statements_reopened": 0,
         "rows_assigned": 0,
         "rows_excluded": 0,
         "statements": [],
@@ -1329,10 +1438,40 @@ def build_statements(source_document_id: str, actor: str) -> dict[str, Any]:
                 "statement_extraction", statement_id, run_id
             )
             existing = conn.execute(
-                "SELECT 1 FROM statements WHERE statement_id = ?", (statement_id,)
+                "SELECT statement_status FROM statements WHERE statement_id = ?",
+                (statement_id,),
             ).fetchone()
+            reopened = False
             if existing:
                 summary["statements_existing"] += 1
+                if existing["statement_status"] == "excluded":
+                    blocker = _rebuild_blocker(conn, statement_id)
+                    if blocker:
+                        raise IntakeConflict(
+                            f"statement {statement_id} was discarded and cannot be "
+                            f"rebuilt ({blocker}); publish a new statement instead"
+                        )
+                    conn.execute(
+                        "UPDATE statements SET statement_status='proposed' "
+                        "WHERE statement_id=? AND statement_status='excluded'",
+                        (statement_id,),
+                    )
+                    summary["statements_reopened"] += 1
+                    reopened = True
+                    _audit(
+                        conn,
+                        stable_id(
+                            "statement_reopened", statement_id, run_id, VERSION
+                        ),
+                        "statement_reopened",
+                        actor,
+                        source_document_id=source_document_id,
+                        statement_id=statement_id,
+                        before={"statement_status": "excluded"},
+                        after={"statement_status": "proposed"},
+                        details={"run_id": run_id, "version": VERSION},
+                        reason="Workbench intake rebuilt a discarded statement",
+                    )
             else:
                 conn.execute(
                     """
@@ -1383,10 +1522,26 @@ def build_statements(source_document_id: str, actor: str) -> dict[str, Any]:
                     reason="Workbench intake statement creation",
                 )
 
-            if not conn.execute(
-                "SELECT 1 FROM statement_extractions WHERE statement_extraction_id = ?",
+            extraction = conn.execute(
+                "SELECT extraction_status FROM statement_extractions "
+                "WHERE statement_extraction_id = ?",
                 (statement_extraction_id,),
-            ).fetchone():
+            ).fetchone()
+            if extraction is not None and reopened and (
+                extraction["extraction_status"] == "rejected"
+            ):
+                # Rebuilding the same OCR run: discard rejected this extraction,
+                # so revive it instead of assigning rows to a rejected build.
+                conn.execute(
+                    "UPDATE statement_extractions SET extraction_status='completed', "
+                    "notes = COALESCE(notes, '') || ? "
+                    "WHERE statement_extraction_id = ?",
+                    (
+                        f"\n[reopened by rebuild] run={run_id}",
+                        statement_extraction_id,
+                    ),
+                )
+            if extraction is None:
                 conn.execute(
                     """
                     INSERT INTO statement_extractions(

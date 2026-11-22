@@ -193,6 +193,28 @@ extraction, marks the statement `excluded`, and leaves `statement_rows` as a
 historical snapshot. Excluded statements do not appear in the Review Queue.
 Reviewed, adopted, active, or published statements cannot be discarded this way.
 
+Re-running **Build** after a discard or a new OCR run reopens that statement
+(`excluded` → `proposed`, audit event `statement_reopened`) and assigns the new
+run's rows, so it returns to the Review Queue. A discard is only permanent when
+the statement was reviewed, adopted or published; rebuild then fails with a
+conflict instead of assigning rows to a hidden statement.
+
+**Reprocess OCR** resolves and validates the completed import job (including the
+uploaded PDF) before discarding anything, so a failed reprocess leaves the
+pending statement untouched.
+
+Legacy databases that ran the 2026-11-22 rename migration may have schema
+objects pointing at the dropped `statement_rows__pre_discard_fk` table. Repair
+them with:
+
+```bash
+python tools/repair_statement_rows_refs.py --db data/macau_balancete_v3.sqlite
+python tools/repair_statement_rows_refs.py --db data/macau_balancete_v3.sqlite --apply
+```
+
+The repair tool is idempotent, backs up the database first, and refuses to
+commit unless `PRAGMA foreign_key_check` is clean.
+
 Identity rules: `reporting_scope` comes from the approved entity type, currency
 is `MOP` and `unit_scale` is 1 under the Macau domain rule, and the identity key
 is `entity_key|statement_date|statement_type|scope`.

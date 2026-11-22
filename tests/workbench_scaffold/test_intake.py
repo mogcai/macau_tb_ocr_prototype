@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import csv
-import shutil
 import sqlite3
 import sys
 import tempfile
@@ -16,7 +15,6 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from workbench import intake, service  # noqa: E402
 import workbench.db as wdb  # noqa: E402
-from workbench.config import V3_DB  # noqa: E402
 from workbench.main import app  # noqa: E402
 from workbench.permissions import can_classify  # noqa: E402
 
@@ -145,10 +143,11 @@ def _insert_fixture(db: Path, run_dir: Path) -> tuple[dict, dict]:
 
 
 def _bootstrap_v3_fixture_db(dest: Path) -> None:
-    """Copy the operational DB, or build a minimal schema + two entities."""
-    if V3_DB.is_file():
-        shutil.copyfile(V3_DB, dest)
-        return
+    """Build a hermetic schema + two approved entities.
+
+    Never copy the operational database: tests must not inherit its schema
+    state (a broken operational DB must not make a fixture pass or fail).
+    """
     from tools.build_v3_db import apply_schema, seed_metadata
 
     conn = sqlite3.connect(dest)
@@ -169,6 +168,115 @@ def _bootstrap_v3_fixture_db(dest: Path) -> None:
                 "VALUES (?, ?, 'bank', 'approved', ?, ?, ?)",
                 (f"entity-fixture-{index}", key, zh, pt, NOW),
             )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+SINGLE_COLUMN_FK = (
+    "FOREIGN KEY (extracted_row_id)\n"
+    "        REFERENCES extracted_rows(extracted_row_id)"
+)
+COMPOSITE_FK = (
+    "FOREIGN KEY (extracted_row_id, statement_extraction_id)\n"
+    "        REFERENCES extracted_rows(extracted_row_id, statement_extraction_id)"
+)
+
+
+def _downgrade_statement_rows_to_composite_fk(db: Path) -> None:
+    """Restore the pre-discard composite FK so migration tests start from it."""
+    conn = sqlite3.connect(db)
+    try:
+        sql = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='statement_rows'"
+        ).fetchone()[0]
+        downgraded = sql.replace(SINGLE_COLUMN_FK, COMPOSITE_FK)
+        if downgraded == sql:
+            raise AssertionError("statement_rows does not carry the expected FK")
+        conn.execute("PRAGMA writable_schema=ON")
+        conn.execute(
+            "UPDATE sqlite_master SET sql=? WHERE name='statement_rows'", (downgraded,)
+        )
+        version = conn.execute("PRAGMA schema_version").fetchone()[0]
+        conn.execute(f"PRAGMA schema_version={version + 1}")
+        conn.execute("PRAGMA writable_schema=OFF")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _simulate_old_discard_fk_migration(db: Path) -> None:
+    """Reproduce the 2026-11-22 rename-based migration that damaged child FKs."""
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.executescript(
+            """
+            DROP TRIGGER IF EXISTS trg_statement_rows_no_update;
+            DROP TRIGGER IF EXISTS trg_statement_rows_no_delete;
+            ALTER TABLE statement_rows RENAME TO statement_rows__pre_discard_fk;
+            """
+        )
+        conn.executescript(intake._STATEMENT_ROWS_DISCARD_DDL)
+        conn.executescript(
+            """
+            INSERT INTO statement_rows SELECT * FROM statement_rows__pre_discard_fk;
+            DROP TABLE statement_rows__pre_discard_fk;
+            CREATE INDEX IF NOT EXISTS idx_statement_rows_extraction_order
+                ON statement_rows(statement_extraction_id, statement_order);
+            CREATE INDEX IF NOT EXISTS idx_statement_rows_statement_extraction
+                ON statement_rows(statement_id, statement_extraction_id);
+            CREATE INDEX IF NOT EXISTS idx_statement_rows_fingerprint
+                ON statement_rows(row_fingerprint);
+            CREATE TRIGGER IF NOT EXISTS trg_statement_rows_no_update
+            BEFORE UPDATE ON statement_rows
+            BEGIN
+                SELECT RAISE(ABORT, 'statement_rows is append-only');
+            END;
+            CREATE TRIGGER IF NOT EXISTS trg_statement_rows_no_delete
+            BEFORE DELETE ON statement_rows
+            BEGIN
+                SELECT RAISE(ABORT, 'statement_rows is append-only');
+            END;
+            """
+        )
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.close()
+
+
+def _append_ocr_run(db: Path, run_dir: Path, run_id: str, created_at: str) -> None:
+    """Copy the fixture's page rows into a second OCR run (all unassigned)."""
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute(
+            "INSERT INTO extraction_runs(run_id, source_document_id, run_status, "
+            "run_report_uri, completed_at) VALUES(?, ?, 'completed', ?, ?)",
+            (run_id, DOC_ID, str(run_dir / "run_report.json"), created_at),
+        )
+        for table, key in (
+            ("page_extractions", "page_extraction_id"),
+            ("extracted_rows", "extracted_row_id"),
+        ):
+            columns = [row["name"] for row in conn.execute(f"PRAGMA table_info({table})")]
+            rows = [dict(row) for row in conn.execute(f"SELECT * FROM {table}")]
+            for row in rows:
+                row[key] = f"{row[key]}--{run_id}"
+                row["run_id"] = run_id
+                if table == "extracted_rows":
+                    row["page_extraction_id"] = f"{row['page_extraction_id']}--{run_id}"
+                    row["row_disposition"] = "unassigned"
+                    row["statement_id"] = None
+                    row["statement_extraction_id"] = None
+                    row["statement_order"] = None
+                conn.execute(
+                    f"INSERT INTO {table}({','.join(columns)}) "
+                    f"VALUES({','.join('?' * len(columns))})",
+                    [row[column] for column in columns],
+                )
         conn.commit()
     finally:
         conn.close()
@@ -418,6 +526,216 @@ class IntakeTests(_IntakeTestBase):
                 statement_id, "tester", reason="should fail"
             )
 
+    def test_discard_then_rebuild_reopens_statement_for_review(self) -> None:
+        self._classify_all()
+        first = intake.build_statements(DOC_ID, "tester")
+        statement_id = first["statements"][0]["statement_id"]
+        intake.discard_pending_statement(
+            statement_id, "tester", reason="OCR columns misaligned"
+        )
+        self.assertNotIn(
+            statement_id, {item["statement_id"] for item in service.review_queue()}
+        )
+
+        _append_ocr_run(
+            self.db, self.run_dir, "run-intake-fixture-2", "2026-11-22T00:00:00+00:00"
+        )
+        rebuilt = intake.build_statements(DOC_ID, "tester")
+        self.assertEqual(rebuilt["statements_existing"], 2)
+        self.assertEqual(rebuilt["statements_reopened"], 1)
+        self.assertEqual(
+            self._rows(
+                "SELECT statement_status FROM statements WHERE statement_id = ?",
+                (statement_id,),
+            ),
+            "proposed",
+        )
+        self.assertIn(
+            statement_id, {item["statement_id"] for item in service.review_queue()}
+        )
+        self.assertGreater(
+            self._rows(
+                "SELECT COUNT(*) FROM extracted_rows "
+                "WHERE statement_id = ? AND run_id = 'run-intake-fixture-2'",
+                (statement_id,),
+            ),
+            0,
+        )
+        self.assertEqual(
+            self._rows(
+                "SELECT COUNT(*) FROM audit_events "
+                "WHERE statement_id = ? AND event_type = 'statement_reopened'",
+                (statement_id,),
+            ),
+            1,
+        )
+
+    def test_rebuild_without_new_run_revives_rejected_extraction(self) -> None:
+        self._classify_all()
+        first = intake.build_statements(DOC_ID, "tester")
+        statement_id = first["statements"][0]["statement_id"]
+        intake.discard_pending_statement(
+            statement_id, "tester", reason="discard before a same-run rebuild"
+        )
+        rebuilt = intake.build_statements(DOC_ID, "tester")
+        self.assertEqual(rebuilt["statements_reopened"], 1)
+        self.assertEqual(
+            self._rows(
+                "SELECT extraction_status FROM statement_extractions "
+                "WHERE statement_id = ?",
+                (statement_id,),
+            ),
+            "completed",
+        )
+        self.assertIn(
+            statement_id, {item["statement_id"] for item in service.review_queue()}
+        )
+
+    def test_rebuild_refuses_discarded_statement_with_review(self) -> None:
+        self._classify_all()
+        first = intake.build_statements(DOC_ID, "tester")
+        statement_id = first["statements"][0]["statement_id"]
+        intake.discard_pending_statement(
+            statement_id, "tester", reason="discard before review arrives"
+        )
+        conn = sqlite3.connect(self.db)
+        try:
+            conn.execute(
+                "INSERT INTO statement_reviews(statement_id, review_status, "
+                "reviewed_by, reviewed_at, updated_at) VALUES (?, 'reviewed', 'tester', ?, ?)",
+                (statement_id, NOW, NOW),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        _append_ocr_run(
+            self.db, self.run_dir, "run-intake-fixture-3", "2026-11-22T00:00:00+00:00"
+        )
+        with self.assertRaises(intake.IntakeConflict):
+            intake.build_statements(DOC_ID, "tester")
+
+    def test_failed_reprocess_keeps_pending_statement(self) -> None:
+        self._classify_all()
+        first = intake.build_statements(DOC_ID, "tester")
+        statement_id = first["statements"][0]["statement_id"]
+        # The fixture has no completed import job, so reprocess must fail
+        # before anything is discarded.
+        with self.assertRaises(intake.IntakeError):
+            intake.reprocess_ocr(
+                DOC_ID, "tester", reason="re-run OCR", discard_pending=True
+            )
+        self.assertEqual(
+            self._rows(
+                "SELECT statement_status FROM statements WHERE statement_id = ?",
+                (statement_id,),
+            ),
+            "proposed",
+        )
+        self.assertGreater(
+            self._rows(
+                "SELECT COUNT(*) FROM extracted_rows WHERE statement_id = ?",
+                (statement_id,),
+            ),
+            0,
+        )
+        self.assertEqual(
+            self._rows(
+                "SELECT COUNT(*) FROM statement_extractions "
+                "WHERE statement_id = ? AND extraction_status = 'rejected'",
+                (statement_id,),
+            ),
+            0,
+        )
+
+
+class StatementRowsSchemaTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.db = Path(self.tempdir.name) / "v3.sqlite"
+        from tools.build_v3_db import apply_schema
+
+        conn = sqlite3.connect(self.db)
+        try:
+            apply_schema(conn)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _assert_child_fks_point_at_statement_rows(self, conn: sqlite3.Connection) -> None:
+        for table in (
+            "statement_row_mappings",
+            "field_verifications",
+            "statement_row_adjustments",
+            "validation_findings",
+            "review_tasks",
+            "audit_events",
+        ):
+            targets = {
+                row[2] for row in conn.execute(f"PRAGMA foreign_key_list({table})")
+            }
+            self.assertIn("statement_rows", targets, table)
+
+    def test_migration_from_composite_fk_keeps_schema_references(self) -> None:
+        _downgrade_statement_rows_to_composite_fk(self.db)
+        conn = sqlite3.connect(self.db)
+        conn.row_factory = sqlite3.Row
+        try:
+            intake._migrate_statement_rows_discard_fk(conn)
+            conn.commit()
+            dangling = conn.execute(
+                "SELECT type, name FROM sqlite_master "
+                "WHERE sql LIKE '%statement_rows__pre_discard_fk%'"
+            ).fetchall()
+            self.assertEqual(dangling, [])
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+            self._assert_child_fks_point_at_statement_rows(conn)
+            for (view,) in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='view'"
+            ).fetchall():
+                conn.execute(f'SELECT COUNT(*) FROM "{view}"').fetchone()
+            self.assertTrue(
+                "FOREIGN KEY (extracted_row_id, statement_extraction_id)"
+                not in conn.execute(
+                    "SELECT sql FROM sqlite_master "
+                    "WHERE type='table' AND name='statement_rows'"
+                ).fetchone()[0]
+            )
+        finally:
+            conn.close()
+
+    def test_repair_tool_restores_renamed_references(self) -> None:
+        from tools.repair_statement_rows_refs import repair
+
+        _downgrade_statement_rows_to_composite_fk(self.db)
+        _simulate_old_discard_fk_migration(self.db)
+
+        conn = sqlite3.connect(self.db)
+        conn.row_factory = sqlite3.Row
+        try:
+            with self.assertRaises(RuntimeError):
+                intake._assert_no_dangling_statement_rows_refs(conn)
+            self.assertEqual(repair(conn, apply=False)["status"], "dirty")
+            summary = repair(conn, apply=True)
+            self.assertTrue(summary["repaired"])
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+            dangling = conn.execute(
+                "SELECT type, name FROM sqlite_master "
+                "WHERE sql LIKE '%statement_rows__pre_discard_fk%'"
+            ).fetchall()
+            self.assertEqual(dangling, [])
+            self._assert_child_fks_point_at_statement_rows(conn)
+            for (view,) in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='view'"
+            ).fetchall():
+                conn.execute(f'SELECT COUNT(*) FROM "{view}"').fetchone()
+            intake._assert_no_dangling_statement_rows_refs(conn)
+            self.assertEqual(repair(conn, apply=True)["status"], "clean")
+        finally:
+            conn.close()
+
 
 class IntakeMatcherTests(unittest.TestCase):
     def test_exact_and_split_matches(self) -> None:
@@ -552,7 +870,12 @@ class IntakeApiTests(_IntakeTestBase):
 
         with mock.patch.object(
             intake, "_find_reprocess_job",
-            return_value={"job_id": "job-fixture"},
+            return_value={
+                "job_id": "job-fixture",
+                "status": "completed",
+                "source_kind": "batch",
+                "source": "batch-fixture",
+            },
         ), mock.patch("workbench.import_jobs.decision_job") as decide:
             decide.return_value = {"job_id": "job-new", "status": "queued"}
             response = self.client.post(

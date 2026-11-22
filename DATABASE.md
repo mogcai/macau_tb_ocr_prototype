@@ -229,6 +229,15 @@ ORDER BY publication_date DESC, bank_name;
 - 開啟舊 DB 時會自動 migrate：v2 加 `source_pdf_sha256`、`is_published`、`published_at`、`published_by`，並將每個 source PDF 最新的既有 run 標為 published；v3 加 `source_pdf_sha256_source`（`ocr_report` / `import_time` / `missing`）；v4 加名稱 registry 表及 `line_items` mapping 欄位；v5 加 user standard label tables 及 `line_items.user_standard_label_id`。
 - DB schema 比程式新時會拒絕開啟，避免舊程式寫壞新結構。
 
+### V3 operational database（`data/macau_balancete_v3.sqlite`）
+
+- V3 schema 在 `database/v3/*.sql`；`statement_rows` 是 append-only OCR snapshot。
+- `statement_rows.extracted_row_id` 只引用 `extracted_rows(extracted_row_id)`（單欄）。這樣 discard 時可以清空 `extracted_rows.statement_extraction_id`（migration `018`），而 `statement_rows` snapshot 保留。
+- **重建 parent table 時絕對不可以先 `ALTER TABLE ... RENAME TO`。** RENAME 會同時改寫 incoming foreign keys、views 和 triggers。2026-11-22 的 migration 就是這樣做，令 operational DB 留下 8690 個 FK violation，所有 statement-row view 都讀不到。正確做法：建新表 → 複製資料 → drop 舊表 → rename 新表，全部在同一個 transaction；期間先 drop 再重建 views/triggers，並以 `PRAGMA foreign_key_check` 作為 commit gate。
+- `statement_status='excluded'` 代表已 discard。Excluded statement 不會出現在 Review Queue 或 held 統計。重新 Build 只會重開「未 reviewed、未 adopted、未 published」的 statement，並寫入 `statement_reopened` audit event；其餘會 raise conflict，不會把 rows 綁到隱形 statement。
+- 若 DB 已被 rename migration 破壞，用 `python tools/repair_statement_rows_refs.py --db <path> --apply` 修復（會先備份、可重複執行、`foreign_key_check` 不清零就不 commit）。
+- 測試 fixture 必須由 `database/v3/*.sql` 建 schema，不可複製 operational DB，否則測試會繼承 DB 的 schema 損壞狀態。
+
 ## User standard labels (schema v5 / v0.7.0)
 
 Re-import the edited cleaned file with:
