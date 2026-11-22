@@ -28,13 +28,19 @@
   </table>
 
   <div class="actions">
-    {% if can_adopt and not statement.adopted_statement_extraction_id %}
-    <button id="adopt-button" data-statement="{{ statement.statement_id }}" data-role="{{ role }}">Adopt current extraction</button>
-    {% elif statement.adopted_statement_extraction_id %}
+    {% if statement.adopted_statement_extraction_id %}
     <span class="ok">Already adopted</span>
     {% if can_adopt %}
     <button id="return-review-button" class="secondary" data-statement="{{ statement.statement_id }}" data-role="{{ role }}">Return to reviewed</button>
     {% endif %}
+    {% elif can_adopt %}
+      {% if statement.review_status == 'reviewed' and queue_row and queue_row.review_bucket == 'ready_for_adoption' %}
+      <button id="adopt-button" data-statement="{{ statement.statement_id }}" data-role="{{ role }}">Adopt current extraction</button>
+      {% elif statement.review_status == 'reviewed' %}
+      <span class="muted">Adoption blocked: {{ queue_row.mapping_blockers or queue_row.review_bucket if queue_row else "not adoption-ready" }}</span>
+      {% else %}
+      <span class="muted">Mark reviewed before adoption.</span>
+      {% endif %}
     {% else %}
     <span class="muted">Role <strong>{{ role }}</strong> cannot adopt.</span>
     {% endif %}

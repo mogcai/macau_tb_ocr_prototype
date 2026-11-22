@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Adoption · Macau Banking Workbench{% endblock %}
+{% block content %}
+<h1>Adoption</h1>
+<p class="muted">Only statements with reviewer sign-off can be adopted. Adoption makes
+the reviewed extraction the current dataset; it is not financial verification.</p>
+
+{% if not can_adopt %}
+<section class="panel">
+  <p class="muted">Your role is <strong>{{ role }}</strong>. Switch to adopter or admin
+  to adopt statements.</p>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Ready to adopt <span class="muted">({{ ready_to_adopt | length }})</span></h2>
+  <p class="muted">Reviewed and mapping-ready. Adopting keeps every OCR value; it only
+  publishes the reviewed extraction as current.</p>
+  <div class="table-scroll">
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Entity / dates</th><th>Rows</th><th>Mapping</th>
+        <th>Row issues</th><th>Debit / credit</th><th>Reviewed by</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in ready_to_adopt %}
+      <tr>
+        <td class="entity-cell">
+          <a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a>
+          <div class="sub">{{ item.statement_date }}{% if item.publication_date %} · pub {{ item.publication_date }}{% endif %}</div>
+        </td>
+        <td>{{ item.row_count }}</td>
+        <td class="mapping-cell">
+          <strong>{{ item.mapped_rows }}/{{ item.row_count }}</strong>
+          {% if item.mapping_conflict_rows %}<span class="pill conflict">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
+          {% if item.duplicate_mapping_items %}<span class="pill conflict">{{ item.duplicate_mapping_items }} duplicate</span>{% endif %}
+          {% if item.invalid_mapping_rows %}<span class="pill blocked">{{ item.invalid_mapping_rows }} inactive item</span>{% endif %}
+          {% if item.unmapped_rows %}<span class="pill blocked">{{ item.unmapped_rows }} unmatched</span>{% endif %}
+        </td>
+        <td class="sub">missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
+        <td class="amount-cell">
+          <div>D {{ item.debit_total_display or "—" }}</div>
+          <div>C {{ item.credit_total_display or "—" }}</div>
+          <div class="{% if item.debit_credit_equal %}ok{% else %}bad{% endif %}">Δ {% if item.debit_credit_equal %}0{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</div>
+        </td>
+        <td>{{ item.reviewed_by or "—" }}</td>
+        <td class="actions-cell">
+          {% if can_adopt %}
+          <button class="adopt-button" data-statement="{{ item.statement_id }}" data-role="{{ role }}">Adopt</button>
+          {% else %}
+          <span class="muted">adopter role required</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="muted">No reviewed statements are ready for adoption.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Reviewed — not adoptable <span class="muted">({{ blocked | length }})</span></h2>
+  <p class="muted">Reviewer sign-off exists, but the adoption gates are not clean yet.
+  Open the record to fix the blockers.</p>
+  <div class="table-scroll">
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Entity / dates</th><th>Bucket</th><th>Rows</th><th>Mapping</th>
+        <th>Blockers</th><th>Debit / credit</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in blocked %}
+      <tr>
+        <td class="entity-cell">
+          <a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a>
+          <div class="sub">{{ item.statement_date }}{% if item.publication_date %} · pub {{ item.publication_date }}{% endif %}</div>
+        </td>
+        <td><span class="pill bucket-{{ item.review_bucket }}">{{ item.review_bucket }}</span></td>
+        <td>{{ item.row_count }}</td>
+        <td>{{ item.mapped_rows }}/{{ item.row_count }}</td>
+        <td class="sub">{{ item.mapping_blockers or item.review_bucket }}</td>
+        <td class="amount-cell">
+          <div>D {{ item.debit_total_display or "—" }}</div>
+          <div>C {{ item.credit_total_display or "—" }}</div>
+        </td>
+        <td class="actions-cell"><a href="/review/{{ item.statement_id }}">Open record</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="muted">No reviewed statements are blocked.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Adopted — current dataset <span class="muted">({{ adopted | length }})</span></h2>
+  <p class="muted">Returning a statement to <strong>reviewed</strong> removes it from the
+  current adopted dataset until it is adopted again.</p>
+  <div class="table-scroll">
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Entity / dates</th><th>Rows</th><th>Mapping</th><th>Row issues</th>
+        <th>Debit / credit</th><th>Reviewer</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in adopted %}
+      <tr>
+        <td class="entity-cell">
+          <a href="/review/{{ item.statement_id }}">{{ item.entity_name }}</a>
+          <div class="sub">{{ item.statement_date }}{% if item.publication_date %} · pub {{ item.publication_date }}{% endif %}</div>
+        </td>
+        <td>{{ item.row_count }}</td>
+        <td class="mapping-cell">
+          <strong>{{ item.mapped_rows }}/{{ item.row_count }}</strong>
+          {% if item.mapping_conflict_rows %}<span class="pill conflict">{{ item.mapping_conflict_rows }} conflict</span>{% endif %}
+          {% if item.duplicate_mapping_items %}<span class="pill conflict">{{ item.duplicate_mapping_items }} duplicate</span>{% endif %}
+          {% if item.invalid_mapping_rows %}<span class="pill blocked">{{ item.invalid_mapping_rows }} inactive item</span>{% endif %}
+          {% if item.unmapped_rows %}<span class="pill blocked">{{ item.unmapped_rows }} unmatched</span>{% endif %}
+        </td>
+        <td class="sub">missing {{ item.missing_labels }} · issues {{ item.issue_rows }}</td>
+        <td class="amount-cell">
+          <div>D {{ item.debit_total_display or "—" }}</div>
+          <div>C {{ item.credit_total_display or "—" }}</div>
+          <div class="{% if item.debit_credit_equal %}ok{% else %}bad{% endif %}">Δ {% if item.debit_credit_equal %}0{% else %}{{ item.debit_credit_difference_minor }}{% endif %}</div>
+        </td>
+        <td>{{ item.review_status }}{% if item.reviewed_by %} · {{ item.reviewed_by }}{% endif %}</td>
+        <td class="actions-cell">
+          {% if can_adopt %}
+          <button class="return-review-button secondary" data-statement="{{ item.statement_id }}" data-role="{{ role }}">Return to reviewed</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="muted">No adopted statements.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<script>
+document.querySelectorAll(".adopt-button").forEach((button) => {
+  button.addEventListener("click", async () => {
+    if (!window.confirm("Adopt this reviewed extraction as the current dataset?")) {
+      return;
+    }
+    button.disabled = true;
+    const response = await fetch(`/api/statements/${button.dataset.statement}/adopt`, {
+      method: "POST",
+      headers: {
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      }
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Adoption failed");
+      button.disabled = false;
+    }
+  });
+});
+document.querySelectorAll(".return-review-button").forEach((button) => {
+  button.addEventListener("click", async () => {
+    if (!window.confirm("Return this adopted statement to reviewed status? It will leave the current adopted dataset until adopted again.")) {
+      return;
+    }
+    button.disabled = true;
+    const response = await fetch(`/api/statements/${button.dataset.statement}/return-to-review`, {
+      method: "POST",
+      headers: {
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      }
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Return to review failed");
+      button.disabled = false;
+    }
+  });
+});
+</script>
+{% endblock %}

@@ -938,6 +938,28 @@ def review_page(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/adopt", response_class=HTMLResponse)
+def adopt_page(request: Request) -> HTMLResponse:
+    queue = service.review_queue()
+    reviewed = [item for item in queue if item["review_status"] == "reviewed"]
+    return templates.TemplateResponse(
+        request,
+        "adoption_queue.html",
+        template_context(
+            request,
+            ready_to_adopt=[
+                item for item in reviewed
+                if item["review_bucket"] == "ready_for_adoption"
+            ],
+            blocked=[
+                item for item in reviewed
+                if item["review_bucket"] != "ready_for_adoption"
+            ],
+            adopted=service.adopted_statements(),
+        ),
+    )
+
+
 @app.get("/review/{statement_id}", response_class=HTMLResponse)
 def review_detail_page(request: Request, statement_id: str) -> HTMLResponse:
     detail = service.statement_detail(statement_id)
@@ -1007,6 +1029,10 @@ def statement_page(request: Request, statement_id: str) -> HTMLResponse:
         (item for item in service.adopted_statements() if item["statement_id"] == statement_id),
         None,
     )
+    queue_row = next(
+        (item for item in service.review_queue() if item["statement_id"] == statement_id),
+        None,
+    )
     return templates.TemplateResponse(
         request,
         "statement_detail.html",
@@ -1015,5 +1041,6 @@ def statement_page(request: Request, statement_id: str) -> HTMLResponse:
             statement=detail,
             rows=service.statement_rows(statement_id),
             adoption_row=adoption_row,
+            queue_row=queue_row,
         ),
     )

@@ -57,7 +57,9 @@ or public deployment.  Run the service on `127.0.0.1` only.
 
 Adoption and publish are deliberately separate.  The publish endpoint returns
 `501 Not Implemented` until the publication quality gate is defined.  This is a
-safety feature, not a missing button.
+safety feature, not a missing button.  Adoption has its own working page at
+`/adopt` (ready / blocked / adopted), and the Adopt button is also available on
+each reviewed record.
 
 ## Snapshot enforcement
 
@@ -97,6 +99,7 @@ POST /api/intake/{source_document_id}/auto-classify             # apply PDF-text
 POST /api/intake/{source_document_id}/build                     # create statements
 POST /api/intake/{source_document_id}/reprocess                 # OCR reprocess via import job
 POST /api/intake/{source_document_id}/discard-pending           # discard all pending builds
+GET  /adopt                                      # Adoption working list (reviewed → adopt)
 GET  /catalogue                                  # Standard List page
 POST /api/catalogue/items                        # create draft item, admin
 POST /api/catalogue/items/{id}/approve           # admin
@@ -262,10 +265,15 @@ selected.
    `statement_review_bindings`.  Reviewed statements are read-only: Save returns
    `409` and the UI disables row editing until **Reopen for editing** is used.
    Reopening voids the active binding; a new review binds the current extraction.
-6. An adopter can adopt only a reviewed statement whose queue bucket is
-   `ready_for_adoption` and whose sign-off is still bound to the latest completed
-   extraction.  If a newer extraction exists, the statement appears as
-   `review_outdated` and adoption is refused until it is reviewed again.
+6. An adopter works from `/adopt`, which lists reviewed statements in three
+   groups: **Ready to adopt**, **Reviewed — not adoptable** (with the blocking
+   bucket) and **Adopted — current dataset**. The same **Adopt** button appears
+   in the reviewed record (`/review/{id}`) and on `/statements/{id}`. Only a
+   reviewed statement whose queue bucket is `ready_for_adoption` and whose
+   sign-off is still bound to the latest completed extraction can be adopted;
+   the API refuses every other state.  If a newer extraction exists, the
+   statement appears as `review_outdated` and adoption is refused until it is
+   reviewed again.
 7. Adopted statements are read-only and listed under **Adopted — current
    dataset** with the same mapping coverage. An adopter can **Return to
    reviewed**, which clears the adopted extraction, rebinds the same extraction

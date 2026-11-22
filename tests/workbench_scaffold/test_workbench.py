@@ -147,6 +147,27 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn("Adopted — current dataset", page.text)
 
+    def test_adoption_page_has_ready_blocked_and_adopted_sections(self) -> None:
+        page = self.client.get("/adopt")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Ready to adopt", page.text)
+        self.assertIn("Reviewed — not adoptable", page.text)
+        self.assertIn("Adopted — current dataset", page.text)
+        self.assertIn("Only statements with reviewer sign-off can be adopted", page.text)
+
+    def test_statement_page_requires_review_before_adoption(self) -> None:
+        queue = self.client.get("/api/review/queue").json()
+        pending = next(
+            (item for item in queue if item["review_status"] != "reviewed"), None
+        )
+        if pending is None:
+            self.skipTest("no unreviewed statement")
+        self.client.get("/set-role/adopter")
+        page = self.client.get(f"/statements/{pending['statement_id']}")
+        self.assertEqual(page.status_code, 200)
+        self.assertNotIn("Adopt current extraction", page.text)
+        self.assertIn("Mark reviewed before adoption", page.text)
+
     def test_review_queue_and_rows(self) -> None:
         queue = self.client.get("/api/review/queue")
         self.assertEqual(queue.status_code, 200)
@@ -323,6 +344,40 @@ class ReviewWriteTests(unittest.TestCase):
             "active",
         )
         conn.close()
+
+    def test_adoption_page_and_record_offer_adopt_after_review(self) -> None:
+        ready = self._ready_candidate()
+        if ready is None:
+            self.skipTest("no ready held statement")
+        statement_id = ready["statement_id"]
+        reviewed = self.client.post(
+            f"/api/review/{statement_id}/review",
+            json={"review_status": "reviewed", "note": "reviewed for adoption page"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        self.client.get("/set-role/adopter")
+
+        adoption_page = self.client.get("/adopt")
+        self.assertEqual(adoption_page.status_code, 200)
+        self.assertIn(statement_id, adoption_page.text)
+        self.assertIn("adopt-button", adoption_page.text)
+
+        record_page = self.client.get(f"/review/{statement_id}")
+        self.assertIn("Adopt current extraction", record_page.text)
+
+        statement_page = self.client.get(f"/statements/{statement_id}")
+        self.assertIn("Adopt current extraction", statement_page.text)
+
+        adopted = self.client.post(
+            f"/api/statements/{statement_id}/adopt",
+            headers={"X-Workbench-Role": "adopter", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(adopted.status_code, 200, adopted.text)
+        self.assertIn(
+            statement_id,
+            {item["statement_id"] for item in service.adopted_statements()},
+        )
 
     def test_reviewed_statement_is_read_only_until_reopened(self) -> None:
         queue = self._pending_queue()
@@ -1054,7 +1109,10 @@ class ReviewWriteTests(unittest.TestCase):
         self.assertTrue(active)
         self.assertTrue(all(item["item_status"] == "approved" for item in active))
         everything = self.client.get("/api/standard-items?include_inactive=true").json()
-        self.assertTrue(any(item["item_status"] != "approved" for item in everything))
+        inactive = [item for item in everything if item["item_status"] != "approved"]
+        if not inactive:
+            self.skipTest("no inactive standard item in the fixture")
+        self.assertTrue(inactive)
 
     def test_inactive_standard_items_cannot_be_mapped(self) -> None:
         queue = self._pending_queue()

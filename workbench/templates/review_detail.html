@@ -57,6 +57,19 @@
 </section>
 {% endif %}
 
+{% if reviewed and can_adopt %}
+<section class="panel">
+  <h2>Adoption</h2>
+  {% if queue_row.review_bucket == 'ready_for_adoption' %}
+  <p class="muted">Adopting makes this reviewed extraction the current dataset.
+  OCR evidence is unchanged; this is not financial verification.</p>
+  <button class="adopt-button" data-statement="{{ statement.statement_id }}" data-role="{{ role }}">Adopt current extraction</button>
+  {% else %}
+  <p class="bad">Not ready to adopt: {{ queue_row.review_bucket }}{% if queue_row.mapping_blockers %} · {{ queue_row.mapping_blockers }}{% endif %}</p>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if can_verify and editable %}
 <section class="panel">
   <h2>Insert a missed row</h2>
@@ -425,6 +438,31 @@ document.querySelectorAll(".return-review-button").forEach((button) => {
     } else {
       const body = await response.json().catch(() => ({}));
       alert(body.detail || "Return to review failed");
+      button.disabled = false;
+    }
+  });
+});
+document.querySelectorAll(".adopt-button").forEach((button) => {
+  button.addEventListener("click", async () => {
+    if (guardUnsaved("Save the changed rows before adopting this statement.")) {
+      return;
+    }
+    if (!window.confirm("Adopt this reviewed extraction as the current dataset?")) {
+      return;
+    }
+    button.disabled = true;
+    const response = await fetch(`/api/statements/${button.dataset.statement}/adopt`, {
+      method: "POST",
+      headers: {
+        "X-Workbench-Role": button.dataset.role,
+        "X-Workbench-Actor": "workbench-ui"
+      }
+    });
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      const body = await response.json().catch(() => ({}));
+      alert(body.detail || "Adoption failed");
       button.disabled = false;
     }
   });
