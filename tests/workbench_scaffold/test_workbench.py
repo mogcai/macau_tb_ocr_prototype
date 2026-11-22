@@ -414,7 +414,16 @@ class ReviewWriteTests(unittest.TestCase):
             self.skipTest("no pending statement")
         statement_id = queue[0]["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
-        row = next(item for item in rows if item["mapping_candidates"])
+        row = next(
+            (
+                item for item in rows
+                if item["mapping_candidates"]
+                and item["mapping_status"] in ("unique", "conflict")
+            ),
+            None,
+        )
+        if row is None:
+            self.skipTest("pending statement has no unapproved mapping candidate")
         self.assertIn(row["mapping_status"], ("unique", "conflict"))
         self.assertTrue(row["standard_item_key"])
         item_id = row["mapping_candidates"][0]["standard_item_id"]

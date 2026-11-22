@@ -193,6 +193,12 @@ extraction, marks the statement `excluded`, and leaves `statement_rows` as a
 historical snapshot. Excluded statements do not appear in the Review Queue.
 Reviewed, adopted, active, or published statements cannot be discarded this way.
 
+The Intake page lists every discardable statement under **Pending statements**
+with a per-statement **Discard** button. Use it when a built page has the wrong
+entity/date: discard the statement that owns the page, change the page, then
+build again. The build refuses to reclassify a page while its rows still belong
+to a statement and names the owning statement in the error.
+
 Re-running **Build** after a discard or a new OCR run reopens that statement
 (`excluded` → `proposed`, audit event `statement_reopened`) and assigns the new
 run's rows, so it returns to the Review Queue. A discard is only permanent when

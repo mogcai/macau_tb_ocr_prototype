@@ -159,14 +159,23 @@
       </thead>
       <tbody>
         {% for page in pages %}
-        <tr class="{% if page.included_rows %}intake-locked{% endif %}">
+        <tr class="{% if page.locked_rows %}intake-locked{% endif %}">
           <td><strong>p{{ page.pdf_page }}</strong>
             {% if page.printed_page %}<div class="sub">printed {{ page.printed_page }}</div>{% endif %}
           </td>
           <td>
             <span class="pill">{{ page.page_role }}</span>
             <span class="pill">{{ page.classification_status }}</span>
-            {% if page.included_rows %}<div class="sub">assigned: {{ page.included_rows }} rows</div>{% endif %}
+            {% if page.locked_rows %}
+            <div class="sub">assigned: {{ page.locked_rows }} rows
+              {% if page.assigned_entity_name %}
+              → <strong>{{ page.assigned_entity_name }}</strong>
+              <span class="pill">{{ page.assigned_statement_status }}</span>
+              {% endif %}
+            </div>
+            <div class="sub">Locked: discard that statement under
+              <em>Pending statements</em> to reclassify this page.</div>
+            {% endif %}
             {% if page.decision_note %}<div class="sub">{{ page.decision_note }}</div>{% endif %}
           </td>
           <td class="suggestion-cell">
@@ -187,7 +196,7 @@
           </td>
           <td class="sample-cell">{{ page.sample_labels or "—" }}</td>
           <td>
-            {% if can_classify and not page.included_rows %}
+            {% if can_classify and not page.locked_rows %}
             <form class="page-decision" data-page-id="{{ page.document_page_id }}">
               {% set default_role = "financial_statement" if page.suggested_entity_id else page.page_role %}
               <select name="page_role">
@@ -268,6 +277,37 @@
   <div id="build-result" class="build-result"></div>
   {% endif %}
 </section>
+
+{% if can_review_statement and discardable_statements %}
+<section class="panel">
+  <h2>Pending statements</h2>
+  <p class="sub">A page cannot be reclassified while its rows belong to a
+  statement. Discard the statement that owns the page, change the page, then
+  build again. Only statements that were never reviewed, adopted or published
+  can be discarded.</p>
+  <div class="table-scroll">
+    <table class="compact">
+      <thead>
+        <tr><th>Entity</th><th>Statement date</th><th>Type</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for item in discardable_statements %}
+        <tr>
+          <td>{{ item.entity_name }}</td>
+          <td>{{ item.statement_date }}</td>
+          <td>{{ item.statement_type }}</td>
+          <td><span class="pill">{{ item.statement_status }}</span></td>
+          <td>
+            <button class="discard-statement secondary"
+                    data-statement="{{ item.statement_id }}">Discard</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
 
 <script>
 (function () {
@@ -384,6 +424,32 @@
       }
     });
   }
+  document.querySelectorAll(".discard-statement").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const reason = window.prompt(
+        "Discard this pending statement and return its OCR rows to intake?\nProvide a reason:",
+        "Wrong page classification — reclassify and rebuild"
+      );
+      if (reason === null) return;
+      const trimmed = reason.trim();
+      if (!trimmed) {
+        alert("A reason is required");
+        return;
+      }
+      button.disabled = true;
+      try {
+        await postJson(
+          "/api/review/" + button.dataset.statement + "/discard",
+          {reason: trimmed},
+        );
+      } catch (error) {
+        alert(error.message);
+        button.disabled = false;
+        return;
+      }
+      window.location.reload();
+    });
+  });
   const reprocessForm = document.getElementById("reprocess-form");
   if (reprocessForm) {
     reprocessForm.addEventListener("submit", async (event) => {

@@ -416,6 +416,9 @@ def _page_rows(conn: sqlite3.Connection, source_document_id: str) -> list[dict[s
                    AND er.row_disposition = 'included') AS included_rows,
                (SELECT COUNT(*) FROM extracted_rows er
                  WHERE er.document_page_id = dp.document_page_id
+                   AND er.row_disposition = 'included') AS locked_rows,
+               (SELECT COUNT(*) FROM extracted_rows er
+                 WHERE er.document_page_id = dp.document_page_id
                    AND (? IS NULL OR er.run_id = ?)) AS total_rows,
                (SELECT GROUP_CONCAT(label, ' | ') FROM (
                     SELECT label_raw AS label FROM extracted_rows er
@@ -641,6 +644,25 @@ def batch_detail(source_document_id: str) -> dict[str, Any]:
         document = _document(conn, source_document_id)
         pages = _page_rows(conn, source_document_id)
         suggestions = _suggestions(conn, source_document_id)
+        assignments = {
+            row["document_page_id"]: dict(row)
+            for row in conn.execute(
+                """
+                SELECT er.document_page_id, s.statement_id, s.statement_status,
+                       COALESCE(e.canonical_zh, e.canonical_pt, e.entity_key)
+                           AS entity_name
+                FROM extracted_rows er
+                JOIN statements s ON s.statement_id = er.statement_id
+                JOIN reporting_entities e ON e.entity_id = s.reporting_entity_id
+                WHERE er.document_page_id IN (
+                        SELECT document_page_id FROM document_pages
+                        WHERE source_document_id = ?)
+                  AND er.row_disposition = 'included'
+                GROUP BY er.document_page_id
+                """,
+                (source_document_id,),
+            ).fetchall()
+        }
     finally:
         conn.close()
     for page in pages:
@@ -651,6 +673,10 @@ def batch_detail(source_document_id: str) -> dict[str, Any]:
         page["suggested_entity_name"] = suggestion.get("suggested_entity_name")
         page["suggested_score"] = suggestion.get("suggested_score")
         page["suggested_method"] = suggestion.get("suggested_method")
+        assignment = assignments.get(page["document_page_id"], {})
+        page["assigned_statement_id"] = assignment.get("statement_id")
+        page["assigned_statement_status"] = assignment.get("statement_status")
+        page["assigned_entity_name"] = assignment.get("entity_name")
     pending = [page for page in pages if page["classification_status"] == "proposed"]
     preview: list[dict[str, Any]] = []
     preview_error = None
@@ -1180,6 +1206,32 @@ def save_page_decision(
             (document_page_id,),
         ).fetchone()[0]
         if assigned:
+            linked = conn.execute(
+                """
+                SELECT s.statement_id, s.statement_status,
+                       COALESCE(e.canonical_zh, e.canonical_pt, e.entity_key)
+                           AS entity_name
+                FROM extracted_rows er
+                JOIN statements s ON s.statement_id = er.statement_id
+                JOIN reporting_entities e ON e.entity_id = s.reporting_entity_id
+                WHERE er.document_page_id = ?
+                  AND er.row_disposition = 'included'
+                GROUP BY s.statement_id
+                ORDER BY s.statement_id
+                """,
+                (document_page_id,),
+            ).fetchall()
+            if linked:
+                names = "; ".join(
+                    f"{row['entity_name']} ({row['statement_status']})"
+                    for row in linked
+                )
+                raise IntakeConflict(
+                    f"page {page['pdf_page']} is assigned to {names}; statements "
+                    "are append-only. Discard that pending statement first "
+                    "(Intake → Pending statements → Discard, or Review Queue → "
+                    "Discard), then change the page and rebuild."
+                )
             raise IntakeConflict(
                 "this page is already assigned to a statement; statements are "
                 "append-only, create a new run instead of reclassifying it"

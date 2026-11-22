@@ -447,6 +447,51 @@ class IntakeTests(_IntakeTestBase):
                 2, page_role="other", decision="reject", note="late change",
             )
 
+    def test_locked_page_error_names_statement_and_remedy(self) -> None:
+        self._classify_all()
+        intake.build_statements(DOC_ID, "tester")
+        with self.assertRaises(intake.IntakeConflict) as raised:
+            self._save(
+                2,
+                page_role="financial_statement",
+                decision="approve",
+                entity_id=self.second["entity_id"],
+                statement_date="2099-12-31",
+            )
+        message = str(raised.exception)
+        self.assertIn(_entity_name(self.first), message)
+        self.assertIn("Discard", message)
+
+    def test_older_run_assignment_still_locks_the_page(self) -> None:
+        self._classify_all()
+        intake.build_statements(DOC_ID, "tester")
+        _append_ocr_run(
+            self.db, self.run_dir, "run-intake-fixture-2", "2026-11-22T00:00:00+00:00"
+        )
+        detail = intake.batch_detail(DOC_ID)
+        page_two = next(item for item in detail["pages"] if item["pdf_page"] == 2)
+        self.assertEqual(page_two["included_rows"], 0)
+        self.assertGreater(page_two["locked_rows"], 0)
+        self.assertEqual(page_two["assigned_entity_name"], _entity_name(self.first))
+        with self.assertRaises(intake.IntakeConflict) as raised:
+            self._save(
+                2,
+                page_role="financial_statement",
+                decision="approve",
+                entity_id=self.second["entity_id"],
+                statement_date="2099-12-31",
+            )
+        self.assertIn("Discard", str(raised.exception))
+
+    def test_batch_detail_shows_the_assigned_statement(self) -> None:
+        self._classify_all()
+        intake.build_statements(DOC_ID, "tester")
+        detail = intake.batch_detail(DOC_ID)
+        page_two = next(item for item in detail["pages"] if item["pdf_page"] == 2)
+        self.assertTrue(page_two["assigned_statement_id"])
+        self.assertEqual(page_two["assigned_entity_name"], _entity_name(self.first))
+        self.assertEqual(page_two["assigned_statement_status"], "proposed")
+
     def test_ocr_quality_preview_is_attached(self) -> None:
         quality = self.detail["ocr_quality"]
         self.assertIsNotNone(quality)
@@ -836,9 +881,12 @@ class IntakeApiTests(_IntakeTestBase):
         page = self.client.get("/intake")
         self.assertEqual(page.status_code, 200)
         self.assertIn("Import intake", page.text)
+        self.client.get("/set-role/reviewer")
         batch_page = self.client.get(f"/intake/{DOC_ID}")
         self.assertEqual(batch_page.status_code, 200)
         self.assertIn("OCR quality preview", batch_page.text)
+        self.assertIn("Pending statements", batch_page.text)
+        self.assertIn("discard-statement", batch_page.text)
 
     def test_discard_endpoint_and_reprocess_requires_reason(self) -> None:
         self.client.post(
