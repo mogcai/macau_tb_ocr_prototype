@@ -379,6 +379,55 @@ class ReviewWriteTests(unittest.TestCase):
             {item["statement_id"] for item in service.adopted_statements()},
         )
 
+    def test_readopting_after_return_to_review_records_a_new_audit_event(self) -> None:
+        ready = self._ready_candidate()
+        if ready is None:
+            self.skipTest("no ready held statement")
+        statement_id = ready["statement_id"]
+        reviewed = self.client.post(
+            f"/api/review/{statement_id}/review",
+            json={"review_status": "reviewed", "note": "review for re-adoption"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        conn = sqlite3.connect(self.db)
+        before = conn.execute(
+            "SELECT COUNT(*) FROM audit_events WHERE statement_id=? "
+            "AND event_type='workbench_adopted'",
+            (statement_id,),
+        ).fetchone()[0]
+        conn.close()
+
+        first = self.client.post(
+            f"/api/statements/{statement_id}/adopt",
+            headers={"X-Workbench-Role": "adopter", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(first.status_code, 200, first.text)
+        returned = self.client.post(
+            f"/api/statements/{statement_id}/return-to-review",
+            headers={"X-Workbench-Role": "adopter", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(returned.status_code, 200, returned.text)
+        second = self.client.post(
+            f"/api/statements/{statement_id}/adopt",
+            headers={"X-Workbench-Role": "adopter", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(second.status_code, 200, second.text)
+        conn = sqlite3.connect(self.db)
+        after = conn.execute(
+            "SELECT COUNT(*) FROM audit_events WHERE statement_id=? "
+            "AND event_type='workbench_adopted'",
+            (statement_id,),
+        ).fetchone()[0]
+        distinct = conn.execute(
+            "SELECT COUNT(DISTINCT audit_event_id) FROM audit_events "
+            "WHERE statement_id=? AND event_type='workbench_adopted'",
+            (statement_id,),
+        ).fetchone()[0]
+        conn.close()
+        self.assertEqual(after, before + 2)
+        self.assertEqual(distinct, after)
+
     def test_reviewed_statement_is_read_only_until_reopened(self) -> None:
         queue = self._pending_queue()
         ready = next((item for item in queue if item["mapping_ready"]), None)

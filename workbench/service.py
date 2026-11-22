@@ -478,7 +478,13 @@ def adopt_statement(statement_id: str, actor: str) -> dict[str, Any]:
             "WHERE statement_id=?",
             (extraction["statement_extraction_id"], statement_id),
         )
-        event_id = stable_id("workbench_adopt", statement_id, extraction["statement_extraction_id"], VERSION)
+        event_id = stable_id(
+            "workbench_adopt",
+            statement_id,
+            extraction["statement_extraction_id"],
+            binding["binding_id"],
+            VERSION,
+        )
         conn.execute(
             "INSERT INTO audit_events("
             "audit_event_id, event_type, statement_id, actor_id, before_json, after_json, "
