@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}覆蓋 · 第一期本機檢視{% endblock %}
+{% block content %}
+<section class="cards">
+  <article class="card">
+    <div class="label">可用報表（adopted）</div>
+    <div class="value">{{ model.usable_statement_count }}</div>
+  </article>
+  <article class="card">
+    <div class="label">覆蓋缺口</div>
+    <div class="value">{{ model.gap_count }}</div>
+  </article>
+  <article class="card">
+    <div class="label">approved 行</div>
+    <div class="value">{{ model.mapping.approved }}</div>
+    <div class="meta">Workbench 標記，不是財務接受</div>
+  </article>
+  <article class="card">
+    <div class="label">proposed 行</div>
+    <div class="value">{{ model.mapping.proposed }}</div>
+  </article>
+  <article class="card">
+    <div class="label">insert-direct 行</div>
+    <div class="value">{{ model.mapping["insert-direct"] }}</div>
+  </article>
+  <article class="card">
+    <div class="label">unmapped 行</div>
+    <div class="value">{{ model.mapping.unmapped }}</div>
+    <div class="meta">unmapped = 0 仍然不是已可安全對照</div>
+  </article>
+  <article class="card">
+    <div class="label">零 approved 的可用報表</div>
+    <div class="value">{{ model.zero_approved_statement_count }}</div>
+  </article>
+  <article class="card">
+    <div class="label">可安全跨行比較</div>
+    <div class="value">否</div>
+  </article>
+</section>
+
+<section class="warning">
+  <h2>使用時要看見的限制</h2>
+  <ul>
+    {% for warning in page_warnings %}
+    <li>{{ warning }}</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="blocked" aria-disabled="true">
+  <h2>加總後睇澳門銀行整體情況</h2>
+  <p>{{ aggregate.reason }}</p>
+  <p>這個位置保留目標，不計算金額。沒有 8 間本地法人合計，也沒有 15 間合計。</p>
+</section>
+
+{% for bucket in model.buckets %}
+<section class="bucket {{ bucket.id }}">
+  <h2>{{ bucket.title }}</h2>
+  <p class="rule">{{ bucket.rule }} 本組不設合計。</p>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>canonical_zh</th>
+          <th>entity_type</th>
+          {% for date in model.window %}
+          <th>{{ date }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for entity in bucket.entities %}
+        <tr>
+          <td>
+            {% if entity.entity_id %}
+            <a href="/entities/{{ entity.entity_id }}">{{ entity.canonical_zh }}</a>
+            {% else %}
+            {{ entity.canonical_zh }}
+            {% endif %}
+            {% if entity.duplicate_name %}<div class="note">同一 canonical_zh 有多於一筆實體，沒有合併。</div>{% endif %}
+            {% if not entity.resolved %}<div class="note">庫內未找到此名稱。</div>{% endif %}
+            <div class="meta">{{ entity.entity_key or "" }}{% if entity.parent_entity_id %} · parent {{ entity.parent_entity_id }}{% endif %}</div>
+          </td>
+          <td>{{ entity.entity_type or "—" }}</td>
+          {% for date in model.window %}
+          {% set cell = entity.periods[date] %}
+          <td class="{{ 'gap' if cell.kind == 'gap' else '' }}">
+            {% if cell.kind == 'gap' %}
+            <strong>缺口</strong>
+            <div>{{ cell.reason }}</div>
+            <div class="meta">不補數，不顯示金額</div>
+            {% else %}
+            {% if cell.mixed_statement_types %}<div class="note">同一期有多於一種 statement_type，沒有混加。</div>{% endif %}
+            {% for stmt in cell.statements %}
+            <div>
+              <a href="/statements/{{ stmt.statement_id }}">可用 · adopted</a>
+              <div class="meta">{{ stmt.statement_type }} · {{ stmt.reporting_scope }} · {{ stmt.currency or "幣別未記載" }} · unit_scale {{ stmt.unit_scale if stmt.unit_scale is not none else "未記載" }}</div>
+              <div class="meta">identity {{ stmt.identity_status }} · metadata {{ stmt.metadata_status }}</div>
+              {% for status in mapping_statuses %}
+              <span class="pill pill-{{ status }}">{{ status }} {{ stmt.mapping_counts[status] }}</span>
+              {% endfor %}
+              {% if stmt.zero_approved %}<div class="note">這份可用報表沒有 approved mapping。</div>{% endif %}
+              {% for note in stmt.notes %}<div class="note">{{ note }}</div>{% endfor %}
+            </div>
+            {% endfor %}
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+
+<section class="panel">
+  <h2>比較窗以外</h2>
+  <p class="meta">這些報表不計入可用集，這裡不顯示金額。</p>
+  {% if model.outside_window %}
+  <ul>
+    {% for item in model.outside_window %}
+    <li>{{ item.canonical_zh }} · {{ item.statement_date }} · {{ item.statement_status }} · adopted {{ "是" if item.adopted else "否" }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>今次打開的資料庫裡，已採納名單沒有窗以外的報表。</p>
+  {% endif %}
+</section>
+{% endblock %}

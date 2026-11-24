@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}報表 {{ model.statement_id }} · 第一期本機檢視{% endblock %}
+{% block content %}
+<p><a href="/entities/{{ model.entity_id }}">{{ model.canonical_zh }}</a></p>
+<h2>{{ model.canonical_zh }}</h2>
+<p class="meta">{{ model.statement_date }} · {{ model.statement_type }} · {{ model.reporting_scope }} · entity_type {{ model.entity_type }}</p>
+<p class="meta">currency {{ model.currency or "未記載" }} · unit_scale {{ model.unit_scale if model.unit_scale is not none else "未記載" }} · identity {{ model.identity_status }} · metadata {{ model.metadata_status }} · statement_status {{ model.statement_status }} · review {{ model.review_status or "—" }}</p>
+{% if model.entity_name_raw %}<p class="meta">entity_name_raw {{ model.entity_name_raw }}</p>{% endif %}
+{% if not model.usable %}
+<section class="gap panel">
+  <strong>不顯示金額</strong>
+  <p>{{ model.reason }}</p>
+</section>
+{% else %}
+<p>
+  {% for status in mapping_statuses %}
+  <span class="pill pill-{{ status }}">{{ status }} {{ model.mapping_counts[status] }}</span>
+  {% endfor %}
+</p>
+{% set block = {"rows": model.rows, "statement": model} %}
+{% include "rows.html" %}
+{% endif %}
+{% endblock %}

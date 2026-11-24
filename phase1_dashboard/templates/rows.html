@@ -1,0 +1,54 @@
+<table>
+  <thead>
+    <tr>
+      <th>順序</th>
+      <th>來源標籤</th>
+      <th>row_type</th>
+      <th>mapping_status</th>
+      <th>候選 item_key</th>
+      <th>method</th>
+      <th>借方</th>
+      <th>貸方</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in block.rows %}
+    <tr>
+      <td>{{ row.statement_order if row.statement_order is not none else "—" }}</td>
+      <td>
+        <div>{{ row.label or "—" }}</div>
+        {% if row.label_raw and row.label_raw != row.label %}<div class="meta">label_raw {{ row.label_raw }}</div>{% endif %}
+        {% if row.debit_raw or row.credit_raw %}<div class="meta">raw {{ row.debit_raw or "—" }} / {{ row.credit_raw or "—" }}</div>{% endif %}
+        {% if row.insert_without_ocr_label %}<div class="note">人工 insert，沒有 OCR label_raw。</div>{% endif %}
+        {% if row.has_parent %}<div class="note">有父項，勿與父項或兄弟項相加。</div>{% endif %}
+        {% for warning in row.draft_warnings %}<div class="note">{{ warning }}</div>{% endfor %}
+      </td>
+      <td>{{ row.row_type or "—" }}</td>
+      <td>
+        <span class="pill pill-{{ row.mapping_status }}">{{ row.mapping_status }}</span>
+        {% if row.mapping_status == 'approved' %}<div class="meta">Workbench 已標記，不是財務接受</div>{% endif %}
+        {% if row.also_proposed %}<div class="note">同一行仍有 proposed{% if row.proposed_methods %}（{{ row.proposed_methods|join(", ") }}）{% endif %}。</div>{% endif %}
+      </td>
+      <td>
+        {% for candidate in row.candidates %}
+        <div>{{ candidate.item_key }} <span class="meta">{{ candidate.item_zh or "" }}</span></div>
+        {% else %}
+        <span class="empty">unmapped</span>
+        {% endfor %}
+      </td>
+      <td class="meta">{{ row.match_methods|join(", ") if row.match_methods else "—" }}</td>
+      <td class="amount">
+        {{ row.debit.text if row.debit.text is not none else "—" }}
+        {% if row.debit.reading %}<div class="meta">{{ row.debit.reading }}</div>{% endif %}
+      </td>
+      <td class="amount">
+        {{ row.credit.text if row.credit.text is not none else "—" }}
+        {% if row.credit.reading %}<div class="meta">{{ row.credit.reading }}</div>{% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8">這份可用報表在 effective view 裡沒有行。</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="meta">金額是庫內 minor。{{ (block.rows[0].debit.note if block.rows else "") }} OCR 信心、解析成功、借貸相等都不是財務核實。</p>

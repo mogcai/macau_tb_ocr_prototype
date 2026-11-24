@@ -1,0 +1,113 @@
+"""Wire read-only queries to the presentation rules."""
+from __future__ import annotations
+
+import sqlite3
+from collections import defaultdict
+from typing import Any
+
+from phase1_dashboard import queries
+from phase1_dashboard.present import (
+    build_compare,
+    build_coverage,
+    build_entity_detail,
+    build_statement_view,
+    decorate_row,
+    is_usable_statement,
+)
+from phase1_dashboard.scope import PAGE_WARNINGS
+
+
+def load_scope(connection: sqlite3.Connection) -> dict[str, Any]:
+    entities = queries.fetch_entities(connection)
+    statements = queries.fetch_statements(
+        connection, [entity["entity_id"] for entity in entities]
+    )
+    usable_ids = [
+        statement["statement_id"]
+        for statement in statements
+        if is_usable_statement(statement)
+    ]
+    raw_rows = queries.fetch_rows(connection, usable_ids)
+    mappings = queries.fetch_mappings(
+        connection, [row["statement_row_id"] for row in raw_rows]
+    )
+    inserts = {
+        row["adjustment_id"]: row
+        for row in queries.fetch_inserts(connection, usable_ids)
+    }
+    mappings_by_row: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for mapping in mappings:
+        mappings_by_row[mapping["statement_row_id"]].append(mapping)
+    statements_by_id = {statement["statement_id"]: statement for statement in statements}
+    rows_by_statement: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for raw in raw_rows:
+        statement = statements_by_id[raw["statement_id"]]
+        rows_by_statement[raw["statement_id"]].append(
+            decorate_row(
+                raw,
+                mappings_by_row.get(raw["statement_row_id"], []),
+                inserts.get(raw["statement_row_id"]),
+                statement,
+            )
+        )
+    return {
+        "entities": entities,
+        "statements": statements,
+        "rows_by_statement": dict(rows_by_statement),
+    }
+
+
+def coverage(connection: sqlite3.Connection) -> dict[str, Any]:
+    model = build_coverage(**load_scope(connection))
+    model["page_warnings"] = list(PAGE_WARNINGS)
+    return model
+
+
+def entity_detail(
+    connection: sqlite3.Connection,
+    entity_id: str,
+    selected_date: str | None = None,
+) -> dict[str, Any] | None:
+    model = build_entity_detail(
+        entity_id=entity_id,
+        selected_date=selected_date,
+        **load_scope(connection),
+    )
+    if model is not None:
+        model["page_warnings"] = list(PAGE_WARNINGS)
+    return model
+
+
+def statement_detail(
+    connection: sqlite3.Connection, statement_id: str
+) -> dict[str, Any] | None:
+    statement = queries.fetch_statement(connection, statement_id)
+    if statement is None:
+        return None
+    rows: list[dict[str, Any]] = []
+    if is_usable_statement(statement):
+        scope = load_scope(connection)
+        rows = scope["rows_by_statement"].get(statement_id, [])
+    model = build_statement_view(statement, rows)
+    if model is not None:
+        model["page_warnings"] = list(PAGE_WARNINGS)
+    return model
+
+
+def compare(
+    connection: sqlite3.Connection,
+    *,
+    bucket_id: str,
+    statement_date: str,
+    item_key: str | None,
+    display: str | None,
+) -> dict[str, Any]:
+    model = build_compare(
+        bucket_id=bucket_id,
+        statement_date=statement_date,
+        item_key=item_key or None,
+        display=display,
+        **load_scope(connection),
+    )
+    model["page_warnings"] = list(PAGE_WARNINGS)
+    return model

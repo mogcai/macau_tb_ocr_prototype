@@ -1,0 +1,164 @@
+"""Local phase-1 inspection app. Read-only. No authentication."""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from phase1_dashboard.db import DashboardDataError, open_readonly
+from phase1_dashboard.present import ScopeError, aggregate_placeholder
+from phase1_dashboard.scope import (
+    BUCKETS,
+    COMPARISON_DATES,
+    NOT_SAFELY_COMPARABLE,
+    PAGE_WARNINGS,
+)
+from phase1_dashboard import service
+
+HERE = Path(__file__).resolve().parent
+TEMPLATES = Jinja2Templates(directory=str(HERE / "templates"))
+MAPPING_STATUS_ORDER = ("approved", "proposed", "insert-direct", "unmapped")
+
+
+def create_app(db_path: Path | str) -> FastAPI:
+    app = FastAPI(title="澳門銀行第一期本機檢視", version="0.1.0")
+    app.state.db_path = str(Path(db_path).expanduser())
+    app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
+
+    @app.middleware("http")
+    async def no_store(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Phase1-Dashboard"] = "read-only"
+        return response
+
+    @app.exception_handler(DashboardDataError)
+    async def data_error(_: Request, exc: DashboardDataError) -> JSONResponse:
+        return JSONResponse({"error": str(exc), "read_only": True}, status_code=400)
+
+    @app.exception_handler(ScopeError)
+    async def scope_error(_: Request, exc: ScopeError) -> JSONResponse:
+        return JSONResponse(
+            {"error": str(exc), "amounts": None, "computed": False},
+            status_code=400,
+        )
+
+    def common() -> dict[str, Any]:
+        return {
+            "window": COMPARISON_DATES,
+            "buckets": BUCKETS,
+            "page_warnings": PAGE_WARNINGS,
+            "not_comparable": NOT_SAFELY_COMPARABLE,
+            "mapping_statuses": MAPPING_STATUS_ORDER,
+            "aggregate": aggregate_placeholder(),
+        }
+
+    def render(request: Request, name: str, **extra: Any):
+        return TEMPLATES.TemplateResponse(
+            request, name, {**common(), **extra}
+        )
+
+    @app.get("/health")
+    def health() -> dict[str, Any]:
+        with open_readonly(app.state.db_path) as connection:
+            connection.execute("SELECT 1 FROM reporting_entities LIMIT 1").fetchall()
+        return {
+            "ok": True,
+            "read_only": True,
+            "authentication": False,
+            "host_policy": "127.0.0.1",
+            "v5": False,
+            "window": list(COMPARISON_DATES),
+            "amounts_are_financially_verified": False,
+        }
+
+    @app.get("/")
+    def coverage_page(request: Request):
+        with open_readonly(app.state.db_path) as connection:
+            model = service.coverage(connection)
+        return render(request, "coverage.html", model=model)
+
+    @app.get("/entities/{entity_id}")
+    def entity_page(
+        request: Request,
+        entity_id: str,
+        date: str | None = None,
+    ):
+        with open_readonly(app.state.db_path) as connection:
+            model = service.entity_detail(connection, entity_id, date)
+        if model is None:
+            raise HTTPException(status_code=404, detail="找不到已採納名單內的機構")
+        return render(request, "entity.html", model=model)
+
+    @app.get("/statements/{statement_id}")
+    def statement_page(request: Request, statement_id: str):
+        with open_readonly(app.state.db_path) as connection:
+            model = service.statement_detail(connection, statement_id)
+        if model is None:
+            raise HTTPException(status_code=404, detail="找不到已採納名單內的報表")
+        return render(request, "statement.html", model=model)
+
+    @app.get("/compare")
+    def compare_page(
+        request: Request,
+        bucket: str = "legal",
+        statement_date: str = COMPARISON_DATES[1],
+        item_key: str | None = None,
+        display: str = "amount",
+    ):
+        with open_readonly(app.state.db_path) as connection:
+            model = service.compare(
+                connection,
+                bucket_id=bucket,
+                statement_date=statement_date,
+                item_key=item_key,
+                display=display,
+            )
+        return render(request, "compare.html", model=model)
+
+    @app.get("/api/coverage")
+    def coverage_api() -> dict[str, Any]:
+        with open_readonly(app.state.db_path) as connection:
+            return service.coverage(connection)
+
+    @app.get("/api/entities/{entity_id}")
+    def entity_api(entity_id: str, date: str | None = None) -> dict[str, Any]:
+        with open_readonly(app.state.db_path) as connection:
+            model = service.entity_detail(connection, entity_id, date)
+        if model is None:
+            raise HTTPException(status_code=404, detail="找不到已採納名單內的機構")
+        return model
+
+    @app.get("/api/statements/{statement_id}")
+    def statement_api(statement_id: str) -> dict[str, Any]:
+        with open_readonly(app.state.db_path) as connection:
+            model = service.statement_detail(connection, statement_id)
+        if model is None:
+            raise HTTPException(status_code=404, detail="找不到已採納名單內的報表")
+        return model
+
+    @app.get("/api/compare")
+    def compare_api(
+        bucket: str = Query(...),
+        statement_date: str = Query(...),
+        item_key: str | None = None,
+        display: str | None = None,
+    ) -> dict[str, Any]:
+        with open_readonly(app.state.db_path) as connection:
+            return service.compare(
+                connection,
+                bucket_id=bucket,
+                statement_date=statement_date,
+                item_key=item_key,
+                display=display,
+            )
+
+    @app.get("/api/aggregate")
+    def aggregate_api() -> dict[str, Any]:
+        return aggregate_placeholder()
+
+    return app

@@ -4,6 +4,17 @@
 
 用途：將澳門《公報》第二組銀行／金融機構的 Balancete（試算表）圖片抽取為 Excel / CSV，並可整合成 SQLite 資料庫作跨期分析。v0.2 專為 Apple Silicon Mac 加入原生 Apple Vision OCR，並改善繁體中文及財務數字格式處理。
 
+## 本機第一期檢視
+
+已採納首批機構同 2026-03-31、2026-06-30、2026-09-30 三季，可以在自己電腦上對着 V3 SQLite 看。這是只讀檢視，不是 Workbench，不會改對照或 adopted 狀態。
+
+```bash
+python -m pip install -r requirements-workbench.txt
+python -m phase1_dashboard --db /你的路徑/macau_balancete_v3.sqlite
+```
+
+瀏覽器打開 <http://127.0.0.1:8010/>。服務只綁定 `127.0.0.1`。路徑亦可用環境變數 `PHASE1_DASHBOARD_DB`。不要把 `archive/database/macau_balancete.sqlite`（V5）指給它。說明見 [`phase1_dashboard/README.md`](phase1_dashboard/README.md)。
+
 ## v0.7.0 One-command issue import
 
 1. `tools/import_issue.py`：URL → input PDF → OCR → output folder → SQLite → bank refresh → user standard mapping。

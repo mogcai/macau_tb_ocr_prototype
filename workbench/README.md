@@ -3,6 +3,10 @@
 FastAPI scaffold for the Data Verification Workbench.  It connects to the
 **operational** v3 database and never writes to the read-only MVP snapshot.
 
+The phase-1 inspection screen is a separate local app,
+[`phase1_dashboard`](../phase1_dashboard/README.md). It only reads V3 and does
+not review, map, or adopt. Workbench stays the place that changes those states.
+
 ## Run
 
 ```bash

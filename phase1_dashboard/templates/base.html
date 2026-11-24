@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{% block title %}第一期本機檢視{% endblock %}</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <header class="top">
+    <h1>澳門銀行第一期本機檢視</h1>
+    <p>只讀 V3 · 只在 127.0.0.1 · 沒有登入機制 · 不是 Workbench · 不是財務核實 · 不是公眾產品</p>
+    <nav>
+      <a href="/">覆蓋</a>
+      <a href="/compare">跨行對照</a>
+    </nav>
+  </header>
+  <main>
+    <section class="banner">
+      <strong>{{ not_comparable }}</strong>
+    </section>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    比較窗：{{ window|join("、") }}。可用數只計 adopted。proposed 金額不是已核准規模。本頁不計算 8 間或 15 間合計。
+  </footer>
+</body>
+</html>

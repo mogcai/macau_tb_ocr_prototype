@@ -8,6 +8,7 @@ Cleaned 2026-11-21. Goal: one obvious “current” tree; DeepSeek-era / migrati
 macau_tb_ocr.py              OCR entrypoint
 vision_ocr_worker.swift      Apple Vision worker
 workbench/                   Verification UI (V3 DB)
+phase1_dashboard/            Local read-only phase-1 inspection UI (V3, 127.0.0.1 only)
 tools/                       CLI: ingest, replay, registry, worksheets, GT
 database/v3/                 V3 DDL migrations (source of truth for schema files)
 data/

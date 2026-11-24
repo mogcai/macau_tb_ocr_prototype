@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}跨行對照 · 第一期本機檢視{% endblock %}
+{% block content %}
+<h2>跨行對照</h2>
+<p class="meta">一次只看一個分組、一個結算日、資產負債表。關聯報表與外地分行不會跟本地法人排在同一張表。沒有合計欄，沒有排名。</p>
+<form class="filters" method="get" action="/compare">
+  <label>分組
+    <select name="bucket">
+      {% for bucket in buckets %}
+      <option value="{{ bucket.id }}" {% if model.bucket == bucket.id %}selected{% endif %}>{{ bucket.title }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>結算日
+    <select name="statement_date">
+      {% for date in window %}
+      <option value="{{ date }}" {% if model.statement_date == date %}selected{% endif %}>{{ date }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>候選標準項（尚未核定為正式指標）
+    <select name="item_key">
+      <option value="">先選項目</option>
+      {% for item in model.available_items %}
+      <option value="{{ item.item_key }}" {% if model.item_key == item.item_key %}selected{% endif %}>{{ item.item_key }}{% if item.item_zh %} {{ item.item_zh }}{% endif %}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>顯示
+    <select name="display">
+      <option value="amount" {% if model.display == 'amount' %}selected{% endif %}>金額</option>
+      <option value="share" {% if model.display == 'share' %}selected{% endif %}>佔比</option>
+    </select>
+  </label>
+  <button type="submit">顯示</button>
+</form>
+<p class="rule">{{ model.bucket_rule }}</p>
+<p class="meta">{{ model.scale_note }}</p>
+{% if model.display == 'share' %}
+<section class="blocked">
+  <h2>佔比</h2>
+  <p>{{ model.share.reason }}</p>
+</section>
+{% endif %}
+{% for warning in model.draft_warnings %}
+<p class="note">{{ warning }}</p>
+{% endfor %}
+
+{% if model.needs_item %}
+<section class="panel">
+  <h2>這一期出現過的候選</h2>
+  <p class="meta">下面是行數，不是金額，也不是排名。指標清單尚未決定。</p>
+  {% if model.available_items %}
+  <table>
+    <thead>
+      <tr><th>item_key</th><th>中文</th><th>行數</th><th>approved</th><th>proposed</th><th>insert-direct</th><th>unmapped</th></tr>
+    </thead>
+    <tbody>
+      {% for item in model.available_items %}
+      <tr>
+        <td><a href="/compare?bucket={{ model.bucket }}&statement_date={{ model.statement_date }}&item_key={{ item.item_key|urlencode }}&display={{ model.display }}">{{ item.item_key }}</a></td>
+        <td>{{ item.item_zh or "—" }}</td>
+        <td>{{ item.row_count }}</td>
+        <td>{{ item.mapping_counts.approved }}</td>
+        <td>{{ item.mapping_counts.proposed }}</td>
+        <td>{{ item.mapping_counts["insert-direct"] }}</td>
+        <td>{{ item.mapping_counts.unmapped }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>這一期這個分組沒有可用資產負債表上的候選標準項。</p>
+  {% endif %}
+</section>
+{% else %}
+<div class="scroll">
+  <table>
+    <caption>沒有合計欄。{{ model.statement_type }} · {{ model.statement_date }}</caption>
+    <thead>
+      <tr>
+        <th>canonical_zh</th>
+        <th>entity_type</th>
+        <th>狀態</th>
+        <th>{% if model.display == 'share' %}佔比{% else %}金額 minor{% endif %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entity in model.entities %}
+      <tr>
+        <td>
+          {% if entity.entity_id %}
+          <a href="/entities/{{ entity.entity_id }}?date={{ model.statement_date }}">{{ entity.canonical_zh }}</a>
+          {% else %}
+          {{ entity.canonical_zh }}
+          {% endif %}
+        </td>
+        <td>{{ entity.entity_type or "—" }}</td>
+        <td>
+          {% if entity.kind == 'gap' %}<strong>缺口</strong><div class="meta">{{ entity.gap_reason }}</div>
+          {% elif entity.kind == 'absent' %}<span class="empty">{{ entity.note }}</span>
+          {% else %}並排{% endif %}
+        </td>
+        <td>
+          {% if model.display == 'share' %}
+          <div>未計算</div>
+          <div class="meta">庫內金額只作追溯，不是佔比。</div>
+          {% endif %}
+          {% for row in entity.rows %}
+          <div>
+            <span class="pill pill-{{ row.mapping_status }}">{{ row.mapping_status }}</span>
+            {% if model.display != 'share' %}
+            <span class="amount">{{ row.debit.text if row.debit.text is not none else "—" }} / {{ row.credit.text if row.credit.text is not none else "—" }}</span>
+            {% else %}
+            <span class="meta amount">minor {{ row.debit.text if row.debit.text is not none else "—" }} / {{ row.credit.text if row.credit.text is not none else "—" }}</span>
+            {% endif %}
+            <div class="meta">{{ row.currency or "幣別未記載" }} · unit_scale {{ row.unit_scale if row.unit_scale is not none else "未記載" }} · {{ row.reporting_scope }} · {{ row.match_methods|join(", ") if row.match_methods else "無 method" }}</div>
+            {% if row.debit.reading and model.display != 'share' %}<div class="meta">顯示 {{ row.debit.reading }} / {{ row.credit.reading or "—" }}。{{ row.debit.note }}</div>{% endif %}
+            {% if row.mapping_status == 'approved' %}<div class="meta">不是已核准規模</div>{% endif %}
+            {% if row.mapping_status == 'proposed' %}<div class="note">proposed，不可當成已核准規模或排名。</div>{% endif %}
+            {% for warning in row.draft_warnings %}<div class="note">{{ warning }}</div>{% endfor %}
+          </div>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

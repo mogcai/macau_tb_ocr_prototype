@@ -17,6 +17,7 @@
 | [`DATA_MODEL_V3_IMPLEMENTATION_SPEC_v1.2.md`](DATA_MODEL_V3_IMPLEMENTATION_SPEC_v1.2.md) | Canonical V3 data-model spec |
 | [`IMPORT_ISSUE_V2_V3_INGESTION_SPEC.md`](IMPORT_ISSUE_V2_V3_INGESTION_SPEC.md) | V3 ingestion / replay contract |
 | [`DATA_VERIFICATION_WORKBENCH_SPEC.md`](DATA_VERIFICATION_WORKBENCH_SPEC.md) | Workbench product spec |
+| [`../phase1_dashboard/README.md`](../phase1_dashboard/README.md) | Local read-only phase-1 inspection UI |
 | [`PLATFORM_ROADMAP_BLUEPRINT.md`](PLATFORM_ROADMAP_BLUEPRINT.md) | Longer-term platform plan |
 | [`V3_INTEGRATION_RECONCILIATION_2026-11-21.md`](V3_INTEGRATION_RECONCILIATION_2026-11-21.md) | Latest structural / workflow audit |
 

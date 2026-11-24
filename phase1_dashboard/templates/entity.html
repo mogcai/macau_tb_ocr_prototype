@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}{{ model.canonical_zh }} · 第一期本機檢視{% endblock %}
+{% block content %}
+<p><a href="/">返回覆蓋</a></p>
+<h2>{{ model.canonical_zh }}</h2>
+<p class="meta">{{ model.bucket_title }} · {{ model.bucket_rule }}</p>
+<p class="meta">entity_type {{ model.entity_type or "—" }} · registry {{ model.registry_status or "—" }} · parent {{ model.parent_entity_id or "空" }}</p>
+{% if model.duplicate_name %}<p class="note">同一 canonical_zh 有多於一筆實體。這一頁只顯示這一筆，沒有合併。</p>{% endif %}
+
+<div class="cards">
+  {% for date in model.window %}
+  {% set cell = model.periods[date] %}
+  <article class="card">
+    <div class="label">{{ date }}</div>
+    <div class="value">{% if cell.kind == 'gap' %}缺口{% else %}可用{% endif %}</div>
+    <div class="meta">{% if cell.kind == 'gap' %}{{ cell.reason }}{% else %}{{ cell.statements|length }} 份 adopted{% endif %}</div>
+  </article>
+  {% endfor %}
+</div>
+
+<h2>同一機構三季</h2>
+<p class="meta">只把資產負債表裡「恰好一個候選標準項」的行排在同一列。沒有對齊的行放在下面。每一格不設合計。缺口不是 0。</p>
+<div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>候選標準項</th>
+        {% for date in model.window %}<th>{{ date }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in model.pivot %}
+      <tr>
+        <td>
+          <div>{{ item.item_key }}</div>
+          <div class="meta">{{ item.item_zh or "" }}</div>
+          {% for warning in item.draft_warnings %}<div class="note">{{ warning }}</div>{% endfor %}
+        </td>
+        {% for date in model.window %}
+        {% set cell = item.cells[date] %}
+        <td class="{{ 'gap' if cell.kind == 'gap' else '' }}">
+          {% if cell.kind == 'gap' %}
+          <strong>缺口</strong>
+          <div class="meta">{{ cell.reason }}</div>
+          {% elif cell.kind == 'absent' %}
+          <span class="empty">沒有此候選</span>
+          {% else %}
+          {% for row in cell.rows %}
+          <div class="amount">{{ row.debit.text if row.debit.text is not none else "—" }} / {{ row.credit.text if row.credit.text is not none else "—" }}</div>
+          <span class="pill pill-{{ row.mapping_status }}">{{ row.mapping_status }}</span>
+          {% if row.mapping_status == 'approved' %}<div class="meta">Workbench 已標記，不是財務接受</div>{% endif %}
+          {% endfor %}
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% else %}
+      <tr><td colspan="4">這一頁的資產負債表沒有可以單一候選對齊的行。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>{{ model.selected_date }} 的報表行</h2>
+<p class="meta">
+  {% for date in model.window %}
+  <a href="/entities/{{ model.entity_id }}?date={{ date }}">{{ date }}</a>
+  {% endfor %}
+</p>
+{% if not model.selected_rows_by_statement %}
+<p class="gap">這一期是缺口，不顯示金額。</p>
+{% endif %}
+{% for block in model.selected_rows_by_statement %}
+<section class="panel">
+  <h3>{{ block.statement.statement_type }} · {{ block.statement.currency or "幣別未記載" }} · unit_scale {{ block.statement.unit_scale if block.statement.unit_scale is not none else "未記載" }} · {{ block.statement.reporting_scope }}</h3>
+  <p class="meta">identity {{ block.statement.identity_status }} · metadata {{ block.statement.metadata_status }}。不同 statement_type 沒有混加。</p>
+  {% include "rows.html" %}
+</section>
+{% endfor %}
+
+{% set extra = model.unaligned[model.selected_date] %}
+{% if extra %}
+<section class="panel">
+  <h3>未能以單一候選對齊</h3>
+  <p class="meta">同名標籤沒有自動當成同一項目。這些行保留在原報表，不排進三季對照。</p>
+  <table>
+    <thead>
+      <tr><th>來源標籤</th><th>mapping_status</th><th>候選</th><th>借方 minor</th><th>貸方 minor</th></tr>
+    </thead>
+    <tbody>
+      {% for row in extra %}
+      <tr>
+        <td>{{ row.label_raw or row.label or "—" }}</td>
+        <td><span class="pill pill-{{ row.mapping_status }}">{{ row.mapping_status }}</span></td>
+        <td>{% for candidate in row.candidates %}{{ candidate.item_key }} {% endfor %}</td>
+        <td class="amount">{{ row.debit.text if row.debit.text is not none else "—" }}</td>
+        <td class="amount">{{ row.credit.text if row.credit.text is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}
