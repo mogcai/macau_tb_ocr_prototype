@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}圖表 · 第一期本機檢視{% endblock %}
+{% block content %}
+<section class="chart-head">
+  <div>
+    <h2>候選金額</h2>
+    <p class="lead">{{ model.caption }}</p>
+  </div>
+  <form class="filters" method="get" action="/">
+    <label>分組
+      <select name="bucket">
+        {% for bucket in model.buckets %}
+        <option value="{{ bucket.id }}" {% if model.bucket == bucket.id %}selected{% endif %}>{{ bucket.title }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>結算日
+      <select name="statement_date">
+        {% for date in model.window %}
+        <option value="{{ date }}" {% if model.statement_date == date %}selected{% endif %}>{{ date }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>候選標準項
+      <select name="item_key">
+        {% for item in model.available_items %}
+        <option value="{{ item.item_key }}" {% if model.item_key == item.item_key %}selected{% endif %}>{{ item.item_key }}{% if item.item_zh %} {{ item.item_zh }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>趨勢機構
+      <select name="entity_id">
+        {% for entity in model.entities %}
+        <option value="{{ entity.entity_id }}" {% if model.selected_entity_id == entity.entity_id %}selected{% endif %}>{{ entity.canonical_zh }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">更新圖表</button>
+  </form>
+</section>
+
+{% for warning in model.warnings %}
+<p class="note">{{ warning }}</p>
+{% endfor %}
+<p class="rule">{{ model.bucket_rule }} 橫條依名單由上至下，不是排名。不計算佔比，不相加。</p>
+
+<section class="chart-panel">
+  <h2>跨行 · {{ model.item_zh or model.item_key or "未選候選" }}</h2>
+  {% if model.cross_bank.drawn %}
+  {{ model.cross_bank.svg|safe }}
+  {% else %}
+  <p class="empty-chart">{{ model.cross_bank.reason }}</p>
+  {% endif %}
+  <ol class="gap-list">
+    {% for slot in model.cross_bank.slots if not slot.included_in_chart %}
+    <li>
+      {% if slot.entity_id %}<a href="/entities/{{ slot.entity_id }}?date={{ model.statement_date }}">{{ slot.canonical_zh }}</a>{% else %}{{ slot.canonical_zh }}{% endif %}
+      <span class="note">缺口 · {{ slot.reason }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+
+<section class="chart-panel">
+  <h2>三季 · {{ model.selected_entity_name or "未選機構" }}</h2>
+  {% if model.trend.drawn %}
+  {{ model.trend.svg|safe }}
+  {% else %}
+  <p class="empty-chart">{{ model.trend.reason }}</p>
+  {% endif %}
+  <ol class="gap-list quarters">
+    {% for slot in model.trend.slots %}
+    <li>
+      {{ slot.statement_date }}
+      {% if slot.included_in_chart %}
+      <span class="meta">已畫入 · {{ slot.mapping_status }} · minor {{ slot.minor }}</span>
+      {% else %}
+      <span class="note">缺口 · {{ slot.reason }}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% if model.selected_entity_id %}
+  <p class="meta"><a href="/entities/{{ model.selected_entity_id }}">這間機構的明細、標籤與對照狀態</a> · <a href="/coverage">全部覆蓋表</a> · <a href="/compare?bucket={{ model.bucket }}&statement_date={{ model.statement_date }}{% if model.item_key %}&item_key={{ model.item_key|urlencode }}{% endif %}">同一候選的對照表</a></p>
+  {% endif %}
+</section>
+{% endblock %}

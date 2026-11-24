@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Any
 
 from phase1_dashboard import queries
+from phase1_dashboard.charts import build_chart_view
 from phase1_dashboard.present import (
     build_compare,
     build_coverage,
@@ -55,6 +56,25 @@ def load_scope(connection: sqlite3.Connection) -> dict[str, Any]:
         "statements": statements,
         "rows_by_statement": dict(rows_by_statement),
     }
+
+
+def chart_home(
+    connection: sqlite3.Connection,
+    *,
+    bucket_id: str | None,
+    statement_date: str | None,
+    item_key: str | None,
+    entity_id: str | None,
+) -> dict[str, Any]:
+    model = build_chart_view(
+        bucket_id=bucket_id,
+        statement_date=statement_date,
+        item_key=item_key or None,
+        entity_id=entity_id or None,
+        **load_scope(connection),
+    )
+    model["page_warnings"] = list(PAGE_WARNINGS)
+    return model
 
 
 def coverage(connection: sqlite3.Connection) -> dict[str, Any]:
