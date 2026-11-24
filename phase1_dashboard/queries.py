@@ -25,7 +25,7 @@ def fetch_entities(connection: sqlite3.Connection) -> list[dict[str, Any]]:
     placeholders, params = _in_clause(tuple(sorted(ADOPTED_NAMES)))
     sql = f"""
         SELECT entity_id, entity_key, entity_type, canonical_zh, canonical_pt,
-               canonical_en, parent_entity_id, registry_status
+               canonical_en, parent_entity_id, registry_status, merged_into_entity_id
         FROM reporting_entities
         WHERE canonical_zh IN ({placeholders})
         ORDER BY canonical_zh, entity_id

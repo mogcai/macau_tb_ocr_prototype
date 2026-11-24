@@ -40,12 +40,14 @@
       </td>
       <td class="meta">{{ row.match_methods|join(", ") if row.match_methods else "—" }}</td>
       <td class="amount">
-        {{ row.debit.text if row.debit.text is not none else "—" }}
-        {% if row.debit.reading %}<div class="meta">{{ row.debit.reading }}</div>{% endif %}
+        {% with state=row.debit_state, text=row.debit.text, reading=row.debit.reading, raw=row.debit_raw %}
+        {% include "value.html" %}
+        {% endwith %}
       </td>
       <td class="amount">
-        {{ row.credit.text if row.credit.text is not none else "—" }}
-        {% if row.credit.reading %}<div class="meta">{{ row.credit.reading }}</div>{% endif %}
+        {% with state=row.credit_state, text=row.credit.text, reading=row.credit.reading, raw=row.credit_raw %}
+        {% include "value.html" %}
+        {% endwith %}
       </td>
     </tr>
     {% else %}

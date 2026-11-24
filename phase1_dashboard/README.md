@@ -14,7 +14,7 @@ Tony 在自己電腦上打開、對着自己的 V3 SQLite 看已採納首批機�
 
 「加總後睇澳門銀行整體情況」這個目標仍在，但現在把已採納名單相加並不成立，所以加總位置是封着的，不計算。
 
-每一行都顯示 `mapping_status`：`approved`、`proposed`、`insert-direct`、`unmapped`。`approved` 是 Workbench 標記，不是財務接受，也不等於科目仍然有效。科目的 `item_status`（以及 `merged_into_standard_item_id`）另外顯示；`retired` 或 `merged` 的對照，包括人工 insert，仍然列出，不會被靜默拿掉。`v_unmapped = 0` 只表示幾乎每行都有候選，不是已經可以安全跨行比較。金額與佔比的欄位都在，但具體指標尚未決定，本版不計算佔比，也不把 `user:總計` 當成總資產。跨行對照會分開四種情況：沒有 adopted 報表、有 adopted 但沒有 balance_sheet、有 balance_sheet 但沒有所選候選、候選有金額。只有損益表的一期不會寫成「此期沒有此候選」。
+每一行都顯示 `mapping_status`：`approved`、`proposed`、`insert-direct`、`unmapped`。`approved` 是 Workbench 標記，不是財務接受，也不等於科目仍然有效。科目的 `item_status`（以及 `merged_into_standard_item_id`）另外顯示；`retired` 或 `merged` 的對照，包括人工 insert，仍然列出，不會被靜默拿掉。`v_unmapped = 0` 只表示幾乎每行都有候選，不是已經可以安全跨行比較。金額與佔比的欄位都在，但具體指標尚未決定，本版不計算佔比，也不把 `user:總計` 當成總資產。跨行對照會分開四種情況：沒有 adopted 報表、有 adopted 但沒有 balance_sheet、有 balance_sheet 但沒有所選候選、候選有金額。只有損益表的一期不會寫成「此期沒有此候選」。同一候選如果在同一份報表出現多行，會列出標籤和 `row_type`，並註明未相加。`unreadable`、`ambiguous`、`dash`、`blank` 會顯示狀態，不會全部寫成空白。佔比欄只寫「未計算」；庫內金額放在旁邊的追溯欄。實體的 `registry_status` 同 `merged_into_entity_id` 會顯示，merged / excluded / retired 不會當成普通一間銀行。
 
 ## 安裝
 

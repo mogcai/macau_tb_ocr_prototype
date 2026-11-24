@@ -149,6 +149,56 @@ def classify_row(
     }
 
 
+def describe_entity_lifecycle(entity: dict[str, Any] | None) -> dict[str, Any]:
+    """Registry lifecycle is separate from the adopted-name list.
+
+    A merged, excluded, or retired entity stays visible. It is not treated as
+    an ordinary bank that can be added into a total.
+    """
+    if not entity:
+        return {
+            "registry_status": None,
+            "merged_into_entity_id": None,
+            "merged": False,
+            "lifecycle_note": None,
+        }
+    status = entity.get("registry_status")
+    merged_into = entity.get("merged_into_entity_id")
+    merged = status == "merged" or bool(merged_into)
+    note = None
+    if merged:
+        target = merged_into or "未記載"
+        note = (
+            f"實體生命週期是 merged，併入 {target}。"
+            "名稱仍列出，沒有當成一間可獨立相加的銀行。"
+        )
+    elif status == "excluded":
+        note = "實體生命週期是 excluded。名稱仍列出，沒有當成現行機構。"
+    elif status == "retired":
+        note = "實體生命週期是 retired。名稱仍列出，沒有當成現行機構。"
+    return {
+        "registry_status": status,
+        "merged_into_entity_id": merged_into,
+        "merged": merged,
+        "lifecycle_note": note,
+    }
+
+
+def repeated_candidate_notes(rows: list[dict[str, Any]]) -> list[str]:
+    """Same statement and candidate can occur on more than one row. Do not add them."""
+    counts: dict[str, int] = {}
+    for row in rows:
+        statement_id = row.get("statement_id")
+        if not statement_id:
+            continue
+        counts[statement_id] = counts.get(statement_id, 0) + 1
+    return [
+        f"同一報表有 {count} 行對應此候選，未相加。"
+        for count in counts.values()
+        if count > 1
+    ]
+
+
 def catalogue_item_current(item: dict[str, Any] | None) -> bool:
     """A current catalogue item is item_status approved and not merged away.
 
@@ -294,9 +344,8 @@ def build_coverage(
                     "entity_type": None,
                     "entity_key": None,
                     "parent_entity_id": None,
-                    "registry_status": None,
                     "duplicate_name": False,
-                    "merged": False,
+                    **describe_entity_lifecycle(None),
                     "periods": periods,
                 })
                 continue
@@ -322,9 +371,8 @@ def build_coverage(
                     "entity_type": entity.get("entity_type"),
                     "entity_key": entity.get("entity_key"),
                     "parent_entity_id": entity.get("parent_entity_id"),
-                    "registry_status": entity.get("registry_status"),
                     "duplicate_name": len(matches) > 1,
-                    "merged": False,
+                    **describe_entity_lifecycle(entity),
                     "periods": periods,
                 })
         buckets.append({
@@ -394,10 +442,15 @@ def build_compare(
             "entity_id": entity.get("entity_id"),
             "entity_type": entity.get("entity_type"),
             "resolved": entity["resolved"],
+            "registry_status": entity.get("registry_status"),
+            "merged": entity.get("merged", False),
+            "merged_into_entity_id": entity.get("merged_into_entity_id"),
+            "lifecycle_note": entity.get("lifecycle_note"),
             "kind": kind,
             "gap_reason": cell["reason"] if cell["kind"] == "gap" else None,
             "note": note,
             "adopted_statement_types": adopted_types,
+            "repeated_row_notes": repeated_candidate_notes(matched),
             "rows": matched,
             "entity_total": None,
             "mixed_statement_types": cell.get("mixed_statement_types", False),
@@ -505,14 +558,28 @@ def build_entity_detail(
         for period in COMPARISON_DATES:
             period_cell = found["periods"][period]
             if period_cell["kind"] == "gap":
-                cells[period] = {"kind": "gap", "reason": period_cell["reason"], "rows": [], "total": None}
+                cells[period] = {
+                    "kind": "gap",
+                    "reason": period_cell["reason"],
+                    "rows": [],
+                    "repeated_row_notes": [],
+                    "total": None,
+                }
             elif period in item["cells"]:
-                cells[period] = {"kind": "rows", "reason": None, "rows": item["cells"][period], "total": None}
+                period_rows = item["cells"][period]
+                cells[period] = {
+                    "kind": "rows",
+                    "reason": None,
+                    "rows": period_rows,
+                    "repeated_row_notes": repeated_candidate_notes(period_rows),
+                    "total": None,
+                }
             else:
                 cells[period] = {
                     "kind": "absent",
                     "reason": "此期沒有此候選。這不是 0。",
                     "rows": [],
+                    "repeated_row_notes": [],
                     "total": None,
                 }
         pivot.append({**item, "cells": cells, "total": None})
@@ -528,7 +595,9 @@ def build_entity_detail(
         "parent_entity_id": found.get("parent_entity_id"),
         "registry_status": found.get("registry_status"),
         "duplicate_name": found.get("duplicate_name"),
-        "merged": False,
+        "merged": found.get("merged", False),
+        "merged_into_entity_id": found.get("merged_into_entity_id"),
+        "lifecycle_note": found.get("lifecycle_note"),
         "periods": found["periods"],
         "selected_date": date,
         "selected_statements": selected.get("statements") or [],

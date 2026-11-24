@@ -78,6 +78,7 @@
             {{ entity.canonical_zh }}
             {% endif %}
             {% if entity.duplicate_name %}<div class="note">同一 canonical_zh 有多於一筆實體，沒有合併。</div>{% endif %}
+            {% if entity.lifecycle_note %}<div class="note">{{ entity.lifecycle_note }}</div>{% endif %}
             {% if not entity.resolved %}<div class="note">庫內未找到此名稱。</div>{% endif %}
             <div class="meta">{{ entity.entity_key or "" }}{% if entity.parent_entity_id %} · parent {{ entity.parent_entity_id }}{% endif %}</div>
           </td>

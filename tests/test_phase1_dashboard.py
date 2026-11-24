@@ -55,7 +55,14 @@ POISONS = (
 )
 
 
-def _entity(entity_id: str, name: str, entity_type: str = "bank") -> dict:
+def _entity(
+    entity_id: str,
+    name: str,
+    entity_type: str = "bank",
+    *,
+    registry_status: str = "proposed",
+    merged_into_entity_id: str | None = None,
+) -> dict:
     return {
         "entity_id": entity_id,
         "entity_key": f"bank:{entity_id}",
@@ -64,7 +71,8 @@ def _entity(entity_id: str, name: str, entity_type: str = "bank") -> dict:
         "canonical_pt": None,
         "canonical_en": None,
         "parent_entity_id": None,
-        "registry_status": "proposed",
+        "registry_status": registry_status,
+        "merged_into_entity_id": merged_into_entity_id,
     }
 
 
@@ -385,6 +393,119 @@ class RuleTests(unittest.TestCase):
         self.assertIn("沒有 balance_sheet", html)
         self.assertNotIn("此期沒有此候選", html)
 
+    def test_entity_lifecycle_stays_visible(self) -> None:
+        name = LEGAL_BANKS[0]
+        model = build_coverage(
+            entities=[
+                _entity("live", name, registry_status="approved"),
+                _entity("old", name, registry_status="merged", merged_into_entity_id="live"),
+                _entity("gone", LEGAL_BANKS[1], registry_status="retired"),
+                _entity("out", LEGAL_BANKS[2], registry_status="excluded"),
+            ],
+            statements=[],
+            rows_by_statement={},
+        )
+        legal = next(bucket for bucket in model["buckets"] if bucket["id"] == "legal")
+        by_id = {item["entity_id"]: item for item in legal["entities"] if item["entity_id"]}
+        self.assertFalse(by_id["live"]["merged"])
+        self.assertIsNone(by_id["live"]["lifecycle_note"])
+        self.assertTrue(by_id["old"]["merged"])
+        self.assertEqual(by_id["old"]["merged_into_entity_id"], "live")
+        self.assertIn("merged", by_id["old"]["lifecycle_note"])
+        self.assertIn("retired", by_id["gone"]["lifecycle_note"])
+        self.assertIn("excluded", by_id["out"]["lifecycle_note"])
+        self.assertFalse(by_id["gone"]["merged"])
+
+    def test_repeated_candidate_rows_keep_labels_and_value_state(self) -> None:
+        name = LEGAL_BANKS[0]
+        statement = _statement("e", name, "2026-06-30")
+
+        def row(order: int, label: str, state: str, raw: str) -> dict:
+            return {
+                "statement_id": statement["statement_id"],
+                "statement_order": order,
+                "statement_type": "balance_sheet",
+                "label": label,
+                "label_raw": raw,
+                "row_type": "heading" if order == 1 else "item",
+                "mapping_status": "proposed",
+                "candidates": [{
+                    "item_key": "user:總計",
+                    "item_zh": "總計",
+                    "item_status": "approved",
+                    "merged_into_standard_item_id": None,
+                }],
+                "debit_state": state,
+                "credit_state": "blank",
+                "debit": {"text": None, "reading": None, "minor": None, "note": None},
+                "credit": {"text": None, "reading": None, "minor": None, "note": None},
+                "debit_raw": "???",
+                "credit_raw": None,
+                "currency": "MOP",
+                "unit_scale": 1,
+                "amount_decimal_places": None,
+                "reporting_scope": "bank",
+                "match_methods": [],
+                "draft_warnings": [],
+                "catalogue_current": True,
+                "presented_as_approved_scale": False,
+                "share": {"available": False, "value": None, "reason": "未計算"},
+            }
+
+        model = build_compare(
+            bucket_id="legal",
+            statement_date="2026-06-30",
+            item_key="user:總計",
+            display="amount",
+            entities=[_entity("e", name)],
+            statements=[statement],
+            rows_by_statement={
+                statement["statement_id"]: [
+                    row(1, "總計", "unreadable", "總額"),
+                    row(2, "總顏", "dash", "總顏"),
+                ],
+            },
+        )
+        cell = next(item for item in model["entities"] if item["canonical_zh"] == name)
+        self.assertEqual(cell["kind"], "values")
+        self.assertEqual(len(cell["rows"]), 2)
+        self.assertTrue(any("2 行" in note and "未相加" in note for note in cell["repeated_row_notes"]))
+        context = {
+            "not_comparable": "未可安全比較",
+            "window": list(COMPARISON_DATES),
+            "buckets": [],
+            "page_warnings": [],
+            "mapping_statuses": (),
+            "aggregate": {"reason": "不加總"},
+            "model": {
+                "bucket": "legal",
+                "bucket_rule": "不可相加",
+                "statement_date": "2026-06-30",
+                "statement_type": "balance_sheet",
+                "display": "share",
+                "needs_item": False,
+                "scale_note": "",
+                "draft_warnings": [],
+                "available_items": [],
+                "share": {"reason": "未計算"},
+                "item_key": "user:總計",
+                "entities": [cell],
+            },
+        }
+        html = TEMPLATES.get_template("compare.html").render(context)
+        self.assertIn("同一報表有 2 行對應此候選，未相加。", html)
+        self.assertIn("row_type", html)
+        self.assertIn("heading", html)
+        self.assertIn("unreadable", html)
+        self.assertIn("dash", html)
+        self.assertIn("label_raw", html)
+        self.assertIn("未計算", html)
+        self.assertIn("庫內金額（追溯）", html)
+        after_header = html.split("庫內金額（追溯）", 1)[1]
+        before_amounts, amounts = after_header.split("<td>未計算</td>", 1)
+        self.assertNotIn("unreadable", before_amounts)
+        self.assertIn("unreadable", amounts)
+
 
 class HostAndDatabaseTests(unittest.TestCase):
     def test_only_loopback_is_accepted(self) -> None:
@@ -441,6 +562,30 @@ class HostAndDatabaseTests(unittest.TestCase):
         allowed = client.get("/health", headers={"Host": "127.0.0.1"})
         self.assertEqual(allowed.status_code, 400)
         self.assertIn("找不到資料庫", allowed.json()["error"])
+
+    def test_corrupt_or_locked_database_is_a_dashboard_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = Path(tmp) / "broken.sqlite"
+            broken.write_bytes(b"this is not sqlite")
+            with self.assertRaises(DashboardDataError) as corrupt:
+                connect_readonly(broken)
+            self.assertIn("不是可讀的 SQLite", str(corrupt.exception))
+            client = TestClient(create_app(broken), base_url="http://127.0.0.1")
+            response = client.get("/health")
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("不是可讀的 SQLite", response.json()["error"])
+
+            locked = Path(tmp) / "locked.sqlite"
+            sqlite3.connect(locked).close()
+            writer = sqlite3.connect(locked)
+            try:
+                writer.execute("BEGIN EXCLUSIVE")
+                with self.assertRaises(DashboardDataError) as held:
+                    connect_readonly(locked)
+                self.assertIn("鎖住", str(held.exception))
+            finally:
+                writer.rollback()
+                writer.close()
 
     def test_v5_path_is_refused_before_it_is_read_as_analysis(self) -> None:
         self.assertTrue(is_v5_analysis_path(Path("archive/database/macau_balancete.sqlite")))
@@ -524,6 +669,13 @@ class DashboardFixtureTests(unittest.TestCase):
         self.assertIsNone(body["aggregate"]["legal_bank_sum"])
         self.assertIsNone(body["aggregate"]["all_fifteen_sum"])
         self.assertGreater(usable, 0)
+        connection = connect_readonly(self.db_path)
+        try:
+            sample = queries.fetch_entities(connection)[0]
+        finally:
+            connection.close()
+        self.assertIn("merged_into_entity_id", sample)
+        self.assertIsNone(sample["merged_into_entity_id"])
 
     def test_coverage_groups_and_gaps_come_from_the_database(self) -> None:
         body = self.client.get("/api/coverage").json()

@@ -86,7 +86,8 @@
         <th>canonical_zh</th>
         <th>entity_type</th>
         <th>狀態</th>
-        <th>{% if model.display == 'share' %}佔比{% else %}金額 minor{% endif %}</th>
+        {% if model.display == 'share' %}<th>佔比</th>{% endif %}
+        <th>{% if model.display == 'share' %}庫內金額（追溯）{% else %}金額與來源{% endif %}</th>
       </tr>
     </thead>
     <tbody>
@@ -98,6 +99,7 @@
           {% else %}
           {{ entity.canonical_zh }}
           {% endif %}
+          {% if entity.lifecycle_note %}<div class="note">{{ entity.lifecycle_note }}</div>{% endif %}
         </td>
         <td>{{ entity.entity_type or "—" }}</td>
         <td>
@@ -107,21 +109,26 @@
           {% elif entity.kind == 'values' %}並排
           {% else %}{{ entity.kind }}{% endif %}
         </td>
+        {% if model.display == 'share' %}
+        <td>未計算</td>
+        {% endif %}
         <td>
-          {% if model.display == 'share' %}
-          <div>未計算</div>
-          <div class="meta">庫內金額只作追溯，不是佔比。</div>
-          {% endif %}
+          {% for note in entity.repeated_row_notes %}<div class="note">{{ note }}</div>{% endfor %}
           {% for row in entity.rows %}
           <div>
+            <div>{{ row.label or "—" }}{% if row.label_raw and row.label_raw != row.label %} · label_raw {{ row.label_raw }}{% endif %}</div>
+            <div class="meta">row_type {{ row.row_type or "—" }} · order {{ row.statement_order if row.statement_order is not none else "—" }}</div>
             <span class="pill pill-{{ row.mapping_status }}">{{ row.mapping_status }}</span>
-            {% if model.display != 'share' %}
-            <span class="amount">{{ row.debit.text if row.debit.text is not none else "—" }} / {{ row.credit.text if row.credit.text is not none else "—" }}</span>
-            {% else %}
-            <span class="meta amount">minor {{ row.debit.text if row.debit.text is not none else "—" }} / {{ row.credit.text if row.credit.text is not none else "—" }}</span>
-            {% endif %}
+            <div>
+              {% with state=row.debit_state, text=row.debit.text, reading=row.debit.reading, raw=row.debit_raw %}
+              {% include "value.html" %}
+              {% endwith %}
+              /
+              {% with state=row.credit_state, text=row.credit.text, reading=row.credit.reading, raw=row.credit_raw %}
+              {% include "value.html" %}
+              {% endwith %}
+            </div>
             <div class="meta">{{ row.currency or "幣別未記載" }} · unit_scale {{ row.unit_scale if row.unit_scale is not none else "未記載" }} · {{ row.reporting_scope }} · {{ row.match_methods|join(", ") if row.match_methods else "無 method" }}</div>
-            {% if row.debit.reading and model.display != 'share' %}<div class="meta">顯示 {{ row.debit.reading }} / {{ row.credit.reading or "—" }}。{{ row.debit.note }}</div>{% endif %}
             {% if row.mapping_status == 'approved' %}<div class="meta">不是已核准規模</div>{% endif %}
             {% if row.catalogue_current is sameas false %}<div class="note">mapping 已保留。科目不是現行有效項，兩者分開。</div>{% endif %}
             {% for candidate in row.candidates if candidate.item_key == model.item_key %}

@@ -1,6 +1,7 @@
 """Local phase-1 inspection app. Read-only. No authentication."""
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -9,11 +10,12 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from phase1_dashboard.db import DashboardDataError, open_readonly
+from phase1_dashboard.db import DashboardDataError, friendly_db_error, open_readonly
 from phase1_dashboard.present import ScopeError, aggregate_placeholder
 from phase1_dashboard.scope import (
     BUCKETS,
     COMPARISON_DATES,
+    MAPPING_STATUSES,
     NOT_SAFELY_COMPARABLE,
     PAGE_WARNINGS,
 )
@@ -21,7 +23,6 @@ from phase1_dashboard import service
 
 HERE = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(HERE / "templates"))
-MAPPING_STATUS_ORDER = ("approved", "proposed", "insert-direct", "unmapped")
 ALLOWED_HOST_NAMES = frozenset({"127.0.0.1", "localhost"})
 
 
@@ -73,6 +74,13 @@ def create_app(db_path: Path | str) -> FastAPI:
     async def data_error(_: Request, exc: DashboardDataError) -> JSONResponse:
         return JSONResponse({"error": str(exc), "read_only": True}, status_code=400)
 
+    @app.exception_handler(sqlite3.DatabaseError)
+    async def sqlite_error(_: Request, exc: sqlite3.DatabaseError) -> JSONResponse:
+        return JSONResponse(
+            {"error": friendly_db_error(exc), "read_only": True},
+            status_code=400,
+        )
+
     @app.exception_handler(ScopeError)
     async def scope_error(_: Request, exc: ScopeError) -> JSONResponse:
         return JSONResponse(
@@ -86,7 +94,7 @@ def create_app(db_path: Path | str) -> FastAPI:
             "buckets": BUCKETS,
             "page_warnings": PAGE_WARNINGS,
             "not_comparable": NOT_SAFELY_COMPARABLE,
-            "mapping_statuses": MAPPING_STATUS_ORDER,
+            "mapping_statuses": MAPPING_STATUSES,
             "aggregate": aggregate_placeholder(),
         }
 

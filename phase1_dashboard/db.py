@@ -37,6 +37,16 @@ def is_v5_analysis_path(path: Path) -> bool:
     return Path(path).name == V5_FILENAME
 
 
+def friendly_db_error(exc: BaseException) -> str:
+    """Turn a SQLite failure into a short read-only message."""
+    text = str(exc).lower()
+    if "locked" in text:
+        return "資料庫正被其他程式鎖住。本檢視只讀，請稍後再打開。"
+    if "not a database" in text or "malformed" in text or "disk image" in text:
+        return "這不是可讀的 SQLite 檔案。"
+    return "無法以唯讀方式開啟資料庫。"
+
+
 def connect_readonly(path: Path | str) -> sqlite3.Connection:
     """Open a V3 SQLite file with mode=ro and query_only."""
     target = Path(path).expanduser()
@@ -48,14 +58,20 @@ def connect_readonly(path: Path | str) -> sqlite3.Connection:
         raise DashboardDataError(f"找不到資料庫檔案：{target}")
     resolved = target.resolve()
     uri = "file:" + quote(resolved.as_posix(), safe="/") + "?mode=ro"
-    connection = sqlite3.connect(uri, uri=True)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA query_only = ON")
+    connection: sqlite3.Connection | None = None
     try:
+        connection = sqlite3.connect(uri, uri=True, timeout=1.0)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only = ON")
         assert_v3_readable(connection)
-    except Exception:
-        connection.close()
+    except DashboardDataError:
+        if connection is not None:
+            connection.close()
         raise
+    except sqlite3.DatabaseError as exc:
+        if connection is not None:
+            connection.close()
+        raise DashboardDataError(friendly_db_error(exc)) from exc
     return connection
 
 

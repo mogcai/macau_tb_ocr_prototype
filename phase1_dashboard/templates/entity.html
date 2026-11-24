@@ -4,7 +4,8 @@
 <p><a href="/">返回覆蓋</a></p>
 <h2>{{ model.canonical_zh }}</h2>
 <p class="meta">{{ model.bucket_title }} · {{ model.bucket_rule }}</p>
-<p class="meta">entity_type {{ model.entity_type or "—" }} · registry {{ model.registry_status or "—" }} · parent {{ model.parent_entity_id or "空" }}</p>
+<p class="meta">entity_type {{ model.entity_type or "—" }} · registry {{ model.registry_status or "—" }} · parent {{ model.parent_entity_id or "空" }}{% if model.merged_into_entity_id %} · 併入 {{ model.merged_into_entity_id }}{% endif %}</p>
+{% if model.lifecycle_note %}<p class="note">{{ model.lifecycle_note }}</p>{% endif %}
 {% if model.duplicate_name %}<p class="note">同一 canonical_zh 有多於一筆實體。這一頁只顯示這一筆，沒有合併。</p>{% endif %}
 
 <div class="cards">
@@ -47,8 +48,19 @@
           {% elif cell.kind == 'absent' %}
           <span class="empty">沒有此候選</span>
           {% else %}
+          {% for note in cell.repeated_row_notes %}<div class="note">{{ note }}</div>{% endfor %}
           {% for row in cell.rows %}
-          <div class="amount">{{ row.debit.text if row.debit.text is not none else "—" }} / {{ row.credit.text if row.credit.text is not none else "—" }}</div>
+          <div>{{ row.label or "—" }}{% if row.label_raw and row.label_raw != row.label %} · label_raw {{ row.label_raw }}{% endif %}</div>
+          <div class="meta">row_type {{ row.row_type or "—" }} · order {{ row.statement_order if row.statement_order is not none else "—" }}</div>
+          <div>
+            {% with state=row.debit_state, text=row.debit.text, reading=row.debit.reading, raw=row.debit_raw %}
+            {% include "value.html" %}
+            {% endwith %}
+            /
+            {% with state=row.credit_state, text=row.credit.text, reading=row.credit.reading, raw=row.credit_raw %}
+            {% include "value.html" %}
+            {% endwith %}
+          </div>
           <span class="pill pill-{{ row.mapping_status }}">{{ row.mapping_status }}</span>
           {% if row.mapping_status == 'approved' %}<div class="meta">Workbench 已標記，不是財務接受</div>{% endif %}
           {% endfor %}

@@ -1,0 +1,9 @@
+{% if state and state != 'amount' %}
+<span class="pill">{{ state }}</span>
+{% elif text %}
+<span class="amount">{{ text }}</span>
+{% if reading %}<div class="meta">{{ reading }}</div>{% endif %}
+{% else %}
+<span class="pill">blank</span>
+{% endif %}
+{% if raw %}<div class="meta">raw {{ raw }}</div>{% endif %}
