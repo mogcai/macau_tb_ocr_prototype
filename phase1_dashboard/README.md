@@ -14,7 +14,7 @@ Tony 在自己電腦上打開、對着自己的 V3 SQLite 看已採納首批機�
 
 「加總後睇澳門銀行整體情況」這個目標仍在，但現在把已採納名單相加並不成立，所以加總位置是封着的，不計算。
 
-每一行都顯示 `mapping_status`：`approved`、`proposed`、`insert-direct`、`unmapped`。`approved` 是 Workbench 標記，不是財務接受。`v_unmapped = 0` 只表示幾乎每行都有候選，不是已經可以安全跨行比較。金額與佔比的欄位都在，但具體指標尚未決定，本版不計算佔比，也不把 `user:總計` 當成總資產。
+每一行都顯示 `mapping_status`：`approved`、`proposed`、`insert-direct`、`unmapped`。`approved` 是 Workbench 標記，不是財務接受，也不等於科目仍然有效。科目的 `item_status`（以及 `merged_into_standard_item_id`）另外顯示；`retired` 或 `merged` 的對照，包括人工 insert，仍然列出，不會被靜默拿掉。`v_unmapped = 0` 只表示幾乎每行都有候選，不是已經可以安全跨行比較。金額與佔比的欄位都在，但具體指標尚未決定，本版不計算佔比，也不把 `user:總計` 當成總資產。跨行對照會分開四種情況：沒有 adopted 報表、有 adopted 但沒有 balance_sheet、有 balance_sheet 但沒有所選候選、候選有金額。只有損益表的一期不會寫成「此期沒有此候選」。
 
 ## 安裝
 
@@ -43,7 +43,7 @@ export PHASE1_DASHBOARD_DB=/你的路徑/macau_balancete_v3.sqlite
 python -m phase1_dashboard
 ```
 
-然後打開 <http://127.0.0.1:8010/>。預設埠是 `8010`，避免撞上 Workbench 的 `8000`。`--host` 只接受 `127.0.0.1`（`localhost` 與 `::1` 會改綁到 `127.0.0.1`）。其他地址會直接拒絕。
+然後打開 <http://127.0.0.1:8010/>。預設埠是 `8010`，避免撞上 Workbench 的 `8000`。`--host` 只接受 `127.0.0.1`（`localhost` 與 `::1` 會改綁到 `127.0.0.1`）。其他地址會直接拒絕。請求的 `Host` 只接受 `127.0.0.1` 或 `localhost`，可以帶一個埠號；其他 `Host` 回 HTTP 400，避免 DNS rebinding 讀到這份沒有登入的本機資料。
 
 資料庫以 `mode=ro` 與 `PRAGMA query_only` 打開。請指向 V3。檔名 `macau_balancete.sqlite`（包括 `archive/database/` 裡的 V5）會被拒絕，不會拿來當分析資料。
 

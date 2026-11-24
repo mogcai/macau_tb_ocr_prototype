@@ -53,13 +53,14 @@
   {% if model.available_items %}
   <table>
     <thead>
-      <tr><th>item_key</th><th>中文</th><th>行數</th><th>approved</th><th>proposed</th><th>insert-direct</th><th>unmapped</th></tr>
+      <tr><th>item_key</th><th>中文</th><th>科目生命週期</th><th>行數</th><th>approved</th><th>proposed</th><th>insert-direct</th><th>unmapped</th></tr>
     </thead>
     <tbody>
       {% for item in model.available_items %}
       <tr>
         <td><a href="/compare?bucket={{ model.bucket }}&statement_date={{ model.statement_date }}&item_key={{ item.item_key|urlencode }}&display={{ model.display }}">{{ item.item_key }}</a></td>
         <td>{{ item.item_zh or "—" }}</td>
+        <td>{{ item.item_status or "—" }}{% if item.merged_into_standard_item_id %} · 併入 {{ item.merged_into_standard_item_id }}{% endif %}{% if item.catalogue_current is sameas false %} · 不是現行有效{% endif %}</td>
         <td>{{ item.row_count }}</td>
         <td>{{ item.mapping_counts.approved }}</td>
         <td>{{ item.mapping_counts.proposed }}</td>
@@ -72,6 +73,9 @@
   {% else %}
   <p>這一期這個分組沒有可用資產負債表上的候選標準項。</p>
   {% endif %}
+  {% for entity in model.entities if entity.kind == 'no_balance_sheet' %}
+  <p class="note">{{ entity.canonical_zh }}：{{ entity.note }}</p>
+  {% endfor %}
 </section>
 {% else %}
 <div class="scroll">
@@ -98,8 +102,10 @@
         <td>{{ entity.entity_type or "—" }}</td>
         <td>
           {% if entity.kind == 'gap' %}<strong>缺口</strong><div class="meta">{{ entity.gap_reason }}</div>
+          {% elif entity.kind == 'no_balance_sheet' %}<strong>沒有 balance_sheet</strong><div class="meta">{{ entity.note }}</div>
           {% elif entity.kind == 'absent' %}<span class="empty">{{ entity.note }}</span>
-          {% else %}並排{% endif %}
+          {% elif entity.kind == 'values' %}並排
+          {% else %}{{ entity.kind }}{% endif %}
         </td>
         <td>
           {% if model.display == 'share' %}
@@ -117,6 +123,10 @@
             <div class="meta">{{ row.currency or "幣別未記載" }} · unit_scale {{ row.unit_scale if row.unit_scale is not none else "未記載" }} · {{ row.reporting_scope }} · {{ row.match_methods|join(", ") if row.match_methods else "無 method" }}</div>
             {% if row.debit.reading and model.display != 'share' %}<div class="meta">顯示 {{ row.debit.reading }} / {{ row.credit.reading or "—" }}。{{ row.debit.note }}</div>{% endif %}
             {% if row.mapping_status == 'approved' %}<div class="meta">不是已核准規模</div>{% endif %}
+            {% if row.catalogue_current is sameas false %}<div class="note">mapping 已保留。科目不是現行有效項，兩者分開。</div>{% endif %}
+            {% for candidate in row.candidates if candidate.item_key == model.item_key %}
+            <div class="meta">科目生命週期 {{ candidate.item_status or "未記載" }}{% if candidate.merged_into_standard_item_id %} · 併入 {{ candidate.merged_into_standard_item_id }}{% endif %}</div>
+            {% endfor %}
             {% if row.mapping_status == 'proposed' %}<div class="note">proposed，不可當成已核准規模或排名。</div>{% endif %}
             {% for warning in row.draft_warnings %}<div class="note">{{ warning }}</div>{% endfor %}
           </div>

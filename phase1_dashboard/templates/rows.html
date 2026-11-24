@@ -27,11 +27,13 @@
       <td>
         <span class="pill pill-{{ row.mapping_status }}">{{ row.mapping_status }}</span>
         {% if row.mapping_status == 'approved' %}<div class="meta">Workbench 已標記，不是財務接受</div>{% endif %}
+        {% if row.catalogue_current is sameas false %}<div class="note">mapping 已保留。科目不是現行有效項，兩者分開。</div>{% endif %}
         {% if row.also_proposed %}<div class="note">同一行仍有 proposed{% if row.proposed_methods %}（{{ row.proposed_methods|join(", ") }}）{% endif %}。</div>{% endif %}
       </td>
       <td>
         {% for candidate in row.candidates %}
         <div>{{ candidate.item_key }} <span class="meta">{{ candidate.item_zh or "" }}</span></div>
+        <div class="meta">科目生命週期 {{ candidate.item_status or "未記載" }}{% if candidate.merged_into_standard_item_id %} · 併入 {{ candidate.merged_into_standard_item_id }}{% endif %}</div>
         {% else %}
         <span class="empty">unmapped</span>
         {% endfor %}

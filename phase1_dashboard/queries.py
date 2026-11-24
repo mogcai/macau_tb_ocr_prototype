@@ -145,7 +145,9 @@ def fetch_mappings(
                m.standard_item_id,
                si.item_key,
                si.canonical_zh AS item_zh,
-               si.canonical_pt AS item_pt
+               si.canonical_pt AS item_pt,
+               si.item_status,
+               si.merged_into_standard_item_id
         FROM statement_row_mappings m
         JOIN standard_items si ON si.standard_item_id = m.standard_item_id
         WHERE m.statement_row_id IN ({placeholders})
@@ -166,7 +168,9 @@ def fetch_inserts(
                a.label_normalized,
                si.item_key,
                si.canonical_zh AS item_zh,
-               si.canonical_pt AS item_pt
+               si.canonical_pt AS item_pt,
+               si.item_status,
+               si.merged_into_standard_item_id
         FROM statement_row_adjustments a
         LEFT JOIN standard_items si ON si.standard_item_id = a.standard_item_id
         WHERE a.adjustment_type = 'insert'

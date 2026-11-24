@@ -22,6 +22,31 @@ from phase1_dashboard import service
 HERE = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(HERE / "templates"))
 MAPPING_STATUS_ORDER = ("approved", "proposed", "insert-direct", "unmapped")
+ALLOWED_HOST_NAMES = frozenset({"127.0.0.1", "localhost"})
+
+
+def host_header_allowed(value: str | None) -> bool:
+    """Allow only loopback names, with at most one numeric port.
+
+    DNS rebinding can point a public name at 127.0.0.1. The socket is already
+    loopback-only; this rejects any Host header that is not 127.0.0.1 or
+    localhost, so a rebound name cannot read the unauthenticated data.
+    """
+    if value is None:
+        return False
+    host = value.strip().lower()
+    if not host or any(ch.isspace() for ch in host):
+        return False
+    if any(ch in host for ch in "@/\\?#[]"):
+        return False
+    name, separator, port = host.rpartition(":")
+    if separator:
+        if not port.isdigit() or not 1 <= int(port) <= 65535:
+            return False
+        hostname = name
+    else:
+        hostname = host
+    return hostname in ALLOWED_HOST_NAMES
 
 
 def create_app(db_path: Path | str) -> FastAPI:
@@ -31,6 +56,14 @@ def create_app(db_path: Path | str) -> FastAPI:
 
     @app.middleware("http")
     async def no_store(request: Request, call_next):
+        if not host_header_allowed(request.headers.get("host")):
+            return JSONResponse(
+                {
+                    "error": "Host 只接受 127.0.0.1 或 localhost。",
+                    "read_only": True,
+                },
+                status_code=400,
+            )
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Phase1-Dashboard"] = "read-only"

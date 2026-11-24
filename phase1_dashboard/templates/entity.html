@@ -34,6 +34,8 @@
         <td>
           <div>{{ item.item_key }}</div>
           <div class="meta">{{ item.item_zh or "" }}</div>
+          {% if item.item_status %}<div class="meta">科目生命週期 {{ item.item_status }}{% if item.merged_into_standard_item_id %} · 併入 {{ item.merged_into_standard_item_id }}{% endif %}</div>{% endif %}
+          {% if item.catalogue_current is sameas false %}<div class="note">科目不是現行有效項。對照仍保留。</div>{% endif %}
           {% for warning in item.draft_warnings %}<div class="note">{{ warning }}</div>{% endfor %}
         </td>
         {% for date in model.window %}

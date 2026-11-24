@@ -15,7 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from phase1_dashboard.app import create_app  # noqa: E402
+from phase1_dashboard.app import TEMPLATES, create_app, host_header_allowed  # noqa: E402
+from phase1_dashboard import queries  # noqa: E402
 from phase1_dashboard.db import DashboardDataError, connect_readonly, is_v5_analysis_path  # noqa: E402
 from phase1_dashboard.present import (  # noqa: E402
     aggregate_placeholder,
@@ -67,14 +68,25 @@ def _entity(entity_id: str, name: str, entity_type: str = "bank") -> dict:
     }
 
 
-def _statement(entity_id: str, name: str, date: str, *, adopted: bool = True, status: str = "active") -> dict:
+def _statement(
+    entity_id: str,
+    name: str,
+    date: str,
+    *,
+    adopted: bool = True,
+    status: str = "active",
+    statement_type: str = "balance_sheet",
+    statement_id: str | None = None,
+) -> dict:
     return {
-        "statement_id": f"{entity_id}-{date}",
+        "statement_id": statement_id or (
+            f"{entity_id}-{date}" if statement_type == "balance_sheet" else f"{entity_id}-{date}-{statement_type}"
+        ),
         "entity_id": entity_id,
         "canonical_zh": name,
         "entity_type": "branch",
         "statement_date": date,
-        "statement_type": "balance_sheet",
+        "statement_type": statement_type,
         "statement_status": status if adopted else "proposed",
         "reporting_scope": "branch",
         "currency": "MOP",
@@ -144,16 +156,34 @@ class RuleTests(unittest.TestCase):
         approved = classify_row(
             "r1",
             [
-                {"statement_row_id": "r1", "mapping_status": "approved", "match_method": "manual", "item_key": "user:現金", "item_zh": "現金"},
-                {"statement_row_id": "r1", "mapping_status": "proposed", "match_method": "alias_exact", "item_key": "user:現金", "item_zh": "現金"},
-                {"statement_row_id": "r1", "mapping_status": "rejected", "match_method": "fuzzy", "item_key": "user:其他", "item_zh": "其他"},
+                {"statement_row_id": "r1", "mapping_status": "approved", "match_method": "manual", "item_key": "user:現金", "item_zh": "現金", "item_status": "approved", "merged_into_standard_item_id": None},
+                {"statement_row_id": "r1", "mapping_status": "proposed", "match_method": "alias_exact", "item_key": "user:現金", "item_zh": "現金", "item_status": "approved"},
+                {"statement_row_id": "r1", "mapping_status": "rejected", "match_method": "fuzzy", "item_key": "user:其他", "item_zh": "其他", "item_status": "retired"},
             ],
             None,
         )
         self.assertEqual(approved["mapping_status"], "approved")
         self.assertTrue(approved["also_proposed"])
+        self.assertTrue(approved["catalogue_current"])
         self.assertFalse(approved["presented_as_approved_scale"])
         self.assertIsNone(approved["rank"])
+        retired = classify_row(
+            "r5",
+            [{
+                "statement_row_id": "r5",
+                "mapping_status": "approved",
+                "match_method": "manual",
+                "item_key": "user:已退役",
+                "item_status": "retired",
+                "merged_into_standard_item_id": None,
+                "standard_item_id": "si-retired",
+            }],
+            None,
+        )
+        self.assertEqual(retired["mapping_status"], "approved")
+        self.assertFalse(retired["catalogue_current"])
+        self.assertEqual(retired["candidates"][0]["item_status"], "retired")
+        self.assertFalse(retired["presented_as_approved_scale"])
         proposed = classify_row(
             "r2",
             [{"statement_row_id": "r2", "mapping_status": "proposed", "match_method": "bilingual_exact", "item_key": "user:總計", "item_zh": "總計"}],
@@ -170,9 +200,18 @@ class RuleTests(unittest.TestCase):
         inserted = classify_row(
             "r4",
             [],
-            {"standard_item_id": "si", "item_key": "user:現金", "item_zh": "現金"},
+            {
+                "standard_item_id": "si-merged",
+                "item_key": "user:已合併",
+                "item_zh": "已合併",
+                "item_status": "merged",
+                "merged_into_standard_item_id": "si-cash",
+            },
         )
         self.assertEqual(inserted["mapping_status"], "insert-direct")
+        self.assertFalse(inserted["catalogue_current"])
+        self.assertEqual(inserted["candidates"][0]["item_status"], "merged")
+        self.assertEqual(inserted["candidates"][0]["merged_into_standard_item_id"], "si-cash")
         model = build_coverage(
             entities=[_entity("e", LEGAL_BANKS[0])],
             statements=[_statement("e", LEGAL_BANKS[0], "2026-06-30")],
@@ -239,6 +278,113 @@ class RuleTests(unittest.TestCase):
         self.assertIn("香港上海滙豐銀行有限公司澳門分行", FOREIGN_BRANCHES)
         self.assertNotIn("澳門華人銀行股份有限公司", ADOPTED_NAMES)
 
+    def test_compare_distinguishes_missing_statement_balance_sheet_and_candidate(self) -> None:
+        absent_name, income_name, sheet_name, value_name = LEGAL_BANKS[:4]
+        income_only = _statement("income", income_name, "2026-06-30", statement_type="income_statement")
+        sheet = _statement("sheet", sheet_name, "2026-06-30")
+        sheet_income = _statement("sheet", sheet_name, "2026-06-30", statement_type="income_statement")
+        valued = _statement("valued", value_name, "2026-06-30")
+        income_amount = 919_000_001
+        leaked_from_income = 919_000_002
+        balance_other = 919_000_003
+        balance_hit = 919_000_004
+
+        def candidate(item_key: str, item_status: str = "approved") -> dict:
+            return {
+                "item_key": item_key,
+                "item_zh": item_key,
+                "item_status": item_status,
+                "merged_into_standard_item_id": None,
+                "catalogue_current": item_status == "approved",
+            }
+
+        def row(statement: dict, item_key: str, minor: int, item_status: str = "approved") -> dict:
+            return {
+                "statement_id": statement["statement_id"],
+                "statement_type": statement["statement_type"],
+                "mapping_status": "proposed",
+                "candidates": [candidate(item_key, item_status)],
+                "debit": {"minor": minor, "text": str(minor), "reading": None, "note": None},
+                "credit": {"minor": None, "text": None, "reading": None, "note": None},
+                "currency": "MOP",
+                "unit_scale": 1,
+                "amount_decimal_places": 2,
+                "reporting_scope": "bank",
+                "match_methods": ["bilingual_exact"],
+                "draft_warnings": [],
+                "catalogue_current": item_status == "approved",
+                "presented_as_approved_scale": False,
+                "share": {"available": False, "value": None},
+            }
+
+        model = build_compare(
+            bucket_id="legal",
+            statement_date="2026-06-30",
+            item_key="user:總計",
+            display="amount",
+            entities=[
+                _entity("none", absent_name),
+                _entity("income", income_name),
+                _entity("sheet", sheet_name),
+                _entity("valued", value_name),
+            ],
+            statements=[income_only, sheet, sheet_income, valued],
+            rows_by_statement={
+                income_only["statement_id"]: [row(income_only, "user:總計", income_amount)],
+                sheet["statement_id"]: [row(sheet, "user:現金", balance_other)],
+                sheet_income["statement_id"]: [row(sheet_income, "user:總計", leaked_from_income)],
+                valued["statement_id"]: [row(valued, "user:總計", balance_hit)],
+            },
+        )
+        by_name = {item["canonical_zh"]: item for item in model["entities"]}
+        missing = by_name[absent_name]
+        self.assertEqual(missing["kind"], "gap")
+        self.assertEqual(missing["rows"], [])
+        self.assertEqual(missing["adopted_statement_types"], [])
+        income_only_cell = by_name[income_name]
+        self.assertEqual(income_only_cell["kind"], "no_balance_sheet")
+        self.assertEqual(income_only_cell["adopted_statement_types"], ["income_statement"])
+        self.assertNotIn("此期沒有此候選", income_only_cell["note"])
+        self.assertEqual(income_only_cell["rows"], [])
+        self.assertNotIn(str(income_amount), str(income_only_cell))
+        absent = by_name[sheet_name]
+        self.assertEqual(absent["kind"], "absent")
+        self.assertIn("balance_sheet", absent["adopted_statement_types"])
+        self.assertIn("income_statement", absent["adopted_statement_types"])
+        self.assertIn("此期沒有此候選", absent["note"])
+        self.assertEqual(absent["rows"], [])
+        self.assertNotIn(str(leaked_from_income), str(absent))
+        self.assertNotIn(str(balance_other), str(absent))
+        present = by_name[value_name]
+        self.assertEqual(present["kind"], "values")
+        self.assertEqual([item["debit"]["minor"] for item in present["rows"]], [balance_hit])
+        self.assertIsNone(present["entity_total"])
+        self.assertIsNone(model["column_total"])
+        html = TEMPLATES.get_template("compare.html").render({
+            "not_comparable": "未可安全比較",
+            "window": list(COMPARISON_DATES),
+            "buckets": [],
+            "page_warnings": [],
+            "mapping_statuses": (),
+            "aggregate": {"reason": "不加總"},
+            "model": {
+                "bucket": "legal",
+                "bucket_rule": "不可相加",
+                "statement_date": "2026-06-30",
+                "statement_type": "balance_sheet",
+                "display": "amount",
+                "needs_item": False,
+                "scale_note": "",
+                "draft_warnings": [],
+                "available_items": [],
+                "share": {"reason": "未計算"},
+                "item_key": "user:總計",
+                "entities": [income_only_cell],
+            },
+        })
+        self.assertIn("沒有 balance_sheet", html)
+        self.assertNotIn("此期沒有此候選", html)
+
 
 class HostAndDatabaseTests(unittest.TestCase):
     def test_only_loopback_is_accepted(self) -> None:
@@ -249,6 +395,52 @@ class HostAndDatabaseTests(unittest.TestCase):
             with self.subTest(host=host):
                 with self.assertRaises(SystemExit):
                     resolve_host(host)
+
+    def test_host_header_allows_loopback_names_and_ports_only(self) -> None:
+        for value in (
+            "127.0.0.1",
+            "127.0.0.1:8010",
+            "127.0.0.1:1",
+            "127.0.0.1:65535",
+            "localhost",
+            "localhost:80",
+            "LOCALHOST:8000",
+            "  localhost:8010  ",
+        ):
+            with self.subTest(value=value):
+                self.assertTrue(host_header_allowed(value))
+        for value in (
+            None,
+            "",
+            "evil.example",
+            "evil.example:8010",
+            "127.0.0.1.evil.example",
+            "localhost.evil.example",
+            "0.0.0.0",
+            "0.0.0.0:8010",
+            "[::1]",
+            "[::1]:8010",
+            "127.0.0.1:8010:1",
+            "127.0.0.1:",
+            "localhost:0",
+            "localhost:65536",
+            "localhost:abc",
+            "127.0.0.1:80, evil.example",
+            "user@127.0.0.1",
+        ):
+            with self.subTest(value=value):
+                self.assertFalse(host_header_allowed(value))
+
+    def test_http_rejects_rebound_host_before_reading_the_database(self) -> None:
+        missing = Path(tempfile.mkdtemp()) / "missing.sqlite"
+        client = TestClient(create_app(missing), base_url="http://127.0.0.1")
+        rejected = client.get("/api/coverage", headers={"Host": "evil.example"})
+        self.assertEqual(rejected.status_code, 400)
+        self.assertIn("Host", rejected.json()["error"])
+        self.assertNotIn("canonical_zh", rejected.text)
+        allowed = client.get("/health", headers={"Host": "127.0.0.1"})
+        self.assertEqual(allowed.status_code, 400)
+        self.assertIn("找不到資料庫", allowed.json()["error"])
 
     def test_v5_path_is_refused_before_it_is_read_as_analysis(self) -> None:
         self.assertTrue(is_v5_analysis_path(Path("archive/database/macau_balancete.sqlite")))
@@ -285,7 +477,7 @@ class DashboardFixtureTests(unittest.TestCase):
         cls.tempdir = tempfile.TemporaryDirectory()
         cls.db_path = Path(cls.tempdir.name) / "fixture.sqlite"
         cls.meta = build_fixture(cls.db_path)
-        cls.client = TestClient(create_app(cls.db_path))
+        cls.client = TestClient(create_app(cls.db_path), base_url="http://127.0.0.1")
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -470,6 +662,12 @@ class DashboardFixtureTests(unittest.TestCase):
         self.assertEqual(insert_rows[0]["debit"]["minor"], 50)
         self.assertTrue(insert_rows[0]["insert_without_ocr_label"])
         self.assertEqual(insert_rows[0]["candidates"][0]["item_key"], "user:現金")
+        self.assertEqual(insert_rows[0]["candidates"][0]["item_status"], "approved")
+        self.assertIsNone(insert_rows[0]["candidates"][0]["merged_into_standard_item_id"])
+        self.assertTrue(insert_rows[0]["catalogue_current"])
+        approved = next(row for row in libo["rows"] if row["mapping_status"] == "approved")
+        self.assertEqual(approved["candidates"][0]["item_status"], "approved")
+        self.assertTrue(approved["catalogue_current"])
         gap = self.client.get(f"/api/statements/{self.meta['boc_gap_statement_id']}").json()
         self.assertFalse(gap["usable"])
         self.assertEqual(gap["rows"], [])
@@ -482,6 +680,63 @@ class DashboardFixtureTests(unittest.TestCase):
         self.assertEqual(missing.status_code, 404)
         outsider = self.client.get(f"/api/entities/{self.meta['outsider_entity_id']}")
         self.assertEqual(outsider.status_code, 404)
+
+    def test_retired_and_merged_items_stay_visible(self) -> None:
+        before = hashlib.sha256(self.db_path.read_bytes()).hexdigest()
+        body = self.client.get(f"/api/statements/{self.meta['lifecycle_statement_id']}").json()
+        retired = next(
+            row for row in body["rows"]
+            if row["candidates"] and row["candidates"][0]["item_key"] == "user:已退役"
+        )
+        self.assertEqual(retired["mapping_status"], "approved")
+        self.assertEqual(retired["candidates"][0]["item_status"], "retired")
+        self.assertIsNone(retired["candidates"][0]["merged_into_standard_item_id"])
+        self.assertFalse(retired["catalogue_current"])
+        self.assertFalse(retired["presented_as_approved_scale"])
+        merged = next(
+            row for row in body["rows"]
+            if row["mapping_status"] == "insert-direct"
+        )
+        self.assertEqual(merged["candidates"][0]["item_key"], "user:已合併")
+        self.assertEqual(merged["candidates"][0]["item_status"], "merged")
+        self.assertEqual(merged["candidates"][0]["merged_into_standard_item_id"], "si-cash")
+        self.assertFalse(merged["catalogue_current"])
+        self.assertEqual(merged["debit"]["minor"], 430043)
+        page = self.client.get(f"/statements/{self.meta['lifecycle_statement_id']}")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("user:已退役", page.text)
+        self.assertIn("retired", page.text)
+        self.assertIn("user:已合併", page.text)
+        self.assertIn("merged", page.text)
+        self.assertIn("si-cash", page.text)
+        self.assertIn("科目不是現行有效項", page.text)
+        compared = self.client.get(
+            "/api/compare",
+            params={
+                "bucket": "legal",
+                "statement_date": "2026-09-30",
+                "item_key": "user:已退役",
+            },
+        ).json()
+        taifung = next(item for item in compared["entities"] if item["canonical_zh"] == "大豐銀行股份有限公司")
+        self.assertEqual(taifung["kind"], "values")
+        self.assertEqual(taifung["rows"][0]["candidates"][0]["item_status"], "retired")
+        self.assertFalse(taifung["rows"][0]["catalogue_current"])
+        traced: list[str] = []
+        connection = connect_readonly(self.db_path)
+        try:
+            connection.set_trace_callback(traced.append)
+            queries.fetch_mappings(connection, [retired["statement_row_id"]])
+            queries.fetch_inserts(connection, [self.meta["lifecycle_statement_id"]])
+        finally:
+            connection.close()
+        self.assertTrue(traced)
+        for sql in traced:
+            self.assertTrue(
+                sql.lstrip().upper().startswith("SELECT"),
+                sql,
+            )
+        self.assertEqual(hashlib.sha256(self.db_path.read_bytes()).hexdigest(), before)
 
     def test_same_bank_view_does_not_invent_gap_values_or_mix_statement_types(self) -> None:
         boc = self.client.get(f"/api/entities/{self.meta['boc_entity_id']}?date=2026-03-31").json()
@@ -557,6 +812,13 @@ class DashboardFixtureTests(unittest.TestCase):
         aggregate = self.client.get("/api/aggregate")
         self.assertFalse(aggregate.json()["computed"])
         self.assertIsNone(aggregate.json()["amounts"])
+        for host in ("127.0.0.1", "127.0.0.1:8010", "localhost", "localhost:8010"):
+            response = self.client.get("/health", headers={"Host": host})
+            self.assertEqual(response.status_code, 200, host)
+        for host in ("evil.example", "evil.example:8010", "127.0.0.1.evil.example", "0.0.0.0:8010"):
+            response = self.client.get("/api/coverage", headers={"Host": host})
+            self.assertEqual(response.status_code, 400, host)
+            self.assertNotIn("中國銀行(澳門)股份有限公司", response.text)
         health = self.client.get("/health").json()
         self.assertTrue(health["read_only"])
         self.assertFalse(health["authentication"])

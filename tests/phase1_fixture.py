@@ -90,6 +90,24 @@ class FixtureBuilder:
                 ") VALUES(?,?,?,?,?,?,?,?)",
                 (item_id, key, zh, "approved", pt, "approved", "approved", NOW),
             )
+        c.execute(
+            "INSERT INTO standard_items("
+            "standard_item_id, item_key, canonical_zh, canonical_zh_status, "
+            "canonical_pt, canonical_pt_status, item_status, created_at"
+            ") VALUES(?,?,?,?,?,?,?,?)",
+            ("si-retired", "user:已退役", "已退役", "approved", "RETIRADO", "approved", "retired", NOW),
+        )
+        c.execute(
+            "INSERT INTO standard_items("
+            "standard_item_id, item_key, canonical_zh, canonical_zh_status, "
+            "canonical_pt, canonical_pt_status, item_status, "
+            "merged_into_standard_item_id, created_at"
+            ") VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                "si-merged", "user:已合併", "已合併", "approved", "FUNDIDO", "approved",
+                "merged", "si-cash", NOW,
+            ),
+        )
 
     def add_entity(
         self,
@@ -470,3 +488,12 @@ def _add_usable_rows(builder: FixtureBuilder, name: str, date: str, ids: tuple[s
     if name == "中國工商銀行(澳門)股份有限公司" and date == "2026-09-30":
         builder.add_insert(statement_id, order=2, label="現金", debit_minor=50, item_id="si-cash")
         builder.meta["insert_statement_id"] = statement_id
+    if name == "大豐銀行股份有限公司" and date == "2026-09-30":
+        retired = builder.add_ocr_row(
+            **common, order=2, label="已退役", label_raw="已退役", debit_minor=410041,
+        )
+        builder.add_mapping(retired, item_id="si-retired", status="approved", method="manual")
+        builder.add_insert(
+            statement_id, order=3, label="已合併", debit_minor=430043, item_id="si-merged",
+        )
+        builder.meta["lifecycle_statement_id"] = statement_id

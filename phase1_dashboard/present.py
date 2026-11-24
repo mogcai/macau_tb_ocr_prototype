@@ -122,6 +122,8 @@ def classify_row(
                 "item_key": insert.get("item_key"),
                 "item_zh": insert.get("item_zh"),
                 "item_pt": insert.get("item_pt"),
+                "item_status": insert.get("item_status"),
+                "merged_into_standard_item_id": insert.get("merged_into_standard_item_id"),
             }
         ]
         also_proposed = False
@@ -138,6 +140,7 @@ def classify_row(
         "proposed_methods": proposed_methods,
         "candidates": candidates,
         "match_methods": [item["match_method"] for item in candidates if item.get("match_method")],
+        "catalogue_current": _catalogue_current(candidates),
         "presented_as_approved_scale": False,
         "rank": None,
         "draft_warnings": draft_warnings_for(
@@ -146,12 +149,33 @@ def classify_row(
     }
 
 
+def catalogue_item_current(item: dict[str, Any] | None) -> bool:
+    """A current catalogue item is item_status approved and not merged away.
+
+    This is independent of statement_row_mappings.mapping_status. An approved
+    mapping onto a retired or merged item stays visible and is not current.
+    """
+    if not item:
+        return False
+    return item.get("item_status") == "approved" and not item.get("merged_into_standard_item_id")
+
+
+def _catalogue_current(candidates: list[dict[str, Any]]) -> bool | None:
+    if not candidates:
+        return None
+    return all(catalogue_item_current(item) for item in candidates)
+
+
 def _candidate(item: dict[str, Any]) -> dict[str, Any]:
+    merged_into = item.get("merged_into_standard_item_id")
     return {
         "item_key": item.get("item_key"),
         "item_zh": item.get("item_zh"),
         "item_pt": item.get("item_pt"),
         "standard_item_id": item.get("standard_item_id"),
+        "item_status": item.get("item_status"),
+        "merged_into_standard_item_id": merged_into,
+        "catalogue_current": catalogue_item_current(item),
         "mapping_status": item.get("mapping_status"),
         "match_method": item.get("match_method"),
     }
@@ -362,22 +386,9 @@ def build_compare(
         cell = entity["periods"][statement_date]
         balance_rows = _balance_rows(cell, rows_by_statement)
         _accumulate_catalogue(catalogue, balance_rows)
-        matched = [
-            row for row in balance_rows
-            if item_key and item_key in candidate_keys(row)
-        ] if item_key else []
-        if cell["kind"] == "gap":
-            kind = "gap"
-            note = cell["reason"]
-        elif not item_key:
-            kind = "needs_item"
-            note = None
-        elif matched:
-            kind = "values"
-            note = None
-        else:
-            kind = "absent"
-            note = "此期沒有此候選。這不是 0，亦不是缺口補數。"
+        kind, note, matched, adopted_types = _compare_cell(
+            cell, balance_rows, item_key
+        )
         entity_cells.append({
             "canonical_zh": entity["canonical_zh"],
             "entity_id": entity.get("entity_id"),
@@ -386,6 +397,7 @@ def build_compare(
             "kind": kind,
             "gap_reason": cell["reason"] if cell["kind"] == "gap" else None,
             "note": note,
+            "adopted_statement_types": adopted_types,
             "rows": matched,
             "entity_total": None,
             "mixed_statement_types": cell.get("mixed_statement_types", False),
@@ -468,12 +480,23 @@ def build_entity_detail(
                 unaligned[period].append(row)
                 continue
             key = keys[0]
+            source = next(
+                (candidate for candidate in row["candidates"] if candidate.get("item_key") == key),
+                None,
+            )
             slot = pivot_items.setdefault(key, {
                 "item_key": key,
-                "item_zh": row["candidates"][0].get("item_zh") if row["candidates"] else None,
+                "item_zh": source.get("item_zh") if source else None,
+                "item_status": source.get("item_status") if source else None,
+                "merged_into_standard_item_id": source.get("merged_into_standard_item_id") if source else None,
+                "catalogue_current": catalogue_item_current(source),
                 "draft_warnings": draft_warnings_for([key]),
                 "cells": {},
             })
+            if source and not catalogue_item_current(source):
+                slot["item_status"] = source.get("item_status")
+                slot["merged_into_standard_item_id"] = source.get("merged_into_standard_item_id")
+                slot["catalogue_current"] = False
             slot["cells"].setdefault(period, []).append(row)
     pivot = []
     for key in sorted(pivot_items):
@@ -670,6 +693,55 @@ def _excluded_identity(statement: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _compare_cell(
+    cell: dict[str, Any],
+    balance_rows: list[dict[str, Any]],
+    item_key: str | None,
+) -> tuple[str, str | None, list[dict[str, Any]], list[str]]:
+    """Classify one entity-date for cross-bank comparison.
+
+    (a) gap: no adopted statement in the window.
+    (b) no_balance_sheet: adopted statement(s), none of them a balance sheet.
+    (c) absent: a balance sheet exists and the selected candidate is not on it.
+    (d) values: the candidate is on an adopted balance sheet.
+
+    Income-statement rows are never treated as the balance-sheet candidate.
+    """
+    adopted_types = _adopted_statement_types(cell)
+    balance_sheets = [
+        statement_type for statement_type in adopted_types
+        if statement_type == BALANCE_SHEET
+    ]
+    if cell.get("kind") == "gap":
+        return "gap", cell.get("reason"), [], adopted_types
+    if not balance_sheets:
+        listed = "、".join(adopted_types) if adopted_types else "沒有記載"
+        return (
+            "no_balance_sheet",
+            "這期有 adopted 報表，但沒有 balance_sheet。"
+            f"已有 statement_type：{listed}。"
+            "沒有把其他報表類型當成所選候選。",
+            [],
+            adopted_types,
+        )
+    if not item_key:
+        return "needs_item", None, [], adopted_types
+    matched = [row for row in balance_rows if item_key in candidate_keys(row)]
+    if matched:
+        return "values", None, matched, adopted_types
+    return "absent", "此期沒有此候選。這不是 0，亦不是缺口補數。", [], adopted_types
+
+
+def _adopted_statement_types(cell: dict[str, Any]) -> list[str]:
+    if cell.get("kind") != "usable":
+        return []
+    return sorted({
+        statement["statement_type"]
+        for statement in cell.get("statements") or []
+        if statement.get("statement_type")
+    })
+
+
 def _balance_rows(
     cell: dict[str, Any],
     rows_by_statement: dict[str, list[dict[str, Any]]],
@@ -692,16 +764,24 @@ def _accumulate_catalogue(catalogue: dict[str, dict[str, Any]], rows: list[dict[
             if not key:
                 continue
             warnings = draft_warnings_for([key])
+            source = next(
+                (candidate for candidate in row["candidates"] if candidate.get("item_key") == key),
+                None,
+            )
             slot = catalogue.setdefault(key, {
                 "item_key": key,
-                "item_zh": next(
-                    (candidate.get("item_zh") for candidate in row["candidates"] if candidate.get("item_key") == key),
-                    None,
-                ),
+                "item_zh": source.get("item_zh") if source else None,
+                "item_status": source.get("item_status") if source else None,
+                "merged_into_standard_item_id": source.get("merged_into_standard_item_id") if source else None,
+                "catalogue_current": catalogue_item_current(source),
                 "row_count": 0,
                 "mapping_counts": empty_mapping_counts(),
                 "draft_warning": warnings[0] if warnings else None,
             })
+            if source and not catalogue_item_current(source):
+                slot["item_status"] = source.get("item_status")
+                slot["merged_into_standard_item_id"] = source.get("merged_into_standard_item_id")
+                slot["catalogue_current"] = False
             slot["row_count"] += 1
             status = row.get("mapping_status")
             if status in slot["mapping_counts"]:
