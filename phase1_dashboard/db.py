@@ -32,6 +32,11 @@ class DashboardDataError(RuntimeError):
     """The file cannot be used as the phase-1 V3 source."""
 
 
+# SQLite's own default busy timeout is 5 seconds. The operational database
+# uses delete-journal mode, so a Workbench write can briefly lock readers.
+DEFAULT_SQLITE_TIMEOUT_SECONDS = 5.0
+
+
 def is_v5_analysis_path(path: Path) -> bool:
     """True for the archived V5 database, whatever directory it sits in."""
     return Path(path).name == V5_FILENAME
@@ -47,7 +52,11 @@ def friendly_db_error(exc: BaseException) -> str:
     return "無法以唯讀方式開啟資料庫。"
 
 
-def connect_readonly(path: Path | str) -> sqlite3.Connection:
+def connect_readonly(
+    path: Path | str,
+    *,
+    timeout: float = DEFAULT_SQLITE_TIMEOUT_SECONDS,
+) -> sqlite3.Connection:
     """Open a V3 SQLite file with mode=ro and query_only."""
     target = Path(path).expanduser()
     if is_v5_analysis_path(target):
@@ -60,7 +69,7 @@ def connect_readonly(path: Path | str) -> sqlite3.Connection:
     uri = "file:" + quote(resolved.as_posix(), safe="/") + "?mode=ro"
     connection: sqlite3.Connection | None = None
     try:
-        connection = sqlite3.connect(uri, uri=True, timeout=1.0)
+        connection = sqlite3.connect(uri, uri=True, timeout=timeout)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA query_only = ON")
         assert_v3_readable(connection)
@@ -76,9 +85,13 @@ def connect_readonly(path: Path | str) -> sqlite3.Connection:
 
 
 @contextmanager
-def open_readonly(path: Path | str) -> Iterator[sqlite3.Connection]:
+def open_readonly(
+    path: Path | str,
+    *,
+    timeout: float = DEFAULT_SQLITE_TIMEOUT_SECONDS,
+) -> Iterator[sqlite3.Connection]:
     """Open a read-only connection and close it. Does not commit."""
-    connection = connect_readonly(path)
+    connection = connect_readonly(path, timeout=timeout)
     try:
         yield connection
     finally:

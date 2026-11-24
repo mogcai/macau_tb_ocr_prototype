@@ -495,6 +495,8 @@ def build_compare(
             "repeated_row_notes": repeated_candidate_notes(matched),
             "rows": matched,
             "ambiguous_rows": ambiguous,
+            "not_adopted": cell.get("not_adopted") or [],
+            "not_adopted_reason": cell.get("not_adopted_reason"),
             "entity_total": None,
             "mixed_statement_types": cell.get("mixed_statement_types", False),
         })
@@ -817,9 +819,11 @@ def _compare_cell(
     (a) gap: no adopted statement in the window.
     (b) no_balance_sheet: adopted statement(s), none of them a balance sheet.
     (c) absent: a balance sheet exists and the selected candidate is not on it.
-    (d) values: the candidate is on an adopted balance sheet.
+    (d) values: the candidate is on one balance-sheet row with exactly one distinct candidate.
+    (e) ambiguous: a balance-sheet row mentions the candidate together with a different candidate.
 
     Income-statement rows are never treated as the balance-sheet candidate.
+    A non-adopted statement in the same period stays on ``not_adopted`` and is not a value.
     """
     adopted_types = _adopted_statement_types(cell)
     balance_sheets = [

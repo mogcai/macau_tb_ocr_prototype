@@ -654,6 +654,43 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(shown_ids, [balance["statement_id"]])
         self.assertNotIn(str(poison), str(detail["selected_rows_by_statement"]))
         self.assertEqual(detail["periods"]["2026-06-30"]["not_adopted"][0]["statement_id"], income["statement_id"])
+        compared = build_compare(
+            bucket_id="legal",
+            statement_date="2026-06-30",
+            item_key="user:總計",
+            display="amount",
+            entities=[_entity("e", name)],
+            statements=[balance, income],
+            rows_by_statement={income["statement_id"]: [income_row]},
+        )
+        compared_cell = next(item for item in compared["entities"] if item["entity_id"] == "e")
+        self.assertEqual(compared_cell["not_adopted"][0]["statement_type"], "income_statement")
+        self.assertEqual(compared_cell["rows"], [])
+        self.assertNotIn(str(poison), str(compared_cell))
+        html = TEMPLATES.get_template("compare.html").render({
+            "not_comparable": "未可安全比較",
+            "window": list(COMPARISON_DATES),
+            "buckets": [],
+            "page_warnings": [],
+            "mapping_statuses": (),
+            "aggregate": {"reason": "不加總"},
+            "model": {
+                "bucket": "legal",
+                "bucket_rule": "不可相加",
+                "statement_date": "2026-06-30",
+                "statement_type": "balance_sheet",
+                "display": "amount",
+                "needs_item": False,
+                "scale_note": "",
+                "draft_warnings": [],
+                "available_items": [],
+                "share": {"reason": "未計算"},
+                "item_key": "user:總計",
+                "entities": [compared_cell],
+            },
+        })
+        self.assertIn("另有未 adopted 報表（income_statement），不顯示金額。", html)
+        self.assertNotIn(str(poison), html)
 
     def test_project_metadata_rule_warns_without_rescaling(self) -> None:
         ok = _usable_summary(_statement("e", LEGAL_BANKS[0], "2026-06-30"), {})
@@ -787,7 +824,7 @@ class HostAndDatabaseTests(unittest.TestCase):
             try:
                 writer.execute("BEGIN EXCLUSIVE")
                 with self.assertRaises(DashboardDataError) as held:
-                    connect_readonly(locked)
+                    connect_readonly(locked, timeout=0.05)
                 self.assertIn("鎖住", str(held.exception))
             finally:
                 writer.rollback()

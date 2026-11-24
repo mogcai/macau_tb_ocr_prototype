@@ -103,16 +103,26 @@
   <p class="meta">同名標籤沒有自動當成同一項目。這些行保留在原報表，不排進三季對照。</p>
   <table>
     <thead>
-      <tr><th>來源標籤</th><th>mapping_status</th><th>候選</th><th>借方 minor</th><th>貸方 minor</th></tr>
+      <tr><th>來源標籤</th><th>row_type</th><th>順序</th><th>mapping_status</th><th>候選</th><th>借方</th><th>貸方</th></tr>
     </thead>
     <tbody>
       {% for row in extra %}
       <tr>
-        <td>{{ row.label_raw or row.label or "—" }}</td>
+        <td>{{ row.label or "—" }}{% if row.label_raw and row.label_raw != row.label %}<div class="meta">label_raw {{ row.label_raw }}</div>{% endif %}</td>
+        <td>{{ row.row_type or "—" }}</td>
+        <td>{{ row.statement_order if row.statement_order is not none else "—" }}</td>
         <td><span class="pill pill-{{ row.mapping_status }}">{{ row.mapping_status }}</span></td>
         <td>{% for candidate in row.candidates %}{{ candidate.item_key }} {% endfor %}</td>
-        <td class="amount">{{ row.debit.text if row.debit.text is not none else "—" }}</td>
-        <td class="amount">{{ row.credit.text if row.credit.text is not none else "—" }}</td>
+        <td class="amount">
+          {% with state=row.debit_state, text=row.debit.text, reading=row.debit.reading, raw=row.debit_raw %}
+          {% include "value.html" %}
+          {% endwith %}
+        </td>
+        <td class="amount">
+          {% with state=row.credit_state, text=row.credit.text, reading=row.credit.reading, raw=row.credit_raw %}
+          {% include "value.html" %}
+          {% endwith %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

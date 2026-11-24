@@ -18,7 +18,6 @@
       <td>
         <div>{{ row.label or "—" }}</div>
         {% if row.label_raw and row.label_raw != row.label %}<div class="meta">label_raw {{ row.label_raw }}</div>{% endif %}
-        {% if row.debit_raw or row.credit_raw %}<div class="meta">raw {{ row.debit_raw or "—" }} / {{ row.credit_raw or "—" }}</div>{% endif %}
         {% if row.insert_without_ocr_label %}<div class="note">人工 insert，沒有 OCR label_raw。</div>{% endif %}
         {% if row.has_parent %}<div class="note">有父項，勿與父項或兄弟項相加。</div>{% endif %}
         {% for warning in row.draft_warnings %}<div class="note">{{ warning }}</div>{% endfor %}
