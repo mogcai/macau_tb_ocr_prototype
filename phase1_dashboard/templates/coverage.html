@@ -102,7 +102,11 @@
               {% endfor %}
               {% if stmt.zero_approved %}<div class="note">這份可用報表沒有 approved mapping。</div>{% endif %}
               {% for note in stmt.notes %}<div class="note">{{ note }}</div>{% endfor %}
+              {% if stmt.metadata_compliant %}<div class="meta">metadata 符合項目規則（MOP、unit_scale 1）。</div>{% endif %}
             </div>
+            {% endfor %}
+            {% for item in cell.not_adopted %}
+            <div class="note">未 adopted · {{ item.statement_type }} · {{ cell.not_adopted_reason }}。不顯示金額。</div>
             {% endfor %}
             {% endif %}
           </td>

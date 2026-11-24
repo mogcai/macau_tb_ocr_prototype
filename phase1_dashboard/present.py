@@ -101,16 +101,13 @@ def classify_row(
     ]
     approved = [item for item in live if item["mapping_status"] == "approved"]
     proposed = [item for item in live if item["mapping_status"] == "proposed"]
-    if approved:
-        status = "approved"
-        shown = approved
+    if approved or proposed:
+        status = "approved" if approved else "proposed"
+        shown = _dedupe_mappings(approved, proposed)
         also_proposed = bool(proposed)
-        proposed_methods = sorted({item.get("match_method") for item in proposed if item.get("match_method")})
-    elif proposed:
-        status = "proposed"
-        shown = proposed
-        also_proposed = False
-        proposed_methods = []
+        proposed_methods = sorted({
+            item.get("match_method") for item in proposed if item.get("match_method")
+        })
     elif insert and insert.get("standard_item_id"):
         status = "insert-direct"
         shown = [
@@ -147,6 +144,45 @@ def classify_row(
             [item["item_key"] for item in candidates if item.get("item_key")]
         ),
     }
+
+
+def _mapping_identity(item: dict[str, Any]) -> tuple[str, str | None]:
+    if item.get("standard_item_id"):
+        return ("id", item.get("standard_item_id"))
+    return ("key", item.get("item_key"))
+
+
+def _dedupe_mappings(
+    approved: list[dict[str, Any]],
+    proposed: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep every distinct standard item. Prefer the approved mapping when both exist."""
+    chosen: dict[tuple[str, str | None], dict[str, Any]] = {}
+    order: list[tuple[str, str | None]] = []
+    for item in [*approved, *proposed]:
+        identity = _mapping_identity(item)
+        current = chosen.get(identity)
+        if current is None:
+            chosen[identity] = item
+            order.append(identity)
+        elif current.get("mapping_status") != "approved" and item.get("mapping_status") == "approved":
+            chosen[identity] = item
+    return [chosen[identity] for identity in order]
+
+
+def project_metadata_compliant(currency: str | None, unit_scale: int | None) -> bool:
+    """Phase-1 statements are MOP with unit_scale 1. Other values stay unscaled."""
+    return currency == "MOP" and unit_scale == 1
+
+
+def project_metadata_notes(currency: str | None, unit_scale: int | None) -> list[str]:
+    notes: list[str] = []
+    if currency != "MOP":
+        notes.append("幣別不是 MOP。項目規則是 MOP，沒有換算。")
+    if unit_scale != 1:
+        shown = "未記載" if unit_scale is None else str(unit_scale)
+        notes.append(f"unit_scale 是 {shown}，不是 1。項目規則是 1，沒有把金額乘或除。")
+    return notes
 
 
 def describe_entity_lifecycle(entity: dict[str, Any] | None) -> dict[str, Any]:
@@ -256,6 +292,12 @@ def decorate_row(
         "reporting_scope": statement.get("reporting_scope"),
         "currency": statement.get("currency"),
         "unit_scale": statement.get("unit_scale"),
+        "metadata_compliant": project_metadata_compliant(
+            statement.get("currency"), statement.get("unit_scale")
+        ),
+        "metadata_notes": project_metadata_notes(
+            statement.get("currency"), statement.get("unit_scale")
+        ),
         "amount_decimal_places": decimal_places,
         "identity_status": statement.get("identity_status"),
         "metadata_status": statement.get("metadata_status"),
@@ -434,7 +476,7 @@ def build_compare(
         cell = entity["periods"][statement_date]
         balance_rows = _balance_rows(cell, rows_by_statement)
         _accumulate_catalogue(catalogue, balance_rows)
-        kind, note, matched, adopted_types = _compare_cell(
+        kind, note, matched, adopted_types, ambiguous = _compare_cell(
             cell, balance_rows, item_key
         )
         entity_cells.append({
@@ -452,6 +494,7 @@ def build_compare(
             "adopted_statement_types": adopted_types,
             "repeated_row_notes": repeated_candidate_notes(matched),
             "rows": matched,
+            "ambiguous_rows": ambiguous,
             "entity_total": None,
             "mixed_statement_types": cell.get("mixed_statement_types", False),
         })
@@ -460,15 +503,7 @@ def build_compare(
         (row.get("currency"), row.get("unit_scale"), row.get("amount_decimal_places"))
         for row in displayed
     }
-    if not displayed:
-        scale_mismatch = False
-        scale_note = "未選項目，未並排金額。"
-    elif len(signatures) > 1:
-        scale_mismatch = True
-        scale_note = "這些儲存格的幣別、unit_scale 或小數位不一致。數值保持各報表原記載，沒有換成同一單位。"
-    else:
-        scale_mismatch = False
-        scale_note = "同一欄的幣別、unit_scale 與小數位記載一致。這仍然不是財務核實。"
+    scale_mismatch, scale_note = _comparison_scale_note(displayed, signatures)
     return {
         "bucket": bucket_id,
         "bucket_title": bucket["title"],
@@ -632,6 +667,12 @@ def build_statement_view(
         "currency": statement.get("currency"),
         "unit_scale": statement.get("unit_scale"),
         "amount_decimal_places": statement.get("amount_decimal_places"),
+        "metadata_notes": project_metadata_notes(
+            statement.get("currency"), statement.get("unit_scale")
+        ),
+        "metadata_compliant": project_metadata_compliant(
+            statement.get("currency"), statement.get("unit_scale")
+        ),
         "identity_status": statement.get("identity_status"),
         "metadata_status": statement.get("metadata_status"),
         "entity_name_raw": statement.get("entity_name_raw"),
@@ -668,6 +709,8 @@ def _gap(reason: str) -> dict[str, Any]:
         "reason": reason,
         "amounts": None,
         "statements": [],
+        "not_adopted": [],
+        "not_adopted_reason": None,
         "mixed_statement_types": False,
     }
 
@@ -677,6 +720,7 @@ def _period_cell(
     counts_by_statement: dict[str, dict[str, int]],
 ) -> dict[str, Any]:
     usable = [statement for statement in statements if is_usable_statement(statement)]
+    others = [statement for statement in statements if not is_usable_statement(statement)]
     if not statements:
         return _gap("沒有報表")
     if not usable:
@@ -685,6 +729,8 @@ def _period_cell(
             "reason": _gap_reason(statements),
             "amounts": None,
             "statements": [_gap_identity(statement) for statement in statements],
+            "not_adopted": [],
+            "not_adopted_reason": None,
             "mixed_statement_types": False,
         }
     summaries = [_usable_summary(statement, counts_by_statement) for statement in usable]
@@ -693,6 +739,8 @@ def _period_cell(
         "reason": None,
         "amounts": None,
         "statements": summaries,
+        "not_adopted": [_gap_identity(statement) for statement in others],
+        "not_adopted_reason": _gap_reason(others) if others else None,
         "mixed_statement_types": len({item["statement_type"] for item in summaries}) > 1,
     }
 
@@ -720,11 +768,7 @@ def _usable_summary(
     counts_by_statement: dict[str, dict[str, int]],
 ) -> dict[str, Any]:
     counts = counts_by_statement.get(statement["statement_id"], empty_mapping_counts())
-    notes: list[str] = []
-    if statement.get("currency") != "MOP":
-        notes.append("幣別不是 MOP 或未記載。")
-    if statement.get("unit_scale") not in (1, 1000, 1000000):
-        notes.append("unit_scale 未記載或不在 1／1000／1000000。沒有換算。")
+    notes = project_metadata_notes(statement.get("currency"), statement.get("unit_scale"))
     return {
         "statement_id": statement["statement_id"],
         "statement_type": statement.get("statement_type"),
@@ -740,6 +784,7 @@ def _usable_summary(
         "mapping_counts": counts,
         "zero_approved": counts["approved"] == 0,
         "notes": notes,
+        "metadata_compliant": not notes,
         "amounts": None,
     }
 
@@ -782,7 +827,7 @@ def _compare_cell(
         if statement_type == BALANCE_SHEET
     ]
     if cell.get("kind") == "gap":
-        return "gap", cell.get("reason"), [], adopted_types
+        return "gap", cell.get("reason"), [], adopted_types, []
     if not balance_sheets:
         listed = "、".join(adopted_types) if adopted_types else "沒有記載"
         return (
@@ -792,13 +837,57 @@ def _compare_cell(
             "沒有把其他報表類型當成所選候選。",
             [],
             adopted_types,
+            [],
         )
     if not item_key:
-        return "needs_item", None, [], adopted_types
-    matched = [row for row in balance_rows if item_key in candidate_keys(row)]
+        return "needs_item", None, [], adopted_types, []
+    matched, ambiguous = _single_candidate_matches(balance_rows, item_key)
     if matched:
-        return "values", None, matched, adopted_types
-    return "absent", "此期沒有此候選。這不是 0，亦不是缺口補數。", [], adopted_types
+        return "values", None, matched, adopted_types, ambiguous
+    if ambiguous:
+        return (
+            "ambiguous",
+            "這期的資產負債表有提到此候選的行，但該行同時有其他不同候選，沒有排入單一候選比較。",
+            [],
+            adopted_types,
+            ambiguous,
+        )
+    return "absent", "此期沒有此候選。這不是 0，亦不是缺口補數。", [], adopted_types, []
+
+
+def _single_candidate_matches(
+    balance_rows: list[dict[str, Any]],
+    item_key: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    matched: list[dict[str, Any]] = []
+    ambiguous: list[dict[str, Any]] = []
+    for row in balance_rows:
+        keys = candidate_keys(row)
+        if keys == [item_key]:
+            matched.append(row)
+        elif item_key in keys:
+            ambiguous.append(row)
+    return matched, ambiguous
+
+
+def _comparison_scale_note(
+    displayed: list[dict[str, Any]],
+    signatures: set[tuple[Any, ...]],
+) -> tuple[bool, str]:
+    if not displayed:
+        return False, "未選項目，未並排金額。"
+    parts = []
+    mismatch = len(signatures) > 1
+    if mismatch:
+        parts.append("這些儲存格的幣別、unit_scale 或小數位不一致。數值保持各報表原記載，沒有換成同一單位。")
+    else:
+        parts.append("同一欄的幣別、unit_scale 與小數位記載一致。這仍然不是財務核實。")
+    if any(
+        not project_metadata_compliant(row.get("currency"), row.get("unit_scale"))
+        for row in displayed
+    ):
+        parts.append("有儲存格不符合項目規則（currency = MOP、unit_scale = 1）。沒有自動換算。")
+    return mismatch, " ".join(parts)
 
 
 def _adopted_statement_types(cell: dict[str, Any]) -> list[str]:

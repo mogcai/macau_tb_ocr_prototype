@@ -15,6 +15,9 @@
     <div class="label">{{ date }}</div>
     <div class="value">{% if cell.kind == 'gap' %}缺口{% else %}可用{% endif %}</div>
     <div class="meta">{% if cell.kind == 'gap' %}{{ cell.reason }}{% else %}{{ cell.statements|length }} 份 adopted{% endif %}</div>
+    {% for item in cell.not_adopted %}
+    <div class="note">未 adopted · {{ item.statement_type }} · {{ cell.not_adopted_reason }}。不顯示金額。</div>
+    {% endfor %}
   </article>
   {% endfor %}
 </div>
@@ -88,6 +91,7 @@
 <section class="panel">
   <h3>{{ block.statement.statement_type }} · {{ block.statement.currency or "幣別未記載" }} · unit_scale {{ block.statement.unit_scale if block.statement.unit_scale is not none else "未記載" }} · {{ block.statement.reporting_scope }}</h3>
   <p class="meta">identity {{ block.statement.identity_status }} · metadata {{ block.statement.metadata_status }}。不同 statement_type 沒有混加。</p>
+  {% for note in block.statement.notes %}<p class="note">{{ note }}</p>{% endfor %}
   {% include "rows.html" %}
 </section>
 {% endfor %}

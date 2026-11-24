@@ -106,6 +106,7 @@
           {% if entity.kind == 'gap' %}<strong>缺口</strong><div class="meta">{{ entity.gap_reason }}</div>
           {% elif entity.kind == 'no_balance_sheet' %}<strong>沒有 balance_sheet</strong><div class="meta">{{ entity.note }}</div>
           {% elif entity.kind == 'absent' %}<span class="empty">{{ entity.note }}</span>
+          {% elif entity.kind == 'ambiguous' %}<strong>多個候選</strong><div class="meta">{{ entity.note }}</div>
           {% elif entity.kind == 'values' %}並排
           {% else %}{{ entity.kind }}{% endif %}
         </td>
@@ -114,6 +115,9 @@
         {% endif %}
         <td>
           {% for note in entity.repeated_row_notes %}<div class="note">{{ note }}</div>{% endfor %}
+          {% for row in entity.ambiguous_rows %}
+          <div class="note">多個候選，沒有排入單一候選比較：{{ row.label or "—" }}（{{ row.candidates|map(attribute='item_key')|join('、') }}）。</div>
+          {% endfor %}
           {% for row in entity.rows %}
           <div>
             <div>{{ row.label or "—" }}{% if row.label_raw and row.label_raw != row.label %} · label_raw {{ row.label_raw }}{% endif %}</div>
@@ -129,6 +133,9 @@
               {% endwith %}
             </div>
             <div class="meta">{{ row.currency or "幣別未記載" }} · unit_scale {{ row.unit_scale if row.unit_scale is not none else "未記載" }} · {{ row.reporting_scope }} · {{ row.match_methods|join(", ") if row.match_methods else "無 method" }}</div>
+            {% if row.metadata_compliant is sameas false %}
+            {% for note in row.metadata_notes %}<div class="note">{{ note }}</div>{% endfor %}
+            {% elif row.metadata_compliant %}<div class="meta">metadata 符合項目規則（MOP、unit_scale 1）。</div>{% endif %}
             {% if row.mapping_status == 'approved' %}<div class="meta">不是已核准規模</div>{% endif %}
             {% if row.catalogue_current is sameas false %}<div class="note">mapping 已保留。科目不是現行有效項，兩者分開。</div>{% endif %}
             {% for candidate in row.candidates if candidate.item_key == model.item_key %}

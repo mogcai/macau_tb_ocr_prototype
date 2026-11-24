@@ -5,6 +5,8 @@
 <h2>{{ model.canonical_zh }}</h2>
 <p class="meta">{{ model.statement_date }} · {{ model.statement_type }} · {{ model.reporting_scope }} · entity_type {{ model.entity_type }}</p>
 <p class="meta">currency {{ model.currency or "未記載" }} · unit_scale {{ model.unit_scale if model.unit_scale is not none else "未記載" }} · identity {{ model.identity_status }} · metadata {{ model.metadata_status }} · statement_status {{ model.statement_status }} · review {{ model.review_status or "—" }}</p>
+{% if model.metadata_compliant %}<p class="meta">metadata 符合項目規則（MOP、unit_scale 1）。</p>{% endif %}
+{% for note in model.metadata_notes %}<p class="note">{{ note }}</p>{% endfor %}
 {% if model.entity_name_raw %}<p class="meta">entity_name_raw {{ model.entity_name_raw }}</p>{% endif %}
 {% if not model.usable %}
 <section class="gap panel">

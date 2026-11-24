@@ -19,9 +19,12 @@ from phase1_dashboard.app import TEMPLATES, create_app, host_header_allowed  # n
 from phase1_dashboard import queries  # noqa: E402
 from phase1_dashboard.db import DashboardDataError, connect_readonly, is_v5_analysis_path  # noqa: E402
 from phase1_dashboard.present import (  # noqa: E402
+    _usable_summary,
     aggregate_placeholder,
     build_compare,
     build_coverage,
+    build_entity_detail,
+    candidate_keys,
     classify_row,
     format_minor,
     is_usable_statement,
@@ -85,6 +88,8 @@ def _statement(
     status: str = "active",
     statement_type: str = "balance_sheet",
     statement_id: str | None = None,
+    currency: str | None = "MOP",
+    unit_scale: int | None = 1,
 ) -> dict:
     return {
         "statement_id": statement_id or (
@@ -97,8 +102,8 @@ def _statement(
         "statement_type": statement_type,
         "statement_status": status if adopted else "proposed",
         "reporting_scope": "branch",
-        "currency": "MOP",
-        "unit_scale": 1,
+        "currency": currency,
+        "unit_scale": unit_scale,
         "amount_decimal_places": 2,
         "identity_status": "proposed",
         "metadata_status": "proposed",
@@ -505,6 +510,207 @@ class RuleTests(unittest.TestCase):
         before_amounts, amounts = after_header.split("<td>未計算</td>", 1)
         self.assertNotIn("unreadable", before_amounts)
         self.assertIn("unreadable", amounts)
+
+    def test_distinct_candidates_are_not_collapsed(self) -> None:
+        same = classify_row(
+            "same",
+            [
+                {"statement_row_id": "same", "mapping_status": "approved", "match_method": "manual", "standard_item_id": "si-cash", "item_key": "user:現金", "item_status": "approved"},
+                {"statement_row_id": "same", "mapping_status": "proposed", "match_method": "alias_exact", "standard_item_id": "si-cash", "item_key": "user:現金", "item_status": "approved"},
+            ],
+            None,
+        )
+        self.assertEqual(candidate_keys(same), ["user:現金"])
+        self.assertEqual(len(same["candidates"]), 1)
+        self.assertEqual(same["candidates"][0]["mapping_status"], "approved")
+        self.assertTrue(same["also_proposed"])
+
+        two = classify_row(
+            "two",
+            [
+                {"statement_row_id": "two", "mapping_status": "proposed", "match_method": "bilingual_exact", "standard_item_id": "si-cash", "item_key": "user:現金", "item_status": "approved"},
+                {"statement_row_id": "two", "mapping_status": "proposed", "match_method": "bilingual_exact", "standard_item_id": "si-other", "item_key": "user:其他資產", "item_status": "approved"},
+            ],
+            None,
+        )
+        self.assertEqual(candidate_keys(two), ["user:現金", "user:其他資產"])
+        self.assertEqual(two["mapping_status"], "proposed")
+
+        mixed = classify_row(
+            "mixed",
+            [
+                {"statement_row_id": "mixed", "mapping_status": "approved", "match_method": "manual", "standard_item_id": "si-cash", "item_key": "user:現金", "item_status": "approved"},
+                {"statement_row_id": "mixed", "mapping_status": "proposed", "match_method": "bilingual_exact", "standard_item_id": "si-other", "item_key": "user:其他資產", "item_status": "approved"},
+            ],
+            None,
+        )
+        self.assertEqual(mixed["mapping_status"], "approved")
+        self.assertEqual(candidate_keys(mixed), ["user:現金", "user:其他資產"])
+        self.assertTrue(mixed["also_proposed"])
+
+        def compared_row(keys: list[str], minor: int) -> dict:
+            return {
+                "statement_id": "sheet-1",
+                "statement_type": "balance_sheet",
+                "label": "現金",
+                "label_raw": "現金",
+                "row_type": "item",
+                "statement_order": 1,
+                "mapping_status": "approved" if len(keys) == 1 else "proposed",
+                "candidates": [
+                    {"item_key": key, "item_zh": key, "item_status": "approved", "merged_into_standard_item_id": None}
+                    for key in keys
+                ],
+                "debit": {"minor": minor, "text": str(minor), "reading": None, "note": None},
+                "credit": {"minor": None, "text": None, "reading": None, "note": None},
+                "debit_state": "amount",
+                "credit_state": "blank",
+                "currency": "MOP",
+                "unit_scale": 1,
+                "amount_decimal_places": 2,
+                "reporting_scope": "bank",
+                "match_methods": [],
+                "draft_warnings": [],
+                "catalogue_current": True,
+                "metadata_compliant": True,
+                "metadata_notes": [],
+                "presented_as_approved_scale": False,
+                "share": {"available": False, "value": None},
+            }
+
+        name = LEGAL_BANKS[0]
+        statement = _statement("e", name, "2026-06-30")
+        multi = compared_row(["user:現金", "user:其他資產"], 777001)
+        single = compared_row(["user:現金"], 10)
+        model = build_compare(
+            bucket_id="legal",
+            statement_date="2026-06-30",
+            item_key="user:現金",
+            display="amount",
+            entities=[_entity("e", name), _entity("f", LEGAL_BANKS[1])],
+            statements=[statement, _statement("f", LEGAL_BANKS[1], "2026-06-30")],
+            rows_by_statement={
+                statement["statement_id"]: [multi],
+                f"{LEGAL_BANKS[1] and 'f'}-2026-06-30": [single],
+            },
+        )
+        mixed_cell = next(item for item in model["entities"] if item["canonical_zh"] == name)
+        self.assertEqual(mixed_cell["kind"], "ambiguous")
+        self.assertEqual(mixed_cell["rows"], [])
+        self.assertEqual(mixed_cell["ambiguous_rows"][0]["debit"]["minor"], 777001)
+        single_cell = next(item for item in model["entities"] if item["canonical_zh"] == LEGAL_BANKS[1])
+        self.assertEqual(single_cell["kind"], "values")
+        self.assertEqual(single_cell["rows"][0]["debit"]["minor"], 10)
+        detail = build_entity_detail(
+            entity_id="e",
+            selected_date="2026-06-30",
+            entities=[_entity("e", name)],
+            statements=[statement],
+            rows_by_statement={statement["statement_id"]: [multi]},
+        )
+        self.assertIn(multi, detail["unaligned"]["2026-06-30"])
+        for item in detail["pivot"]:
+            for period in item["cells"].values():
+                self.assertNotIn(multi, period["rows"])
+
+    def test_non_adopted_statement_stays_visible_beside_an_adopted_one(self) -> None:
+        name = LEGAL_BANKS[0]
+        balance = _statement("e", name, "2026-06-30", statement_type="balance_sheet")
+        income = _statement("e", name, "2026-06-30", statement_type="income_statement", adopted=False)
+        poison = 616161616
+        income_row = {
+            "statement_id": income["statement_id"],
+            "statement_type": "income_statement",
+            "mapping_status": "proposed",
+            "candidates": [{"item_key": "user:總計", "item_status": "approved"}],
+            "debit": {"minor": poison, "text": str(poison), "reading": None},
+            "credit": {"minor": poison, "text": str(poison), "reading": None},
+            "currency": "MOP",
+            "unit_scale": 1,
+        }
+        coverage = build_coverage(
+            entities=[_entity("e", name)],
+            statements=[balance, income],
+            rows_by_statement={income["statement_id"]: [income_row]},
+        )
+        cell = next(
+            item for item in next(bucket for bucket in coverage["buckets"] if bucket["id"] == "legal")["entities"]
+            if item["entity_id"] == "e"
+        )["periods"]["2026-06-30"]
+        self.assertEqual(cell["kind"], "usable")
+        self.assertEqual([item["statement_type"] for item in cell["statements"]], ["balance_sheet"])
+        self.assertEqual(cell["not_adopted"][0]["statement_type"], "income_statement")
+        self.assertIsNone(cell["not_adopted"][0]["amounts"])
+        self.assertIn("未 adopted", cell["not_adopted_reason"])
+        self.assertNotIn(str(poison), str(cell))
+        detail = build_entity_detail(
+            entity_id="e",
+            selected_date="2026-06-30",
+            entities=[_entity("e", name)],
+            statements=[balance, income],
+            rows_by_statement={income["statement_id"]: [income_row]},
+        )
+        shown_ids = [block["statement"]["statement_id"] for block in detail["selected_rows_by_statement"]]
+        self.assertEqual(shown_ids, [balance["statement_id"]])
+        self.assertNotIn(str(poison), str(detail["selected_rows_by_statement"]))
+        self.assertEqual(detail["periods"]["2026-06-30"]["not_adopted"][0]["statement_id"], income["statement_id"])
+
+    def test_project_metadata_rule_warns_without_rescaling(self) -> None:
+        ok = _usable_summary(_statement("e", LEGAL_BANKS[0], "2026-06-30"), {})
+        self.assertTrue(ok["metadata_compliant"])
+        self.assertEqual(ok["notes"], [])
+        foreign = _usable_summary(
+            _statement("e", LEGAL_BANKS[0], "2026-06-30", currency="USD"),
+            {},
+        )
+        self.assertFalse(foreign["metadata_compliant"])
+        self.assertTrue(any("不是 MOP" in note for note in foreign["notes"]))
+        for scale in (1000, 1000000, None):
+            warned = _usable_summary(
+                _statement("e", LEGAL_BANKS[0], "2026-06-30", unit_scale=scale),
+                {},
+            )
+            self.assertFalse(warned["metadata_compliant"], scale)
+            self.assertTrue(any("不是 1" in note and "沒有把金額乘或除" in note for note in warned["notes"]))
+        name = LEGAL_BANKS[0]
+        statement = _statement("e", name, "2026-06-30", unit_scale=1000)
+        stored = 50
+        row = {
+            "statement_id": statement["statement_id"],
+            "statement_type": "balance_sheet",
+            "label": "總計",
+            "mapping_status": "proposed",
+            "candidates": [{"item_key": "user:總計", "item_status": "approved", "item_zh": "總計"}],
+            "debit": format_minor(stored, None),
+            "credit": format_minor(stored, None),
+            "debit_state": "amount",
+            "credit_state": "amount",
+            "currency": "MOP",
+            "unit_scale": 1000,
+            "amount_decimal_places": None,
+            "metadata_compliant": False,
+            "metadata_notes": ["unit_scale 是 1000，不是 1。項目規則是 1，沒有把金額乘或除。"],
+            "reporting_scope": "bank",
+            "match_methods": [],
+            "draft_warnings": [],
+            "catalogue_current": True,
+            "presented_as_approved_scale": False,
+            "share": {"available": False, "value": None},
+        }
+        compared = build_compare(
+            bucket_id="legal",
+            statement_date="2026-06-30",
+            item_key="user:總計",
+            display="amount",
+            entities=[_entity("e", name)],
+            statements=[statement],
+            rows_by_statement={statement["statement_id"]: [row]},
+        )
+        self.assertIn("currency = MOP、unit_scale = 1", compared["scale_note"])
+        self.assertIn("沒有自動換算", compared["scale_note"])
+        shown = next(item for item in compared["entities"] if item["kind"] == "values")
+        self.assertEqual(shown["rows"][0]["debit"]["minor"], stored)
+        self.assertNotEqual(shown["rows"][0]["debit"]["minor"], stored * 1000)
 
 
 class HostAndDatabaseTests(unittest.TestCase):
