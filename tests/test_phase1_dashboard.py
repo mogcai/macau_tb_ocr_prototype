@@ -591,7 +591,7 @@ class RuleTests(unittest.TestCase):
             statements=[statement, _statement("f", LEGAL_BANKS[1], "2026-06-30")],
             rows_by_statement={
                 statement["statement_id"]: [multi],
-                f"{LEGAL_BANKS[1] and 'f'}-2026-06-30": [single],
+                "f-2026-06-30": [single],
             },
         )
         mixed_cell = next(item for item in model["entities"] if item["canonical_zh"] == name)
@@ -612,6 +612,67 @@ class RuleTests(unittest.TestCase):
         for item in detail["pivot"]:
             for period in item["cells"].values():
                 self.assertNotIn(multi, period["rows"])
+
+    def test_entity_unaligned_table_shows_value_states(self) -> None:
+        row = {
+            "label": "同一行",
+            "label_raw": "同一行raw",
+            "row_type": "item",
+            "statement_order": 7,
+            "mapping_status": "proposed",
+            "candidates": [
+                {"item_key": "user:現金"},
+                {"item_key": "user:其他資產"},
+            ],
+            "debit_state": "unreadable",
+            "credit_state": "dash",
+            "debit": {"text": None, "reading": None},
+            "credit": {"text": None, "reading": None},
+            "debit_raw": "???",
+            "credit_raw": "-",
+        }
+        periods = {
+            date: {
+                "kind": "gap",
+                "reason": "沒有報表",
+                "statements": [],
+                "not_adopted": [],
+            }
+            for date in COMPARISON_DATES
+        }
+        model = {
+            "canonical_zh": LEGAL_BANKS[0],
+            "bucket_title": "本地法人商業銀行",
+            "bucket_rule": "不可相加",
+            "entity_type": "bank",
+            "registry_status": "approved",
+            "parent_entity_id": None,
+            "merged_into_entity_id": None,
+            "lifecycle_note": None,
+            "duplicate_name": False,
+            "window": list(COMPARISON_DATES),
+            "periods": periods,
+            "selected_date": "2026-06-30",
+            "selected_rows_by_statement": [],
+            "pivot": [],
+            "unaligned": {date: [] for date in COMPARISON_DATES},
+            "entity_id": "e",
+        }
+        model["unaligned"]["2026-06-30"] = [row]
+        html = TEMPLATES.get_template("entity.html").render({
+            "not_comparable": "未可安全比較",
+            "window": list(COMPARISON_DATES),
+            "buckets": [],
+            "page_warnings": [],
+            "mapping_statuses": (),
+            "aggregate": {"reason": "不加總"},
+            "model": model,
+        })
+        self.assertIn("未能以單一候選對齊", html)
+        self.assertIn("unreadable", html)
+        self.assertIn("dash", html)
+        self.assertIn("raw ???", html)
+        self.assertIn("raw -", html)
 
     def test_non_adopted_statement_stays_visible_beside_an_adopted_one(self) -> None:
         name = LEGAL_BANKS[0]
@@ -689,7 +750,8 @@ class RuleTests(unittest.TestCase):
                 "entities": [compared_cell],
             },
         })
-        self.assertIn("另有未 adopted 報表（income_statement），不顯示金額。", html)
+        self.assertIn("另有未 adopted 報表（income_statement）", html)
+        self.assertIn("未 adopted", html)
         self.assertNotIn(str(poison), html)
 
     def test_project_metadata_rule_warns_without_rescaling(self) -> None:

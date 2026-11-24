@@ -101,7 +101,7 @@
           {% endif %}
           {% if entity.lifecycle_note %}<div class="note">{{ entity.lifecycle_note }}</div>{% endif %}
           {% for item in entity.not_adopted %}
-          <div class="note">另有未 adopted 報表（{{ item.statement_type }}），不顯示金額。</div>
+          <div class="note">另有未 adopted 報表（{{ item.statement_type }}）{% if entity.not_adopted_reason %}：{{ entity.not_adopted_reason }}{% endif %}。不顯示金額。</div>
           {% endfor %}
         </td>
         <td>{{ entity.entity_type or "—" }}</td>
