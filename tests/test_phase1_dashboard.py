@@ -1225,7 +1225,7 @@ class DashboardFixtureTests(unittest.TestCase):
 
     def test_html_shows_status_and_does_not_write(self) -> None:
         before = hashlib.sha256(self.db_path.read_bytes()).hexdigest()
-        page = self.client.get("/")
+        page = self.client.get("/coverage")
         self.assertEqual(page.status_code, 200)
         text = page.text
         for name in ADOPTED_NAMES:
@@ -1276,12 +1276,157 @@ class DashboardFixtureTests(unittest.TestCase):
             response = self.client.get("/api/coverage", headers={"Host": host})
             self.assertEqual(response.status_code, 400, host)
             self.assertNotIn("中國銀行(澳門)股份有限公司", response.text)
+        home = self.client.get("/")
+        self.assertEqual(home.status_code, 200)
+        self.assertIn("<svg", home.text)
+        self.assertNotIn("<th>canonical_zh</th>", home.text)
         health = self.client.get("/health").json()
         self.assertTrue(health["read_only"])
         self.assertFalse(health["authentication"])
         self.assertEqual(health["host_policy"], "127.0.0.1")
         self.assertEqual(hashlib.sha256(self.db_path.read_bytes()).hexdigest(), before)
         self.assertFalse(Path(str(self.db_path) + "-wal").exists())
+
+
+class ChartBoundaryTests(unittest.TestCase):
+    def _row(self, item_key: str, minor: int | None, *, debit_state="amount", credit_state="blank",
+             credit_minor=None, item_status="approved", keys=None, currency="MOP", unit_scale=1,
+             mapping_status="proposed") -> dict:
+        chosen = keys or [item_key]
+        return {
+            "statement_id": "s",
+            "statement_type": "balance_sheet",
+            "label": item_key,
+            "label_raw": item_key,
+            "row_type": "item",
+            "statement_order": 1,
+            "mapping_status": mapping_status,
+            "candidates": [
+                {
+                    "item_key": key,
+                    "item_zh": key,
+                    "item_status": item_status,
+                    "merged_into_standard_item_id": None,
+                    "catalogue_current": item_status == "approved",
+                }
+                for key in chosen
+            ],
+            "catalogue_current": item_status == "approved" and len(chosen) == 1,
+            "debit_state": debit_state,
+            "credit_state": credit_state,
+            "debit": {"minor": minor, "text": None if minor is None else str(minor), "reading": None},
+            "credit": {"minor": credit_minor, "text": None if credit_minor is None else str(credit_minor), "reading": None},
+            "currency": currency,
+            "unit_scale": unit_scale,
+            "metadata_compliant": currency == "MOP" and unit_scale == 1,
+            "amount_decimal_places": 2,
+            "reporting_scope": "bank",
+        }
+
+    def _view(self, rows_by_name_date, **kwargs):
+        from phase1_dashboard.charts import build_chart_view
+        names = LEGAL_BANKS[:4]
+        entities = [_entity(f"e{i}", name) for i, name in enumerate(names)]
+        statements = []
+        rows = {}
+        for entity, name in zip(entities, names):
+            for date in COMPARISON_DATES:
+                spec = rows_by_name_date.get((name, date))
+                if spec is None:
+                    continue
+                statement = _statement(entity["entity_id"], name, date)
+                statements.append(statement)
+                rows[statement["statement_id"]] = spec if isinstance(spec, list) else [spec]
+        return build_chart_view(
+            entities=entities,
+            statements=statements,
+            rows_by_statement=rows,
+            **kwargs,
+        )
+
+    def test_bars_follow_perimeter_order_not_magnitude(self) -> None:
+        name_a, name_b, name_c = LEGAL_BANKS[:3]
+        view = self._view(
+            {
+                (name_a, "2026-06-30"): self._row("user:現金", 1),
+                (name_b, "2026-06-30"): self._row("user:現金", 999),
+                (name_c, "2026-06-30"): self._row("user:現金", 50),
+            },
+            bucket_id="legal",
+            statement_date="2026-06-30",
+            item_key="user:現金",
+            entity_id=None,
+        )
+        included = [slot["canonical_zh"] for slot in view["cross_bank"]["slots"] if slot["included_in_chart"]]
+        self.assertEqual(included, [name_a, name_b, name_c])
+        self.assertLess(
+            view["cross_bank"]["svg"].find(f'data-name="{name_a}"'),
+            view["cross_bank"]["svg"].find(f'data-name="{name_b}"'),
+        )
+        self.assertFalse(view["cross_bank"]["ranked"])
+        self.assertFalse(view["cross_bank"]["summed"])
+        self.assertIsNone(view["cross_bank"].get("column_total"))
+        self.assertNotIn("999", view["cross_bank"]["order"][0])
+
+    def test_unsafe_rows_stay_out_of_the_chart(self) -> None:
+        name = LEGAL_BANKS[0]
+        other = LEGAL_BANKS[1]
+        view = self._view(
+            {
+                (name, "2026-06-30"): self._row("user:現金", 20, keys=["user:現金", "user:其他資產"]),
+                (other, "2026-06-30"): self._row("user:現金", 30, item_status="retired"),
+                (LEGAL_BANKS[2], "2026-06-30"): self._row("user:現金", 40, unit_scale=1000),
+                (LEGAL_BANKS[3], "2026-06-30"): self._row("user:現金", 15, credit_state="amount", credit_minor=15),
+            },
+            bucket_id="legal",
+            statement_date="2026-06-30",
+            item_key="user:現金",
+            entity_id=None,
+        )
+        self.assertFalse(view["cross_bank"]["drawn"])
+        self.assertIsNone(view["cross_bank"]["svg"])
+        statuses = {slot["canonical_zh"]: slot["status"] for slot in view["cross_bank"]["slots"]}
+        self.assertEqual(statuses[name], "ambiguous")
+        self.assertEqual(statuses[other], "inactive_candidate")
+        self.assertEqual(statuses[LEGAL_BANKS[2]], "metadata")
+        self.assertEqual(statuses[LEGAL_BANKS[3]], "amount_side")
+        for slot in view["cross_bank"]["slots"]:
+            self.assertIsNone(slot["minor"])
+
+    def test_missing_quarter_is_a_gap_not_zero(self) -> None:
+        name = LEGAL_BANKS[0]
+        view = self._view(
+            {
+                (name, "2026-03-31"): self._row("user:現金", 10),
+                (name, "2026-09-30"): self._row("user:現金", 30),
+            },
+            bucket_id="legal",
+            statement_date="2026-09-30",
+            item_key="user:現金",
+            entity_id="e0",
+        )
+        trend = {slot["statement_date"]: slot for slot in view["trend"]["slots"]}
+        self.assertTrue(trend["2026-03-31"]["included_in_chart"])
+        self.assertEqual(trend["2026-06-30"]["status"], "gap")
+        self.assertIsNone(trend["2026-06-30"]["minor"])
+        self.assertNotIn('data-minor="0"', view["trend"]["svg"])
+        self.assertEqual(view["trend"]["svg"].count('class="trend-line"'), 0)
+        self.assertEqual(view["trend"]["svg"].count("<circle"), 2)
+
+    def test_one_bank_does_not_become_a_cross_bank_chart(self) -> None:
+        name = LEGAL_BANKS[0]
+        view = self._view(
+            {(name, "2026-06-30"): self._row("user:現金", 10)},
+            bucket_id="legal",
+            statement_date="2026-06-30",
+            item_key="user:現金",
+            entity_id="e0",
+        )
+        self.assertFalse(view["cross_bank"]["drawn"])
+        self.assertIsNone(view["cross_bank"]["svg"])
+        self.assertTrue(view["trend"]["drawn"])
+        self.assertFalse(view["financially_validated"])
+        self.assertFalse(view["is_total_assets"])
 
 
 if __name__ == "__main__":

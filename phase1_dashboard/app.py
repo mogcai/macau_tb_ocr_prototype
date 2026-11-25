@@ -118,10 +118,44 @@ def create_app(db_path: Path | str) -> FastAPI:
         }
 
     @app.get("/")
+    def chart_page(
+        request: Request,
+        bucket: str | None = None,
+        statement_date: str | None = None,
+        item_key: str | None = None,
+        entity_id: str | None = None,
+    ):
+        with open_readonly(app.state.db_path) as connection:
+            model = service.chart_home(
+                connection,
+                bucket_id=bucket,
+                statement_date=statement_date,
+                item_key=item_key,
+                entity_id=entity_id,
+            )
+        return render(request, "home.html", model=model)
+
+    @app.get("/coverage")
     def coverage_page(request: Request):
         with open_readonly(app.state.db_path) as connection:
             model = service.coverage(connection)
         return render(request, "coverage.html", model=model)
+
+    @app.get("/api/charts")
+    def charts_api(
+        bucket: str | None = None,
+        statement_date: str | None = None,
+        item_key: str | None = None,
+        entity_id: str | None = None,
+    ) -> dict[str, Any]:
+        with open_readonly(app.state.db_path) as connection:
+            return service.chart_home(
+                connection,
+                bucket_id=bucket,
+                statement_date=statement_date,
+                item_key=item_key,
+                entity_id=entity_id,
+            )
 
     @app.get("/entities/{entity_id}")
     def entity_page(
