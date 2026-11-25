@@ -386,6 +386,18 @@ _COLUMN_RIGHT_FRAME_MIN = 0.88
 _COLUMN_MIN_AMOUNT_GAP = 0.08
 _COLUMN_CODE_GAP = 0.05
 _COLUMN_CODE_STRENGTH_RATIO = 0.4
+# Scanned rules are often interrupted or lighter than full-height table frames.
+# A strict 12%-height opening misses the label|debit rule on inset/skewed
+# tables (2025-46 pages 20, 28, 31, 32), so the amount separators are detected
+# with a shorter kernel. Page-wide OCR is unaffected; this only locates columns.
+_COLUMN_RULE_KERNEL_FRACTION = 0.06
+_COLUMN_RULE_MIN_FRACTION = 0.05
+# Amounts are right-aligned against the debit|credit rule. The detected rule
+# can sit a few pixels to the left of the glyphs, so a 0.2% margin clips the
+# final digit (2025-46 page 20). Extend only the debit ROI's right edge; the
+# credit ROI stays close to the rule because a wider left edge degraded its
+# recognition on 2025-46 page 17.
+_AMOUNT_ROI_PADDING = 0.006
 
 
 def _merge_vertical_rules(
@@ -428,7 +440,12 @@ def _label_x0_from_code_rules(
     code_strength, code_frac = max(left_rules, key=lambda item: item[1])
     strongest = max(item[0] for item in strength_pool)
     if code_strength >= _COLUMN_CODE_STRENGTH_RATIO * strongest:
-        return min(0.99, max(0.005, code_frac + 0.003))
+        # Keep enough white space right of the code rule that the printed codes
+        # cannot enter the label ROI. The exact fraction matters because Apple
+        # Vision treats the ROI as a normalised rect; this matches the value
+        # that previously produced clean labels on the issue-45 code-column
+        # page.
+        return min(0.99, max(0.005, code_frac + 0.0033))
     return 0.005
 
 
@@ -506,13 +523,13 @@ def detect_column_layout(image_path: Path) -> tuple[float, float, float, str]:
             raise ValueError("cv2 could not load image")
         h, w = image.shape[:2]
         binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-        kernel_h = max(25, int(h * 0.12))
+        kernel_h = max(25, int(h * _COLUMN_RULE_KERNEL_FRACTION))
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_h))
         vertical = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
         projection = (vertical > 0).sum(axis=0)
         candidates: list[tuple[float, float]] = []
         min_run = max(2, int(w * 0.0015))
-        xs = np.where(projection >= max(20, int(h * 0.10)))[0]
+        xs = np.where(projection >= max(20, int(h * _COLUMN_RULE_MIN_FRACTION)))[0]
         if len(xs):
             groups: list[list[int]] = [[int(xs[0])]]
             for x in xs[1:]:
@@ -850,7 +867,7 @@ def run_vision_ocr(image_path: Path, languages: list[str],
     tasks.extend([
         {"name": "debit_numeric", "language": "en", "level": level,
          "x0": min(0.99, sep1 + 0.002), "y0": body_y0,
-         "x1": max(sep1 + 0.01, sep2 - 0.002), "y1": body_y1},
+         "x1": max(sep1 + 0.01, sep2 + _AMOUNT_ROI_PADDING), "y1": body_y1},
         {"name": "credit_numeric", "language": "en", "level": level,
          "x0": min(0.99, sep2 + 0.002), "y0": body_y0,
          "x1": 0.995, "y1": body_y1},
@@ -1160,7 +1177,7 @@ def _numeric_column_crop(image: Any, width: int, height: int,
     sep1, sep2 = boundaries
     if column == "debit":
         x0 = int(min(0.99, sep1 + 0.002) * width)
-        x1 = int(max(sep1 + 0.01, sep2 - 0.002) * width)
+        x1 = int(max(sep1 + 0.01, sep2 + _AMOUNT_ROI_PADDING) * width)
     else:
         x0 = int(min(0.99, sep2 + 0.002) * width)
         x1 = int(0.995 * width)
@@ -1364,7 +1381,7 @@ def second_pass_amount_cells(rows: list[dict[str, Any]], image_path: Path,
     worker = _ensure_vision_worker()
     sep1, sep2 = boundaries
     columns = {
-        "debit": (min(0.99, sep1 + 0.002), max(sep1 + 0.01, sep2 - 0.002)),
+        "debit": (min(0.99, sep1 + 0.002), max(sep1 + 0.01, sep2 + _AMOUNT_ROI_PADDING)),
         "credit": (min(0.99, sep2 + 0.002), 0.995),
     }
     cells = 0
@@ -1829,6 +1846,8 @@ def validate_rows(rows: list[dict[str, Any]], confidence_threshold: float,
             issues.append(f"label:{label_status}")
         if row.get("row_confidence", 0) < confidence_threshold:
             issues.append("low_ocr_confidence")
+        if row.get("geometry_suspect"):
+            issues.append("geometry_suspect")
         if not row.get("label_raw") and (debit or credit):
             issues.append("amount_without_account_label")
 
@@ -2102,6 +2121,270 @@ def apply_label_review(rows: list[dict[str, Any]]) -> None:
         existing = [x for x in (row.get("review_reason") or "").split(";") if x]
         row["review_reason"] = ";".join(dict.fromkeys(existing + reasons))
         row["review_status"] = "needs_review"
+
+
+_COLUMN_HEADER_RE = re.compile(
+    r"帳戶名稱|帳目名稱|科目|DESIGNA[CÇ][AÃ]O|ACCOUNT|借方|貸方|"
+    r"DEVEDORES|CREDORES|SALDO|餘額",
+    re.IGNORECASE,
+)
+_TOTAL_ROW_RE = re.compile(
+    r"^(?:總|與|絛|総)額$|^合計$|^TOTAIS$|^TOTAL$", re.IGNORECASE
+)
+_AMOUNT_LIKE_LABEL_RE = re.compile(r"\d[\d.,\s]{4,}\d")
+_CLEAN_AMOUNT_RAW_RE = re.compile(r"^[\s$]*[\(\-]?[\d.,\s]+[\)]?$")
+_COLUMN_HEADER_ROW_RE = re.compile(
+    r"(?:帳|账|眼|腿|腦|脳|户|戶).{0,3}名(?:稱|稍|禡|称)?"
+    r"|餘額|與額|絛額|借方|貸方|SALDO|DEVEDORES|CREDORES|DESIGNA",
+    re.IGNORECASE,
+)
+
+
+def drop_column_header_rows(rows: list[dict[str, Any]], image_height: int) -> int:
+    """Remove the table's column-heading row before it becomes an account row."""
+    dropped = 0
+    kept: list[dict[str, Any]] = []
+    for row in rows:
+        if image_height > 0 and row.get("y_center", image_height) <= image_height * 0.10:
+            label = norm_text(row.get("label_raw", ""))
+            amount = norm_text(row.get("debit_raw") or row.get("credit_raw") or "")
+            if not label and re.fullmatch(r"\d{1,4}", amount):
+                # Printed page numbers and years sit in the top header band.
+                dropped += 1
+                continue
+        if (
+            dropped < 3
+            and image_height > 0
+            and row.get("y_center", image_height) <= image_height * 0.25
+            and _COLUMN_HEADER_ROW_RE.search(norm_text(row.get("label_raw", "")))
+        ):
+            dropped += 1
+            continue
+        kept.append(row)
+    if dropped:
+        rows[:] = kept
+    return dropped
+
+
+def _table_rules_from_image(
+    image_path: Path | None, image_height: int,
+) -> tuple[float | None, float | None]:
+    """Find the table's top/header and bottom rules from long horizontal ink."""
+    if image_path is None or image_height <= 0:
+        return None, None
+    try:
+        if not Path(image_path).is_file():
+            return None, None
+        import cv2
+        import numpy as np
+        image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    except Exception:
+        return None, None
+    if image is None:
+        return None, None
+    h, w = image.shape[:2]
+    binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT, (max(20, int(w * 0.25)), 1)
+    )
+    horizontal = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    row_ink = (horizontal > 0).sum(axis=1)
+    ys = np.where(row_ink >= w * 0.25)[0]
+    if not len(ys):
+        return None, None
+
+    def group_centers(values) -> list[float]:
+        if not len(values):
+            return []
+        groups: list[list[int]] = [[int(values[0])]]
+        for y in values[1:]:
+            y = int(y)
+            if y - groups[-1][-1] <= 4:
+                groups[-1].append(y)
+            else:
+                groups.append([y])
+        return [sum(group) / len(group) for group in groups]
+
+    top_groups = group_centers(ys[(ys >= h * 0.04) & (ys <= h * 0.35)])
+    bottom_groups = group_centers(ys[(ys >= h * 0.60) & (ys <= h * 0.99)])
+    top = None
+    if top_groups:
+        # The second long rule closes the column-heading band; drop that row.
+        if len(top_groups) >= 2 and top_groups[1] - top_groups[0] <= h * 0.12:
+            top = top_groups[1]
+        else:
+            top = top_groups[0]
+    bottom = bottom_groups[-1] if bottom_groups else None
+    return top, bottom
+
+
+def filter_table_body_boxes(
+    boxes: list[OCRBox], image_height: int, image_path: Path | None = None,
+) -> tuple[list[OCRBox], float | None, float | None, int]:
+    """Drop boxes above the column headings and below the printed total.
+
+    The table OCR tasks start at 3.5% of the image, so a dense page header (bank
+    address, telephone, signatures) can otherwise become table rows. This only
+    filters row *grouping*; every OCR box stays in ``ocr_raw.csv``.
+    """
+    if not boxes or image_height <= 0:
+        return boxes, None, None, 0
+    header_hits = [
+        b for b in boxes
+        if b.cy <= image_height * 0.22 and _COLUMN_HEADER_RE.search(norm_text(b.text))
+    ]
+    body_top = max((b.y1 for b in header_hits), default=None)
+    image_top, image_bottom = _table_rules_from_image(image_path, image_height)
+    if body_top is None:
+        body_top = image_top
+    total_hits = [
+        b for b in boxes
+        if b.cy >= image_height * 0.80 and _TOTAL_ROW_RE.match(norm_text(b.text))
+    ]
+    body_bottom = None
+    if total_hits:
+        total_row = max(total_hits, key=lambda b: b.cy)
+        heights = [b.height for b in boxes]
+        tolerance = max(15.0, (statistics.median(heights) if heights else 20.0) * 1.5)
+        row_boxes = [b for b in boxes if abs(b.cy - total_row.cy) <= tolerance]
+        body_bottom = max(b.y1 for b in row_boxes)
+    if image_bottom is not None and image_bottom >= image_height * 0.82:
+        body_bottom = max(body_bottom or 0.0, image_bottom)
+    if body_top is None and body_bottom is None:
+        return boxes, None, None, 0
+    kept = [
+        b for b in boxes
+        if (body_top is None or b.cy > body_top)
+        and (body_bottom is None or b.cy <= body_bottom)
+    ]
+    if not kept:
+        return boxes, body_top, body_bottom, 0
+    return kept, body_top, body_bottom, len(boxes) - len(kept)
+
+
+def _is_column_rule_artifact(box: OCRBox, image_width: int) -> bool:
+    """True for a narrow single-character reading of a table rule."""
+    text = (box.text or "").strip()
+    if len(text) != 1 or text.isdigit() or text in {"-", "—", "–"}:
+        return False
+    return (box.x1 - box.x0) <= max(4.0, image_width * 0.006)
+
+
+def recover_header_region_table_boxes(
+    table_boxes: list[OCRBox],
+    header_boxes: list[OCRBox],
+    body_top: float,
+    min_x: float = 0.0,
+) -> list[OCRBox]:
+    """Add header-ROI readings that lie inside the table, without duplicates.
+
+    The fixed 25% header ROI overlaps tables that start high on the page. A
+    numeric cell missed by the table pass can still exist only in the header
+    pass, so it is recovered; readings that already exist in the table pass are
+    left alone. Only boxes right of the label column are considered, because
+    account-code boxes in the header pass would otherwise be glued onto labels
+    (issue 45 page 29).
+    """
+    recovered: list[OCRBox] = []
+    for box in header_boxes:
+        if box.cy <= body_top or box.cx < min_x:
+            continue
+        text = norm_text(box.text)
+        # Only recover monetary readings; page numbers, dates and headings are
+        # also present in the 25% header band.
+        if not (
+            _CLEAN_AMOUNT_RAW_RE.match(text)
+            and re.search(r"[.,]\s*\d{2}$", text)
+        ):
+            continue
+        duplicate = any(
+            _box_iou(box, existing) >= 0.40
+            or (
+                norm_text(box.text) == norm_text(existing.text)
+                and abs(box.cy - existing.cy) <= max(8.0, box.height * 0.60)
+            )
+            for existing in table_boxes + recovered
+        )
+        if not duplicate:
+            recovered.append(box)
+    return table_boxes + recovered
+
+
+def mark_geometry_suspect_rows(rows: list[dict[str, Any]]) -> int:
+    """Flag rows where the label cell swallowed an amount.
+
+    A wrong label|debit boundary can leave every amount inside ``label_raw``
+    while ``debit_raw``/``credit_raw`` stay empty. Those rows are dangerous
+    because the amount has disappeared without a parse error, so they must not
+    silently auto-pass.
+    """
+    flagged = 0
+    for row in rows:
+        if row.get("debit_raw") or row.get("credit_raw"):
+            continue
+        label = norm_text(row.get("label_raw", ""))
+        if not label or not _AMOUNT_LIKE_LABEL_RE.search(label):
+            continue
+        row["geometry_suspect"] = True
+        flagged += 1
+    return flagged
+
+
+def apply_confidence_review_gate(
+    rows: list[dict[str, Any]], confidence_threshold: float,
+) -> int:
+    """Auto-pass low-confidence rows only when an exact lexicon label proves it.
+
+    Apple Vision returns 0.3/0.5 confidence for many correct Traditional Chinese
+    labels. The old single-threshold gate sent every such row to review even when
+    the label matched the curated lexicon exactly and the amounts parsed cleanly.
+    Raw confidence and the row's original reasons are preserved in other columns;
+    ``review_confidence_waived`` records why the warning was removed.
+    """
+    waived = 0
+    clean_status = {"parsed", "blank", "dash", ""}
+    for row in rows:
+        row["review_confidence_waived"] = ""
+        reasons = [x for x in (row.get("review_reason") or "").split(";") if x]
+        if reasons != ["low_ocr_confidence"]:
+            continue
+        if row.get("label_standard_status") != "exact":
+            continue
+        try:
+            if float(row.get("label_standard_score") or 0.0) < 1.0:
+                continue
+        except (TypeError, ValueError):
+            continue
+        if not norm_text(row.get("label_raw", "")):
+            continue
+        amount_ok = True
+        for column in ("debit", "credit"):
+            if (row.get(f"{column}_parse_status") or "") not in clean_status:
+                amount_ok = False
+                break
+            if not (row.get(f"{column}_raw") or "").strip():
+                continue
+            raw = (row.get(f"{column}_raw") or "").strip()
+            if not _CLEAN_AMOUNT_RAW_RE.match(raw):
+                amount_ok = False
+                break
+            try:
+                column_confidence = float(
+                    row.get(f"{column}_confidence") or 1.0
+                )
+            except (TypeError, ValueError):
+                amount_ok = False
+                break
+            if column_confidence < confidence_threshold:
+                amount_ok = False
+                break
+        if not amount_ok:
+            continue
+        row["review_reason"] = ""
+        row["review_status"] = "auto_check_pass"
+        row["review_confidence_waived"] = "label_exact"
+        waived += 1
+    return waived
 
 
 def ocr_boxes_to_lines(boxes: list[OCRBox], max_y: float) -> list[str]:
@@ -2534,6 +2817,29 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
             if not header_boxes:
                 header_boxes = [b for b in all_boxes if b.cy <= table_image.height * 0.24]
             table_boxes = [b for b in all_boxes if b.region == "table"]
+            table_boxes, table_body_top, table_body_bottom, table_body_filtered = (
+                filter_table_body_boxes(table_boxes, table_image.height, image_path)
+            )
+            if table_body_top is not None:
+                # The fixed 25% header ROI overlaps tables that start high on
+                # the page. Recover header-region readings below the table top
+                # so those first rows are not lost from the body.
+                merged_boxes = recover_header_region_table_boxes(
+                    table_boxes, header_boxes, table_body_top,
+                    min_x=b1 * table_image.width,
+                )
+                if len(merged_boxes) != len(table_boxes):
+                    table_boxes, table_body_top, table_body_bottom, table_body_filtered = (
+                        filter_table_body_boxes(
+                            merged_boxes,
+                            table_image.height,
+                            image_path,
+                        )
+                    )
+            table_boxes = [
+                b for b in table_boxes
+                if not _is_column_rule_artifact(b, table_image.width)
+            ]
             # Fill missing/embedded-only entity name and date from the dedicated header ROI.
             header_lines = ocr_boxes_to_lines(header_boxes, table_image.height * 0.24)
             ocr_header_text = "\n".join(header_lines)
@@ -2645,6 +2951,10 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
                 table_boxes, table_image.width, table_image.height, (b1, b2),
                 row_bands=row_bands or None,
             )
+            column_header_rows_dropped = drop_column_header_rows(
+                rows, table_image.height
+            )
+            geometry_suspect_rows = mark_geometry_suspect_rows(rows)
             second_pass_diagnostics: dict[str, Any] = {
                 "amount_second_pass_status": "off",
                 "amount_second_pass_cells": 0,
@@ -2690,6 +3000,9 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
                         rows, lexicon
                     )
                     apply_label_review(rows)
+                    label_diagnostics["review_confidence_waived"] = (
+                        apply_confidence_review_gate(rows, args.confidence_threshold)
+                    )
                 else:
                     label_diagnostics = {"label_standard_status": "lexicon_missing"}
             if rows:
@@ -2700,6 +3013,15 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
             document_rows[-1].update(verifier_diagnostics)
             document_rows[-1].update(second_pass_diagnostics)
             document_rows[-1].update(label_diagnostics)
+            document_rows[-1]["table_body_top"] = (
+                round(table_body_top, 2) if table_body_top is not None else ""
+            )
+            document_rows[-1]["table_body_bottom"] = (
+                round(table_body_bottom, 2) if table_body_bottom is not None else ""
+            )
+            document_rows[-1]["table_body_filtered_boxes"] = table_body_filtered
+            document_rows[-1]["column_header_rows_dropped"] = column_header_rows_dropped
+            document_rows[-1]["geometry_suspect_rows"] = geometry_suspect_rows
             document_rows[-1]["row_structure_source"] = row_structure_source
             document_rows[-1]["row_structure_guard"] = row_structure_guard
             document_rows[-1]["row_band_count"] = len(row_bands)
