@@ -311,6 +311,38 @@ def render_page_header_image(
     return pix.width, pix.height
 
 
+def _render_image_placement(
+    page: fitz.Page,
+    xref: int,
+    width: int,
+    height: int,
+    out_path: Path,
+) -> tuple[int, int] | None:
+    """Render an embedded image's page area at its native resolution.
+
+    Used when the XObject cannot be converted directly. ImageMask (stencil)
+    images have no /ColorSpace; PyMuPDF exposes their samples as white-on-black,
+    so saving them directly inverts the scan. The PDF renderer resolves the
+    mask polarity and background correctly.
+    """
+    try:
+        rects = page.get_image_rects(xref)
+    except Exception:
+        return None
+    if not rects:
+        return None
+    rect = rects[0] & page.rect
+    if rect.is_empty or rect.width <= 0 or rect.height <= 0:
+        return None
+    zoom = max(width / rect.width, height / rect.height)
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=rect, alpha=False)
+    if pix.colorspace is None or pix.colorspace.n != 3 or pix.alpha:
+        pix = fitz.Pixmap(fitz.csRGB, pix)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    pix.save(str(out_path))
+    return pix.width, pix.height
+
+
 def extract_best_embedded_image(doc: fitz.Document, page: fitz.Page, page_index: int, out_path: Path) -> TableImage:
     candidates: list[tuple[int, int, int]] = []
     for item in page.get_images(full=True):
@@ -325,13 +357,19 @@ def extract_best_embedded_image(doc: fitz.Document, page: fitz.Page, page_index:
         _, xref, _ = max(candidates)
         pix = fitz.Pixmap(doc, xref)
         # Convert CMYK/Gray/alpha to a predictable RGB PNG for OpenCV and OCR.
-        if pix.colorspace is None or pix.colorspace.n != 3 or pix.alpha:
-            pix = fitz.Pixmap(fitz.csRGB, pix)
-        else:
-            pix = fitz.Pixmap(fitz.csRGB, pix)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        pix.save(str(out_path))
-        return TableImage(page_index, out_path, pix.width, pix.height, xref, True)
+        # ImageMask XObjects have colorspace None and cannot be converted (issue
+        # 2026-06 page 31); render the placement instead of aborting the run.
+        if pix.colorspace is not None:
+            try:
+                pix = fitz.Pixmap(fitz.csRGB, pix)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                pix.save(str(out_path))
+                return TableImage(page_index, out_path, pix.width, pix.height, xref, True)
+            except Exception:
+                pass
+        rendered = _render_image_placement(page, xref, pix.width, pix.height, out_path)
+        if rendered is not None:
+            return TableImage(page_index, out_path, rendered[0], rendered[1], xref, False)
 
     # Fallback: render the page itself. This is less ideal and should be manually checked.
     out_path.parent.mkdir(parents=True, exist_ok=True)
