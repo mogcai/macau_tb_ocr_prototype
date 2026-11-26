@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Native-text Balancete pages are no longer skipped:** `is_tb_page()` previously required a large embedded bitmap, so vector/text-layer TB pages such as 2025 issue 32 page 9 (永豐商業銀行) and 2026 issue 17 page 465 (廣發銀行) were recorded as `not_tb_page`. Native pages now qualify only when the PDF text has a TB heading, both debit/credit column headings, and at least five amount-like values; the page is then rendered at 4x for the normal OCR pipeline. Scanned-page behaviour is unchanged.
+- **Both amount columns are covered by tests:** regression tests assert that a row can carry debit and credit values at the same time through row grouping and validation, and that only unequal `總額`/`TOTAL` rows get `debit_credit_total_mismatch`.
 - **Importer default target is now V3:** `tools/import_issue.py` defaults to `--target v3`, resolves `data/macau_balancete_v3.sqlite` from `ROOT`, writes unique `outputs/runs/issueNN_YYYY__job_<id>` folders, and stops at raw OCR evidence (staging, awaiting Workbench page classification). It does not classify pages, create statements, approve mappings or publish.
 - **Legacy V5 is explicit and archived:** `--target v5` keeps the old V5 workflow (`build_database.py`, bank refresh, name remap, optional `--publish`), now pointing at the frozen copy `archive/database/macau_balancete.sqlite`. V5-only flags (`--db`, `--publish`, `--no-bank-refresh`, …) fail under the V3 target with a hint to add `--target v5`.
 - **Docs:** `IMPORT_ISSUE.md` rewritten V3-first with a V5 legacy section; `README.md`, `README_zh_HK.md`, `README_AGENT.md` and `SKILL.md` updated; the ingestion spec records the deliberate default change.

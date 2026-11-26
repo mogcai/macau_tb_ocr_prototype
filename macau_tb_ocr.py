@@ -139,13 +139,45 @@ def detect_languages(page_text: str) -> list[str]:
     return list(dict.fromkeys(langs))
 
 
+_NATIVE_TB_AMOUNT_RE = re.compile(
+    r"(?<![\d.,])\d{1,3}(?:[ ,.]\d{3})*[.,]\d{2}(?![\d.,])"
+)
+
+
+def has_native_text_tb(page_text: str) -> bool:
+    """True for a vector/text-layer Balancete with no large embedded image.
+
+    Some Gazette pages (2025-32 page 9 永豐銀行, 2026-17 page 465 廣發銀行)
+    print the table with PDF text and vector rules instead of scanning an
+    embedded bitmap. They must still be processed, but a heading alone is not
+    enough evidence: require both the debit and credit column headings and a
+    numeric grid. The rendered page is used as the source image downstream, so
+    raw OCR evidence and bounding boxes are preserved like any scanned page.
+    """
+    text = norm_text(page_text)
+    if not BALANCETE_HEADING_RE.search(text):
+        return False
+    upper = text.upper()
+    has_columns = (
+        ("借方" in text and "貸方" in text)
+        or ("DEVEDORES" in upper and "CREDORES" in upper)
+    )
+    if not has_columns:
+        return False
+    return len(_NATIVE_TB_AMOUNT_RE.findall(text)) >= 5
+
+
 def is_tb_page(page_text: str, has_large_image: bool) -> bool:
     upper = norm_text(page_text).upper()
     has_keyword = any(term in upper for term in TB_TERMS)
     # A few Portuguese-language pages put the bank/title only inside the image;
     # the native layer may contain only signatory lines and the publication fee.
     has_gazette_fee = "CUSTO DESTA PUBLICAÇÃO" in upper or "是項刊登費用" in upper
-    return has_large_image and (has_keyword or has_gazette_fee)
+    if has_large_image and (has_keyword or has_gazette_fee):
+        return True
+    # Do not lower the embedded-image threshold for every page: a native text
+    # page must show the TB heading plus debit/credit columns and amounts.
+    return has_native_text_tb(page_text)
 
 
 def _cn_number(token: str) -> int | None:
