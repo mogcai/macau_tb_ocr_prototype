@@ -103,11 +103,25 @@ def load_seed(v5: sqlite3.Connection) -> tuple[list[dict[str, Any]], list[dict[s
 
 
 def seed_catalogue(v3: sqlite3.Connection, standards: list[dict[str, Any]],
-                   aliases: list[dict[str, Any]]) -> dict[int, str]:
+                   aliases: list[dict[str, Any]]) -> tuple[dict[int, str], int]:
+    """Seed legacy catalogue rows, leaving existing rows untouched.
+
+    The legacy V5 list is a bootstrap source only.  Once a ``standard_item``
+    exists in v3 it is curated in the Workbench (names, language status and
+    lifecycle), so re-running this tool on the next intake build must never
+    reset ``item_status`` or a language status back to ``draft`` (that is what
+    silently reverted approved items).  Existing names, statuses and notes win;
+    only missing values are filled from the seed.
+    """
     id_by_legacy: dict[int, str] = {}
+    preserved = 0
     for row in standards:
         item_id = stable_id("standard_item", row["standard_key"])
         id_by_legacy[int(row["standard_id"])] = item_id
+        if v3.execute(
+            "SELECT 1 FROM standard_items WHERE standard_item_id=?", (item_id,)
+        ).fetchone():
+            preserved += 1
         zh = text(row.get("canonical_zh"))
         pt = text(row.get("canonical_pt"))
         en = text(row.get("canonical_en"))
@@ -122,15 +136,31 @@ def seed_catalogue(v3: sqlite3.Connection, standards: list[dict[str, Any]],
                 item_status, created_at, notes
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
             ON CONFLICT(standard_item_id) DO UPDATE SET
-                item_key=excluded.item_key,
-                canonical_zh=excluded.canonical_zh,
-                canonical_zh_status=excluded.canonical_zh_status,
-                canonical_pt=excluded.canonical_pt,
-                canonical_pt_status=excluded.canonical_pt_status,
-                canonical_en=excluded.canonical_en,
-                canonical_en_status=excluded.canonical_en_status,
-                item_status=excluded.item_status,
-                notes=excluded.notes
+                canonical_zh=CASE
+                    WHEN standard_items.canonical_zh IS NULL
+                    THEN excluded.canonical_zh
+                    ELSE standard_items.canonical_zh END,
+                canonical_zh_status=CASE
+                    WHEN standard_items.canonical_zh IS NULL
+                    THEN excluded.canonical_zh_status
+                    ELSE standard_items.canonical_zh_status END,
+                canonical_pt=CASE
+                    WHEN standard_items.canonical_pt IS NULL
+                    THEN excluded.canonical_pt
+                    ELSE standard_items.canonical_pt END,
+                canonical_pt_status=CASE
+                    WHEN standard_items.canonical_pt IS NULL
+                    THEN excluded.canonical_pt_status
+                    ELSE standard_items.canonical_pt_status END,
+                canonical_en=CASE
+                    WHEN standard_items.canonical_en IS NULL
+                    THEN excluded.canonical_en
+                    ELSE standard_items.canonical_en END,
+                canonical_en_status=CASE
+                    WHEN standard_items.canonical_en IS NULL
+                    THEN excluded.canonical_en_status
+                    ELSE standard_items.canonical_en_status END,
+                notes=COALESCE(standard_items.notes, excluded.notes)
             """,
             (
                 item_id, row["standard_key"], zh or None,
@@ -149,7 +179,8 @@ def seed_catalogue(v3: sqlite3.Connection, standards: list[dict[str, Any]],
         parent_id = id_by_legacy.get(int(row["parent_standard_id"]))
         if parent_id:
             v3.execute(
-                "UPDATE standard_items SET parent_standard_item_id=? WHERE standard_item_id=?",
+                "UPDATE standard_items SET parent_standard_item_id=? "
+                "WHERE standard_item_id=? AND parent_standard_item_id IS NULL",
                 (parent_id, id_by_legacy[int(row["standard_id"])]),
             )
 
@@ -177,7 +208,7 @@ def seed_catalogue(v3: sqlite3.Connection, standards: list[dict[str, Any]],
                 str(alias["alias_id"]), status, text(alias.get("note")),
             ),
         )
-    return id_by_legacy
+    return id_by_legacy, preserved
 
 
 def index_catalogue(v3: sqlite3.Connection) -> tuple[
@@ -467,9 +498,10 @@ def main() -> int:
     v3 = connect_rw(args.v3_db.expanduser().resolve())
     try:
         standards, aliases = load_seed(v5)
+        preserved = 0
         if args.apply:
             v3.execute("BEGIN")
-            seed_catalogue(v3, standards, aliases)
+            _, preserved = seed_catalogue(v3, standards, aliases)
             v3.commit()
         items, canonical, alias_index, children = index_catalogue(v3)
         rows = effective_rows(v3)
@@ -477,19 +509,21 @@ def main() -> int:
         if args.apply:
             v3.commit()
             v3.execute(
-                "INSERT OR IGNORE INTO audit_events("
+                "INSERT INTO audit_events("
                 "audit_event_id, event_type, actor_id, details_json, reason, created_at"
                 ") VALUES (?, 'standard_item_auto_map', 'p1-auto-map', ?, ?, ?)",
                 (
-                    stable_id("p1_auto_map_event", VERSION),
+                    str(uuid.uuid4()),
                     json.dumps({
                         "version": VERSION,
                         "rows": len(rows),
                         "status_counts": dict(counts),
                         "standard_items": len(items),
+                        "preserved_catalogue_rows": preserved,
                         "approved_mappings": 0,
                     }, ensure_ascii=False, sort_keys=True),
-                    "P1 first-pass proposed mappings; no approvals",
+                    "P1 first-pass proposed mappings; no approvals; "
+                    "existing catalogue lifecycle preserved",
                     now(),
                 ),
             )
@@ -497,6 +531,7 @@ def main() -> int:
         write_review(args.out.expanduser().resolve(), mapped, items)
         print(json.dumps({
             "standard_items": len(items),
+            "preserved_catalogue_rows": preserved,
             "rows": len(rows),
             "status_counts": dict(counts),
             "applied": args.apply,

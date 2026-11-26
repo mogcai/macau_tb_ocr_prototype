@@ -79,3 +79,15 @@ Workbench Review detail now shows:
 - Do not treat a unique auto-map as human approval.
 - Selected reviewer decisions will need a separate approval step that writes
   `mapping_status='approved'` with reviewer/time and audit evidence.
+
+## Re-seeding on later builds (fixed 2026-11-26)
+
+`--apply` runs again automatically on every Workbench intake build. Because the
+script also re-applied the legacy seed, its `ON CONFLICT ... DO UPDATE` used to
+copy the seed's `item_status` and language statuses back onto existing rows,
+silently reverting catalogue items that a human had approved in the Workbench.
+
+The seed is now insert-only for new rows: an existing `standard_items` row keeps
+its names, language statuses, parent, notes and `item_status`. Only missing
+values are filled from the V5 seed, and each run records a
+`standard_item_auto_map` audit event with `preserved_catalogue_rows`.
