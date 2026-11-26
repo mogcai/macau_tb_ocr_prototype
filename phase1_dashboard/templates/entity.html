@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ model.canonical_zh }} · 第一期本機檢視{% endblock %}
 {% block content %}
-<p><a href="/">返回覆蓋</a></p>
+<p><a href="/">返回總覽</a> · <a href="/entities">銀行資料庫</a></p>
 <h2>{{ model.canonical_zh }}</h2>
 <p class="meta">{{ model.bucket_title }} · {{ model.bucket_rule }}</p>
 <p class="meta">entity_type {{ model.entity_type or "—" }} · registry {{ model.registry_status or "—" }} · parent {{ model.parent_entity_id or "空" }}{% if model.merged_into_entity_id %} · 併入 {{ model.merged_into_entity_id }}{% endif %}</p>

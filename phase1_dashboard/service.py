@@ -6,6 +6,9 @@ from collections import defaultdict
 from typing import Any
 
 from phase1_dashboard import queries
+from phase1_dashboard.charts import build_chart_view
+from phase1_dashboard.indicators import build_indicator_view
+from phase1_dashboard.overview import build_bank_directory
 from phase1_dashboard.present import (
     build_compare,
     build_coverage,
@@ -55,6 +58,50 @@ def load_scope(connection: sqlite3.Connection) -> dict[str, Any]:
         "statements": statements,
         "rows_by_statement": dict(rows_by_statement),
     }
+
+
+def chart_home(
+    connection: sqlite3.Connection,
+    *,
+    bucket_id: str | None,
+    statement_date: str | None,
+    item_key: str | None,
+    entity_id: str | None,
+) -> dict[str, Any]:
+    scope = load_scope(connection)
+    publications = queries.fetch_publication_summary(connection)
+    coverage = build_coverage(**scope)
+    model = build_chart_view(
+        bucket_id=bucket_id,
+        statement_date=statement_date,
+        item_key=item_key or None,
+        entity_id=entity_id or None,
+        coverage=coverage,
+        publication_count=publications["current"],
+        publication_total=publications["total"],
+        **scope,
+    )
+    model["page_warnings"] = list(PAGE_WARNINGS)
+    return model
+
+
+def bank_directory(connection: sqlite3.Connection) -> dict[str, Any]:
+    model = build_bank_directory(coverage(connection))
+    model["page_warnings"] = list(PAGE_WARNINGS)
+    return model
+
+
+def indicators(connection: sqlite3.Connection) -> dict[str, Any]:
+    coverage_model = coverage(connection)
+    publications = queries.fetch_publication_summary(connection)
+    model = build_indicator_view(
+        publication_count=publications["current"],
+        publication_total=publications["total"],
+        approved_rows=coverage_model["mapping"]["approved"],
+        proposed_rows=coverage_model["mapping"]["proposed"],
+    )
+    model["page_warnings"] = list(PAGE_WARNINGS)
+    return model
 
 
 def coverage(connection: sqlite3.Connection) -> dict[str, Any]:

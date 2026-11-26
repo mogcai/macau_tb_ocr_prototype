@@ -761,6 +761,10 @@ def _gap_identity(statement: dict[str, Any]) -> dict[str, Any]:
         "statement_status": statement.get("statement_status"),
         "review_status": statement.get("review_status"),
         "statement_date": statement.get("statement_date"),
+        "reporting_scope": statement.get("reporting_scope"),
+        "currency": statement.get("currency"),
+        "unit_scale": statement.get("unit_scale"),
+        "amount_decimal_places": statement.get("amount_decimal_places"),
         "amounts": None,
     }
 

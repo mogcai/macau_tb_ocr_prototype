@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}指標與口徑 · 澳門銀行數據儀表板{% endblock %}
+{% block content %}
+<section class="overview-head">
+  <div>
+    <h2>指標與口徑 <span class="pill pill-preview">未啟用</span></h2>
+    <p class="lead">{{ model.reason }}</p>
+  </div>
+</section>
+
+<section class="blocked" aria-disabled="true">
+  <h2>{{ model.headline }}</h2>
+  <div class="cards kpis">
+    <article class="card">
+      <div class="label">已發布報表</div>
+      <div class="value">{{ model.status.publication_count }}</div>
+      <div class="meta">publication_records total {{ model.status.publication_total }}</div>
+    </article>
+    <article class="card">
+      <div class="label">已批准指標定義</div>
+      <div class="value">{{ model.status.approved_definitions }}</div>
+      <div class="meta">indicator catalogue 未有已審批版本</div>
+    </article>
+    <article class="card">
+      <div class="label">已審批 perimeter</div>
+      <div class="value">否</div>
+      <div class="meta">只有顯示分組 8 + 3 + 4</div>
+    </article>
+    <article class="card">
+      <div class="label">已啟用正式指標</div>
+      <div class="value">{{ model.status.enabled_count }} / {{ model.status.total_count }}</div>
+      <div class="meta">沒有總資產、存款、比率或行業合計</div>
+    </article>
+  </div>
+  <p class="meta">approved mapping 行 {{ model.status.approved_rows }} · proposed 行 {{ model.status.proposed_rows }}。approved 是 Workbench 標記，不是財務接受。</p>
+</section>
+
+<section class="panel">
+  <h2>啟用正式指標前必須完成</h2>
+  <ol>
+    {% for item in model.enable_conditions %}
+    <li>{{ item }}</li>
+    {% endfor %}
+  </ol>
+  <p class="meta">口徑來源：<code>docs/MACAU_BANKING_DASHBOARD_DESIGN_v0.2.md</code>。本頁只作 readiness 說明，不計算任何指標值。</p>
+</section>
+
+{% for group in model.groups %}
+<section class="bucket">
+  <h2>{{ group.title }}</h2>
+  <p class="rule">{{ group.note }}</p>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>指標</th>
+          <th>優先級</th>
+          <th>建議定義</th>
+          <th>必要資料</th>
+          <th>狀態</th>
+          <th>未啟用原因</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for indicator in group.indicators %}
+        <tr>
+          <td>
+            <div>{{ indicator.name_zh }}</div>
+            <div class="meta">{{ indicator.id }}</div>
+          </td>
+          <td>{{ indicator.priority }}</td>
+          <td>{{ indicator.definition }}</td>
+          <td>{{ indicator.needs }}</td>
+          <td><span class="pill pill-blocked">{{ indicator.status }}</span></td>
+          <td>
+            <ul class="blockers">
+              {% for blocker in indicator.blockers %}
+              <li>{{ blocker }}</li>
+              {% endfor %}
+            </ul>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+
+<details class="warning">
+  <summary>本頁使用限制（{{ model.page_warnings|length }} 項）</summary>
+  <ul>
+    {% for warning in model.page_warnings %}
+    <li>{{ warning }}</li>
+    {% endfor %}
+  </ul>
+</details>
+{% endblock %}

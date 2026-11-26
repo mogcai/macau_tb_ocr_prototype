@@ -118,10 +118,66 @@ def create_app(db_path: Path | str) -> FastAPI:
         }
 
     @app.get("/")
+    def home_page(
+        request: Request,
+        bucket: str | None = None,
+        statement_date: str | None = None,
+        item_key: str | None = None,
+        entity_id: str | None = None,
+    ):
+        with open_readonly(app.state.db_path) as connection:
+            model = service.chart_home(
+                connection,
+                bucket_id=bucket,
+                statement_date=statement_date,
+                item_key=item_key,
+                entity_id=entity_id,
+            )
+        return render(request, "home.html", model=model)
+
+    @app.get("/coverage")
     def coverage_page(request: Request):
         with open_readonly(app.state.db_path) as connection:
             model = service.coverage(connection)
         return render(request, "coverage.html", model=model)
+
+    @app.get("/entities")
+    def entities_page(request: Request):
+        with open_readonly(app.state.db_path) as connection:
+            model = service.bank_directory(connection)
+        return render(request, "entities.html", model=model)
+
+    @app.get("/indicators")
+    def indicators_page(request: Request):
+        with open_readonly(app.state.db_path) as connection:
+            model = service.indicators(connection)
+        return render(request, "indicators.html", model=model)
+
+    @app.get("/api/charts")
+    def charts_api(
+        bucket: str | None = None,
+        statement_date: str | None = None,
+        item_key: str | None = None,
+        entity_id: str | None = None,
+    ) -> dict[str, Any]:
+        with open_readonly(app.state.db_path) as connection:
+            return service.chart_home(
+                connection,
+                bucket_id=bucket,
+                statement_date=statement_date,
+                item_key=item_key,
+                entity_id=entity_id,
+            )
+
+    @app.get("/api/entities")
+    def entities_api() -> dict[str, Any]:
+        with open_readonly(app.state.db_path) as connection:
+            return service.bank_directory(connection)
+
+    @app.get("/api/indicators")
+    def indicators_api() -> dict[str, Any]:
+        with open_readonly(app.state.db_path) as connection:
+            return service.indicators(connection)
 
     @app.get("/entities/{entity_id}")
     def entity_page(

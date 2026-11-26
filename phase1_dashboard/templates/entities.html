@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}銀行資料庫 · 澳門銀行數據儀表板{% endblock %}
+{% block content %}
+<section class="overview-head">
+  <div>
+    <h2>銀行資料庫</h2>
+    <p class="lead">首批 {{ model.totals.entity_count }} 個納入顯示的機構。8 間本地法人、3 份關聯報表、4 間外地分行分組列出，組與組不相加。</p>
+  </div>
+</section>
+
+<section class="cards kpis">
+  <article class="card">
+    <div class="label">納入顯示機構</div>
+    <div class="value">{{ model.totals.entity_count }}</div>
+    <div class="meta">庫內已對應 {{ model.totals.resolved_count }} 個 entity_id</div>
+  </article>
+  <article class="card">
+    <div class="label">已採納報表</div>
+    <div class="value">{{ model.totals.statement_count }}</div>
+    <div class="meta">只計 {{ model.window|join("、") }} 的 adopted</div>
+  </article>
+  <article class="card">
+    <div class="label">approved mapping 行</div>
+    <div class="value">{{ model.totals.mapping.approved }}</div>
+    <div class="meta">全部行 {{ model.totals.row_total }}{% if model.totals.approved_share is not none %} · {{ "%.1f"|format(model.totals.approved_share) }}%{% endif %}</div>
+  </article>
+  <article class="card">
+    <div class="label">可安全跨行比較</div>
+    <div class="value">否</div>
+    <div class="meta">mapping 狀態不代表財務接受</div>
+  </article>
+</section>
+
+{% for bucket in model.buckets %}
+<section class="bucket {{ bucket.id }}">
+  <h2>{{ bucket.title }}</h2>
+  <p class="rule">{{ bucket.rule }} 本組不設合計。</p>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>銀行</th>
+          <th>機構類型</th>
+          <th>生命週期</th>
+          <th>最近可用結算日</th>
+          <th>可用期數</th>
+          <th>approved / 全部行</th>
+          <th>未 adopted 提醒</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entity in bucket.entities %}
+        <tr>
+          <td>
+            {% if entity.entity_id %}
+            <a href="/entities/{{ entity.entity_id }}">{{ entity.canonical_zh }}</a>
+            {% else %}
+            {{ entity.canonical_zh }}
+            {% endif %}
+            {% if entity.duplicate_name %}<div class="note">同一 canonical_zh 有多於一筆實體，沒有合併。</div>{% endif %}
+            {% if not entity.resolved %}<div class="note">庫內未找到此名稱。</div>{% endif %}
+            {% if entity.lifecycle_note %}<div class="note">{{ entity.lifecycle_note }}</div>{% endif %}
+          </td>
+          <td>{{ entity.entity_type or "—" }}</td>
+          <td>
+            {{ entity.registry_status or "—" }}
+            {% if entity.merged %}<div class="note">merged</div>{% endif %}
+          </td>
+          <td>
+            {% if entity.latest_date %}
+            <a href="/entities/{{ entity.entity_id }}?date={{ entity.latest_date }}">{{ entity.latest_date }}</a>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {{ entity.usable_dates|length }} / {{ model.window|length }}
+            {% if entity.gap_dates %}<div class="meta">缺口：{{ entity.gap_dates|join("、") }}</div>{% endif %}
+          </td>
+          <td>
+            {{ entity.mapping.approved }} / {{ entity.row_total }}
+            {% if entity.approved_share is not none %}
+            <div class="meta">{{ "%.1f"|format(entity.approved_share) }}%</div>
+            {% endif %}
+            <div class="meta">proposed {{ entity.mapping.proposed }} · unmapped {{ entity.mapping.unmapped }}</div>
+          </td>
+          <td>
+            {% if entity.not_adopted %}
+            {% for item in entity.not_adopted %}
+            <div class="note">{{ item.statement_date }} · {{ item.statement_type }} · {{ item.reason }}</div>
+            {% endfor %}
+            {% else %}
+            <span class="meta">無</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+
+<details class="warning">
+  <summary>本頁使用限制（{{ model.page_warnings|length }} 項）</summary>
+  <ul>
+    {% for warning in model.page_warnings %}
+    <li>{{ warning }}</li>
+    {% endfor %}
+  </ul>
+</details>
+{% endblock %}

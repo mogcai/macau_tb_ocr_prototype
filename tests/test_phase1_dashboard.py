@@ -1225,7 +1225,7 @@ class DashboardFixtureTests(unittest.TestCase):
 
     def test_html_shows_status_and_does_not_write(self) -> None:
         before = hashlib.sha256(self.db_path.read_bytes()).hexdigest()
-        page = self.client.get("/")
+        page = self.client.get("/coverage")
         self.assertEqual(page.status_code, 200)
         text = page.text
         for name in ADOPTED_NAMES:

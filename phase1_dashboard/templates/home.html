@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}總覽 · 澳門銀行數據儀表板{% endblock %}
+{% block content %}
+<section class="overview-head">
+  <div>
+    <h2>澳門銀行業總覽 <span class="pill pill-preview">初部 · 候選觀察</span></h2>
+    <p class="lead">{{ model.caption }}</p>
+  </div>
+  <form class="filters" method="get" action="/">
+    <label>機構分組
+      <select name="bucket">
+        {% for bucket in model.buckets %}
+        <option value="{{ bucket.id }}" {% if model.bucket == bucket.id %}selected{% endif %}>{{ bucket.title }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>結算日
+      <select name="statement_date">
+        {% for date in model.window %}
+        <option value="{{ date }}" {% if model.statement_date == date %}selected{% endif %}>{{ date }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>候選標準項
+      <select name="item_key">
+        {% for item in model.available_items %}
+        <option value="{{ item.item_key }}" {% if model.item_key == item.item_key %}selected{% endif %}>{{ item.item_key }}{% if item.item_zh %} {{ item.item_zh }}{% endif %} · {{ item.chartable_on_date }} 點</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>觀察機構
+      <select name="entity_id">
+        {% for entity in model.entities %}
+        <option value="{{ entity.entity_id }}" {% if model.selected_entity_id == entity.entity_id %}selected{% endif %}>{{ entity.canonical_zh }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">更新</button>
+  </form>
+</section>
+
+<section class="banner gating">
+  <strong>這是已採納報表的候選行觀察，不是已核定金融指標。</strong>
+  未有已發布報表（{{ model.publication.current }} / {{ model.publication.total }}）及已審批指標定義，正式 KPI、跨行排名、市佔率及行業合計未啟用。
+  <a href="/indicators">查看指標與口徑</a>
+</section>
+
+<section class="cards kpis">
+  <article class="card">
+    <div class="label">已採納可用報表</div>
+    <div class="value">{{ model.kpis.usable_statement_count }}</div>
+    <div class="meta">覆蓋 {{ model.kpis.usable_cells }} / {{ model.kpis.total_cells }} 個機構×結算日格</div>
+  </article>
+  <article class="card">
+    <div class="label">本圖候選觀察點</div>
+    <div class="value">{{ model.kpis.chartable_points }}</div>
+    <div class="meta">{{ model.item_key or "未選候選" }} · {{ model.statement_date }} · 不是排名</div>
+  </article>
+  <article class="card">
+    <div class="label">approved mapping 行</div>
+    <div class="value">{{ model.kpis.approved_rows }}</div>
+    <div class="meta">proposed {{ model.kpis.proposed_rows }} · Workbench 標記，不是財務接受</div>
+  </article>
+  <article class="card">
+    <div class="label">已發布報表</div>
+    <div class="value">{{ model.kpis.publication_count }}</div>
+    <div class="meta">{% if model.kpis.publication_count == 0 %}0 → 正式 KPI 未啟用{% else %}正式指標仍須已審批定義{% endif %}</div>
+  </article>
+</section>
+
+{% for warning in model.warnings %}
+<p class="note">{{ warning }}</p>
+{% endfor %}
+
+<section class="chart-panel">
+  <div class="panel-head">
+    <h2>跨機構候選觀察 · {{ model.item_zh or model.item_key or "未選候選" }}</h2>
+    <p class="meta">{{ model.statement_date }} · {{ model.bucket_title }}。{{ model.bucket_rule }} 橫條依名單由上至下，不是按金額排序；沒有合計，沒有排名。</p>
+  </div>
+  {% if model.cross_bank.drawn %}
+  {{ model.cross_bank.svg|safe }}
+  {% else %}
+  <p class="empty-chart">{{ model.cross_bank.reason }}</p>
+  {% endif %}
+  <p class="meta signature">{{ model.cross_bank.signature_note }}</p>
+  {% if model.cross_bank.slots %}
+  <ol class="gap-list">
+    {% for slot in model.cross_bank.slots if not slot.included_in_chart %}
+    <li>
+      {% if slot.entity_id %}<a href="/entities/{{ slot.entity_id }}?date={{ model.statement_date }}">{{ slot.canonical_zh }}</a>{% else %}{{ slot.canonical_zh }}{% endif %}
+      <span class="note">缺口 · {{ slot.reason }}</span>
+      {% if slot.registry_status %}<span class="meta">registry {{ slot.registry_status }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+  <ol class="point-list">
+    {% for slot in model.cross_bank.slots if slot.included_in_chart %}
+    <li>
+      {{ slot.canonical_zh }} · {{ slot.display }} · {{ slot.mapping_status }}{% if slot.mapping_status != "approved" %}（未核准候選）{% endif %} · row_type {{ slot.row_type or "—" }}
+      {% if slot.statement_id %}<a href="/statements/{{ slot.statement_id }}{% if slot.statement_row_id %}#{{ slot.statement_row_id }}{% endif %}">報表行</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  <p class="meta chart-links">
+    <a href="/compare?bucket={{ model.bucket }}&statement_date={{ model.statement_date }}{% if model.item_key %}&item_key={{ model.item_key|urlencode }}{% endif %}">同一候選的對照表</a>
+    · <a href="/entities">銀行資料庫</a>
+    · <a href="/coverage">完整覆蓋與缺口</a>
+  </p>
+</section>
+
+<section class="chart-panel">
+  <div class="panel-head">
+    <h2>{% if model.trend.mode == "trend" %}三期趨勢{% elif model.trend.mode == "observation" %}單期觀察{% else %}期間觀察{% endif %} · {{ model.selected_entity_name or "未選機構" }}</h2>
+    <p class="meta">{{ model.item_zh or model.item_key or "未選候選" }}。{% if model.trend.mode == "observation" %}只有一個有效日期，不畫成趨勢。{% endif %}{% if model.trend.is_trend %} Y 軸按本組數值範圍放大，只供核對，不代表增長率。{% endif %}缺季斷線，不補 0。</p>
+  </div>
+  {% if model.trend.drawn %}
+  {{ model.trend.svg|safe }}
+  {% else %}
+  <p class="empty-chart">{{ model.trend.reason }}</p>
+  {% endif %}
+  {% if model.trend.reason %}<p class="note">{{ model.trend.reason }}</p>{% endif %}
+  <p class="meta signature">{{ model.trend.signature_note }}</p>
+  <ol class="gap-list quarters">
+    {% for slot in model.trend.slots %}
+    <li>
+      {{ slot.statement_date }}
+      {% if slot.included_in_chart %}
+      <span class="meta">已畫入 · {{ slot.display }} · {{ slot.mapping_status }}{% if slot.mapping_status != "approved" %}（未核准候選）{% endif %} · row_type {{ slot.row_type or "—" }}</span>
+      {% if slot.statement_id %}<a href="/statements/{{ slot.statement_id }}{% if slot.statement_row_id %}#{{ slot.statement_row_id }}{% endif %}">報表行</a>{% endif %}
+      {% else %}
+      <span class="note">缺口 · {{ slot.reason }}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% if model.selected_entity_id %}
+  <p class="meta chart-links"><a href="/entities/{{ model.selected_entity_id }}?date={{ model.statement_date }}">這間機構的明細、原始標籤與對照狀態</a></p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>資料覆蓋（{{ model.window|join("、") }}）</h2>
+  <div class="scroll">
+    <table class="coverage-matrix">
+      <thead>
+        <tr>
+          <th>機構分組</th>
+          {% for date in model.window %}<th>{{ date }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in model.coverage_matrix %}
+        <tr>
+          <th>
+            {{ row.title }}
+            <div class="meta">{{ row.rule }}</div>
+          </th>
+          {% for cell in row.cells %}
+          <td>
+            <strong>{{ cell.usable }} / {{ cell.total }}</strong> 可用
+            {% if cell.gaps %}<div class="note">{{ cell.gaps }} 個覆蓋缺口</div>{% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="meta">「可用」只計已 adopted 報表。缺口不是 0；未 adopted 報表不會進入圖表。8 + 3 + 4 是顯示 perimeter，不是全澳持牌銀行統計清單。</p>
+</section>
+
+<section class="panel">
+  <h2>資料治理入口</h2>
+  <ul class="entry-list">
+    <li><a href="/entities">銀行資料庫</a>：15 個納入顯示的機構、最近可用結算日、mapping 覆蓋及未 adopted 提醒。</li>
+    <li><a href="/indicators">指標與口徑</a>：P0／P1 指標為何未啟用，以及啟用條件。</li>
+    <li><a href="/compare">跨行對照</a>：單一結算日、單一候選的逐行對照；沒有合計、沒有排名。</li>
+    <li><a href="/coverage">覆蓋明細</a>：逐格 statement、identity / metadata、mapping 及缺口原因。</li>
+  </ul>
+</section>
+
+<details class="warning">
+  <summary>本頁使用限制（{{ model.page_warnings|length }} 項）</summary>
+  <ul>
+    {% for warning in model.page_warnings %}
+    <li>{{ warning }}</li>
+    {% endfor %}
+  </ul>
+</details>
+{% endblock %}

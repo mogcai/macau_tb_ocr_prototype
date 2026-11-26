@@ -13,7 +13,7 @@
   </thead>
   <tbody>
     {% for row in block.rows %}
-    <tr>
+    <tr id="{{ row.statement_row_id }}">
       <td>{{ row.statement_order if row.statement_order is not none else "—" }}</td>
       <td>
         <div>{{ row.label or "—" }}</div>

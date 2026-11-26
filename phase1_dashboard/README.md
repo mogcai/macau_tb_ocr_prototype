@@ -1,10 +1,14 @@
 # 第一期本機檢視（phase-1 dashboard）
 
-Tony 在自己電腦上打開、對着自己的 V3 SQLite 看已採納首批機構。這不是 Workbench，不會改對照、不會改 adopted、不會寫入資料庫，也沒有登入。只綁定 `127.0.0.1`，不要對區域網或公開地址開放。
+Tony 在自己電腦上打開、對着自己的 V3 SQLite 看已採納首批機構。首頁是「澳門銀行業總覽（初部）」：覆蓋 KPI、跨機構候選觀察、所選機構的期間觀察，以及 8 + 3 + 4 覆蓋矩陣。覆蓋表、對照狀態和原始標籤在明細頁。這不是 Workbench，不會改對照、不會改 adopted、不會寫入資料庫，也沒有登入。只綁定 `127.0.0.1`，不要對區域網或公開地址開放。
+
+**首頁圖表是 Candidate Explorer，不是正式金融指標。** 圖上金額是已採納報表內、恰好一個現行候選標準項的單邊 amount，按 `amount_decimal_places` 顯示為 MOP 讀數；raw minor 仍保留在 point。圖表不排名、不相加、不計算市佔率，也不把 `proposed` mapping 當成已核准指標。`user:總計` 不是總資產。
+
+正式 KPI、跨行排名及行業合計仍然封着：`publication_records` 未有任何已發布報表，亦未有已審批 indicator catalogue 或 entity perimeter。`/indicators` 列出設計文件的 P0／P1 指標及未啟用原因；未有 approved indicator definition 前，不會計算 Total Assets、Customer Deposits、比或 ROA／ROE。
 
 比較窗只限結算日 **2026-03-31、2026-06-30、2026-09-30**。這不是日曆年 2025，也不是完整最近一年。`2025-12-31` 不計入預設可用集。
 
-可用數只計 **adopted**（`statement_status = active` 而且有 adopted extraction）。窗內但未 adopted 的報表只顯示為缺口，不補數。`identity_status` / `metadata_status` 仍是 proposed，不會因此把已 adopted 的報表剔走。
+可用數只計 **adopted**（`statement_status = active` 而且有 adopted extraction）。窗內但未 adopted 的報表只顯示為缺口，不補數。`identity_status` / `metadata_status` 仍是 proposed，不會因此把已 adopted 的報表剔走。同一個機構×結算日如同一 `reporting_scope` 另有未 adopted 的 balance sheet，整個點標成 `competing_statement`，不會靜默使用 adopted 一份。
 
 15 個 `canonical_zh` 分成三組，組與組不相加，組內也不設合計：
 
@@ -14,7 +18,7 @@ Tony 在自己電腦上打開、對着自己的 V3 SQLite 看已採納首批機�
 
 「加總後睇澳門銀行整體情況」這個目標仍在，但現在把已採納名單相加並不成立，所以加總位置是封着的，不計算。
 
-每一行都顯示 `mapping_status`：`approved`、`proposed`、`insert-direct`、`unmapped`。`approved` 是 Workbench 標記，不是財務接受，也不等於科目仍然有效。科目的 `item_status`（以及 `merged_into_standard_item_id`）另外顯示；`retired` 或 `merged` 的對照，包括人工 insert，仍然列出，不會被靜默拿掉。`v_unmapped = 0` 只表示幾乎每行都有候選，不是已經可以安全跨行比較。金額與佔比的欄位都在，但具體指標尚未決定，本版不計算佔比，也不把 `user:總計` 當成總資產。跨行對照會分開五種情況：沒有 adopted 報表、有 adopted 但沒有 balance_sheet、有 balance_sheet 但沒有所選候選、候選有金額，以及同一行有多個不同候選（ambiguous，不排入比較）。只有損益表的一期不會寫成「此期沒有此候選」。同一列只排恰好一個不同候選的行；同一行若同時對到兩個不同標準項，會留在未對齊，不會因為其中一個是 approved 就把它當成單一候選。同一期間如果還有未 adopted 的報表，會標成缺口，金額不進可用集。項目規則是 MOP、`unit_scale` 1；其他記載會警告，金額保持原 minor，不自動換算。同一候選如果在同一份報表出現多行，會列出標籤和 `row_type`，並註明未相加。`unreadable`、`ambiguous`、`dash`、`blank` 會顯示狀態，不會全部寫成空白。佔比欄只寫「未計算」；庫內金額放在旁邊的追溯欄。實體的 `registry_status` 同 `merged_into_entity_id` 會顯示，merged / excluded / retired 不會當成普通一間銀行。
+每一行都顯示 `mapping_status`：`approved`、`proposed`、`insert-direct`、`unmapped`。`approved` 是 Workbench 標記，不是財務接受，也不等於科目仍然有效。科目的 `item_status`（以及 `merged_into_standard_item_id`）另外顯示；`retired` 或 `merged` 的對照，包括人工 insert，仍然列出，不會被靜默拿掉。`v_unmapped = 0` 只表示幾乎每行都有候選，不是已經可以安全跨行比較。跨行圖表會先檢查完整比較簽章（`currency`、`unit_scale`、`amount_decimal_places`、`reporting_scope`、`statement_type`、`row_type`、借貸方向）；任何一項不一致，整組不畫，逐點列出原因。同一行若同時對到兩個不同標準項，會標 `ambiguous`，即使另有 exact row 也不會用 exact row 掩蓋。同一候選如果在同一份報表出現多行，會列出標籤和 `row_type`，並註明未相加。`unreadable`、`ambiguous`、`dash`、`blank` 會顯示狀態，不會全部寫成空白。實體的 `registry_status` 同 `merged_into_entity_id` 會顯示，merged / excluded / retired 不會當成普通一間銀行，也不會畫入跨行圖。只有一個有效日期時會叫「單期觀察」，不會叫趨勢。
 
 ## 安裝
 
@@ -49,7 +53,10 @@ python -m phase1_dashboard
 
 ## 畫面上有什麼
 
-- **覆蓋**：三組機構 × 三個結算日。可用格顯示幣別、`unit_scale`、`reporting_scope`、identity / metadata，以及四種 mapping 行數。缺的格子寫「缺口」和原因。
+- **總覽**：覆蓋 KPI、跨機構候選觀察、所選機構期間觀察（單點叫「單期觀察」）、覆蓋矩陣，以及數據治理入口。
+- **銀行資料庫**：15 個納入顯示的機構，列出最近可用結算日、可用期數、approved mapping 比例及未 adopted 提醒。
+- **指標與口徑**：設計文件的 P0／P1 指標、必要資料、未啟用原因及啟用條件。沒有計算任何數值。
+- **覆蓋明細**：三組機構 × 三個結算日。可用格顯示幣別、`unit_scale`、`reporting_scope`、identity / metadata，以及四種 mapping 行數。缺的格子寫「缺口」和原因。
 - **機構頁**：同一間機構的三季。只把資產負債表上恰好一個候選標準項的行排在一起。對不齊的行留在原位。不同 `statement_type` 不分開加總。
 - **跨行對照**：一次只選一個分組、一個結算日、一個候選 `item_key`。沒有合計欄，沒有排名。幣別或 `unit_scale` 不一致時保持原記載，不換成同一單位。
 - **佔比**：可以切換，但分母尚未決定，畫面寫「未計算」。

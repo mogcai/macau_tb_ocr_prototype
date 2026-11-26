@@ -9,11 +9,14 @@
 </head>
 <body>
   <header class="top">
-    <h1>澳門銀行第一期本機檢視</h1>
+    <h1>澳門銀行數據儀表板 <span class="version">初部 · 只讀</span></h1>
     <p>只讀 V3 · 只在 127.0.0.1 · 沒有登入機制 · 不是 Workbench · 不是財務核實 · 不是公眾產品</p>
     <nav>
-      <a href="/">覆蓋</a>
+      <a href="/">總覽</a>
+      <a href="/entities">銀行資料庫</a>
       <a href="/compare">跨行對照</a>
+      <a href="/indicators">指標與口徑</a>
+      <a href="/coverage">覆蓋明細</a>
     </nav>
   </header>
   <main>
@@ -23,7 +26,7 @@
     {% block content %}{% endblock %}
   </main>
   <footer>
-    比較窗：{{ window|join("、") }}。可用數只計 adopted。proposed 金額不是已核准規模。本頁不計算 8 間或 15 間合計。
+    比較窗：{{ window|join("、") }}。可用數只計 adopted；圖表是候選行觀察，不是已核定指標。未有已發布報表，正式 KPI、排名及行業合計未啟用。本頁不計算 8 間或 15 間合計。
   </footer>
 </body>
 </html>

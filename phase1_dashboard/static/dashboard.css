@@ -98,3 +98,40 @@ footer {
 }
 .amount { font-variant-numeric: tabular-nums; }
 .empty { color: var(--muted); }
+
+/* ---- initial banking dashboard ---- */
+.version { font-size: 12px; font-weight: 500; color: #d9e2ec; border: 1px solid #52627a; border-radius: 999px; padding: 2px 8px; vertical-align: middle; }
+.overview-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px; align-items: end; }
+.overview-head h2 { margin: 0; font-size: 30px; letter-spacing: -0.02em; }
+.lead { max-width: 48rem; margin: 8px 0 0; font-size: 15px; }
+.gating { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.kpis { margin: 14px 0; }
+.kpis .card .meta { margin-top: 4px; }
+.pill-preview { color: var(--proposed); }
+.pill-blocked { color: var(--unmapped); }
+.panel-head { padding: 10px 16px 0; }
+.panel-head h2 { margin: 4px 0 2px; font-size: 18px; }
+.chart-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 0 0 16px; margin: 18px 0 24px; }
+.chart-svg { width: 100%; height: auto; display: block; padding: 8px 10px 0; }
+.chart-svg .bar { fill: #1d4e89; }
+.chart-svg .bar-label { fill: #243044; font-size: 13px; font-family: inherit; }
+.chart-svg .bar-value, .chart-svg .axis-title, .chart-svg .axis-note, .chart-svg .gap-label { fill: #5c6b73; font-size: 12px; font-family: inherit; }
+.chart-svg .axis-title { fill: #243044; font-weight: 600; }
+.chart-svg .trend-line, .chart-svg .axis-line { stroke: #1d4e89; stroke-width: 2; }
+.chart-svg .axis-line { stroke: #ddd4c4; }
+.empty-chart { margin: 8px 16px 12px; color: var(--muted); }
+.signature { margin: 6px 16px 0; }
+.chart-links { margin: 10px 16px 0; }
+.gap-list { list-style: none; margin: 0 16px; padding: 0; display: grid; grid-template-columns: 1fr; gap: 4px; }
+.gap-list.quarters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.gap-list li { padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.coverage-matrix th[scope], .coverage-matrix tbody th { width: 30%; font-weight: 500; }
+.coverage-matrix td { font-variant-numeric: tabular-nums; }
+.coverage-matrix .meta { max-width: 22rem; }
+.blockers { margin: 0; padding-left: 18px; }
+.blockers li { margin: 2px 0; }
+.entry-list li { margin: 5px 0; }
+details.warning summary { cursor: pointer; font-weight: 600; }
+details.warning ul { margin-top: 8px; }
+.point-list { list-style: none; margin: 8px 16px 0; padding: 0; display: grid; gap: 4px; }
+.point-list li { padding: 5px 0; border-top: 1px dashed var(--line); font-size: 13px; color: var(--muted); }

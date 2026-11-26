@@ -178,3 +178,19 @@ def fetch_inserts(
           AND a.statement_id IN ({placeholders})
     """
     return _rows(connection.execute(sql, params))
+
+
+def fetch_publication_summary(connection: sqlite3.Connection) -> dict[str, int]:
+    """Count publication records and current published records.
+
+    Zero current publications means no formal indicator can be enabled. The
+    dashboard stays on adopted-preview candidate rows.
+    """
+    row = connection.execute(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM publication_records) AS total,
+            (SELECT COUNT(*) FROM v_current_publication) AS current
+        """
+    ).fetchone()
+    return {"total": int(row["total"] or 0), "current": int(row["current"] or 0)}
