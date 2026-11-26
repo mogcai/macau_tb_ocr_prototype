@@ -93,6 +93,7 @@ tr.manual-row td { background: #f5f7ff; }
 .mapping-cell .pill { margin-left: 4px; }
 table.compact .mapping-cell { min-width: 260px; }
 .actions-cell { min-width: 180px; white-space: nowrap; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .amount-cell div { white-space: nowrap; font-size: 12px; }
 .map-actions { display: flex; gap: 6px; align-items: center; }
 .row-actions { display: flex; gap: 6px; align-items: center; }

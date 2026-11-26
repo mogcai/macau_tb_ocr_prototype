@@ -113,6 +113,7 @@ POST /api/review/{statement_id}/rows                   # insert missed row, revi
 POST /api/review/{statement_id}/rows/{row_id}/verify  # field verification, reviewer
 POST /api/review/{statement_id}/rows/{row_id}/exclude # exclude/remove row, reviewer
 POST /api/review/{statement_id}/rows/{row_id}/map     # X-Workbench-Role: reviewer
+POST /api/review/bulk-approve-proposed                 # reviewer; approve all unambiguous proposals
 POST /api/review/{statement_id}/adjustments/{id}/restore
 POST /api/review/{statement_id}/review                 # X-Workbench-Role: reviewer
 POST /api/review/{statement_id}/discard                # discard pending (never reviewed)
@@ -194,6 +195,12 @@ After the build, the existing first-pass auto-map
 Item mappings only. It never approves a mapping. Statements then appear in the
 Review Queue like any other statement.
 
+The auto-map also re-applies the legacy V5 catalogue seed, but it only inserts
+rows that are missing: existing `standard_items` keep their Workbench-curated
+names, language statuses, `parent_standard_item_id`, notes and `item_status`
+(approved / retired / merged are never reset to `draft`). Every run writes a
+`standard_item_auto_map` audit event with the preserved-row count.
+
 **Discard pending** (review capability) undoes a never-reviewed /
 never-adopted build: unassigns `extracted_rows` (migration `018`), rejects the
 extraction, marks the statement `excluded`, and leaves `statement_rows` as a
@@ -263,13 +270,30 @@ selected.
 4. A standard item may be approved for only one row in a statement.  The
    dropdown only offers `approved` catalogue items, and the API/schema reject a
    duplicate approval or a draft / merged / retired item.
-5. Reviewer marks the statement **reviewed**; it moves from “Pending review” to
+5. Approving every auto-mapped row one click at a time is optional busy work.
+   `tools/bulk_approve_mappings.py` approves every *unambiguous* proposal in one
+   audited pass (dry run by default):
+
+   ```bash
+   python tools/bulk_approve_mappings.py --actor tony            # dry run
+   python tools/bulk_approve_mappings.py --actor tony --allow-locked --apply
+   ```
+
+   It writes real `mapping_status='approved'` rows with `reviewed_by` /
+   `reviewed_at` plus a `workbench_mapping_bulk_approved` audit event, so
+   queries never have to treat `proposed` as `approved`. It skips — and can
+   export to CSV with `--skipped-csv` — rows with no proposal, conflicting
+   proposals, the same item proposed twice in one statement, an inactive item,
+   or an item already approved/inserted on another row. Reviewed/adopted
+   statements are read-only until `--allow-locked` is passed; amounts, OCR
+   evidence and review state are never changed.
+6. Reviewer marks the statement **reviewed**; it moves from “Pending review” to
    “Reviewed — still held”. It is **not** adopted.
    Marking reviewed records the exact `statement_extraction_id` in
    `statement_review_bindings`.  Reviewed statements are read-only: Save returns
    `409` and the UI disables row editing until **Reopen for editing** is used.
    Reopening voids the active binding; a new review binds the current extraction.
-6. An adopter works from `/adopt`, which lists reviewed statements in three
+7. An adopter works from `/adopt`, which lists reviewed statements in three
    groups: **Ready to adopt**, **Reviewed — not adoptable** (with the blocking
    bucket) and **Adopted — current dataset**. The same **Adopt** button appears
    in the reviewed record (`/review/{id}`) and on `/statements/{id}`. Only a
@@ -278,12 +302,12 @@ selected.
    the API refuses every other state.  If a newer extraction exists, the
    statement appears as `review_outdated` and adoption is refused until it is
    reviewed again.
-7. Adopted statements are read-only and listed under **Adopted — current
+8. Adopted statements are read-only and listed under **Adopted — current
    dataset** with the same mapping coverage. An adopter can **Return to
    reviewed**, which clears the adopted extraction, rebinds the same extraction
    and puts the statement back into the reviewed/held queue. A current
    publication must be revoked first.
-8. Publication remains a separate, not-yet-implemented gate.
+9. Publication remains a separate, not-yet-implemented gate.
 
 ### Extraction binding
 

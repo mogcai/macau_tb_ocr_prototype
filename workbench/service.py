@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1164,6 +1165,15 @@ def review_queue() -> list[dict[str, Any]]:
                                        AND m.mapping_status='approved'))) AS approved_mapping_rows,
                 (SELECT COUNT(*) FROM effective er2
                   WHERE er2.statement_id=s.statement_id
+                    AND er2.standard_item_id IS NULL
+                    AND EXISTS (SELECT 1 FROM statement_row_mappings m
+                                 WHERE m.statement_row_id=er2.statement_row_id
+                                   AND m.mapping_status='proposed')
+                    AND NOT EXISTS (SELECT 1 FROM statement_row_mappings m3
+                                     WHERE m3.statement_row_id=er2.statement_row_id
+                                       AND m3.mapping_status='approved')) AS proposed_mapping_rows,
+                (SELECT COUNT(*) FROM effective er2
+                  WHERE er2.statement_id=s.statement_id
                     AND EXISTS (SELECT 1 FROM statement_row_mappings m
                                  WHERE m.statement_row_id=er2.statement_row_id
                                    AND m.conflict_group_id IS NOT NULL
@@ -1721,6 +1731,291 @@ def approve_mapping(
         if item_row["statement_row_id"] == statement_row_id:
             return item_row
     raise LookupError("statement row not found after mapping")
+
+
+BULK_APPROVAL_SCOPES = ("reviewed", "editable", "all")
+
+
+def bulk_approve_proposed_mappings(
+    *,
+    actor: str,
+    note: str = "",
+    statement_ids: list[str] | None = None,
+    scope: str = "reviewed",
+    allow_locked: bool = False,
+    apply: bool = False,
+    collect_skipped: bool = False,
+    db_path: Path | None = None,
+) -> dict[str, Any]:
+    """Approve unambiguous auto-mapped proposals in one audited pass.
+
+    This is the "I already reviewed the statement" shortcut: it writes a real
+    ``mapping_status='approved'`` with ``reviewed_by``/``reviewed_at`` and an
+    audit event, so queries and dashboards keep the proposed/approved
+    distinction. It never changes amounts, extractions or review state, and it
+    never marks a row financially verified.
+
+    Only the current effective rows are considered. A row is skipped when:
+
+    * it already has an approved mapping;
+    * it has no proposal or more than one proposal (conflict);
+    * the same standard item is proposed on another row of the same statement
+      (one item may only be approved once per statement);
+    * the item is already approved or inserted on another row;
+    * the item is missing, not approved, merged or retired;
+    * it is a manual insert whose item is stored on the adjustment.
+
+    ``scope``: ``reviewed`` = reviewed or adopted statements (default),
+    ``editable`` = statements still under review, ``all`` = every non-excluded
+    statement. Reviewed/adopted statements are skipped unless ``allow_locked``
+    is set, because they are normally read-only.
+    """
+    if scope not in BULK_APPROVAL_SCOPES:
+        raise ValueError(f"invalid scope: {scope}")
+    if not text(actor):
+        raise ValueError("actor is required")
+
+    conn = connect_v3(db_path, write=apply)
+    try:
+        params: list[Any] = []
+        scope_sql = (
+            "SELECT s.statement_id, s.statement_status, "
+            "COALESCE(r.review_status, 'pending') AS review_status "
+            "FROM statements s "
+            "LEFT JOIN statement_reviews r ON r.statement_id = s.statement_id "
+            "WHERE s.statement_status NOT IN ('excluded', 'merged', 'retired')"
+        )
+        if statement_ids:
+            placeholders = ",".join("?" for _ in statement_ids)
+            scope_sql += f" AND s.statement_id IN ({placeholders})"
+            params.extend(statement_ids)
+        if scope == "reviewed":
+            scope_sql += " AND (s.statement_status = 'active' OR r.review_status = 'reviewed')"
+        elif scope == "editable":
+            scope_sql += (
+                " AND s.statement_status <> 'active' "
+                " AND COALESCE(r.review_status, 'pending') <> 'reviewed'"
+            )
+        scope_sql += " ORDER BY s.statement_id"
+        statements = [dict(row) for row in conn.execute(scope_sql, params)]
+
+        summary: dict[str, Any] = {
+            "dry_run": not apply,
+            "scope": scope,
+            "allow_locked": allow_locked,
+            "statements_in_scope": len(statements),
+            "locked_statements_skipped": 0,
+            "rows_in_scope": 0,
+            "approved": 0,
+            "approved_by_statement": {},
+            "skip_counts": {},
+            "skipped_examples": [],
+            "skipped": [],
+        }
+        if not statements:
+            return summary
+
+        allowed: list[dict[str, Any]] = []
+        for statement in statements:
+            locked = (
+                statement["statement_status"] == "active"
+                or statement["review_status"] == "reviewed"
+            )
+            if locked and not allow_locked:
+                summary["locked_statements_skipped"] += 1
+                continue
+            allowed.append(statement)
+        summary["statements_in_scope"] = len(allowed)
+        if not allowed:
+            return summary
+
+        scope_ids = [statement["statement_id"] for statement in allowed]
+        placeholders = ",".join("?" for _ in scope_ids)
+        rows = [
+            dict(row)
+            for row in conn.execute(
+                f"SELECT statement_row_id, statement_id, statement_order, row_origin, "
+                f"effective_label, standard_item_id FROM ({EFFECTIVE_ROW_SQL}) "
+                f"WHERE statement_id IN ({placeholders}) "
+                "ORDER BY statement_id, statement_order, statement_row_id",
+                scope_ids,
+            )
+        ]
+        summary["rows_in_scope"] = len(rows)
+        if not rows:
+            return summary
+
+        effective_row_ids = {row["statement_row_id"] for row in rows}
+        candidates: dict[str, list[dict[str, Any]]] = {}
+        for row in conn.execute(
+            "SELECT m.statement_row_id, m.mapping_id, m.standard_item_id, "
+            "m.mapping_status FROM statement_row_mappings m "
+            "JOIN statement_rows sr ON sr.statement_row_id = m.statement_row_id "
+            f"WHERE sr.statement_id IN ({placeholders}) "
+            "AND m.mapping_status IN ('proposed', 'approved')",
+            scope_ids,
+        ):
+            if row["statement_row_id"] not in effective_row_ids:
+                continue
+            candidates.setdefault(row["statement_row_id"], []).append(dict(row))
+
+        items = {
+            row["standard_item_id"]: dict(row)
+            for row in conn.execute(
+                "SELECT standard_item_id, item_key, item_status, "
+                "merged_into_standard_item_id FROM standard_items"
+            )
+        }
+
+        skip_counts: Counter[str] = Counter()
+        examples: list[dict[str, Any]] = []
+        all_skipped: list[dict[str, Any]] = []
+        rows_by_statement: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            rows_by_statement.setdefault(row["statement_id"], []).append(row)
+
+        def skip(reason: str, row: dict[str, Any], item_id: str | None = None) -> None:
+            skip_counts[reason] += 1
+            entry = {
+                "statement_id": row["statement_id"],
+                "statement_row_id": row["statement_row_id"],
+                "statement_order": row["statement_order"],
+                "label": row.get("effective_label") or row.get("label") or "",
+                "standard_item_id": item_id,
+                "standard_item_key": (
+                    items[item_id]["item_key"] if item_id and item_id in items else None
+                ),
+                "reason": reason,
+            }
+            if collect_skipped:
+                all_skipped.append(entry)
+            if len(examples) < 25:
+                examples.append(entry)
+
+        approvals: list[dict[str, Any]] = []
+        for statement_id, statement_rows in rows_by_statement.items():
+            used_items = {
+                row["standard_item_id"]
+                for row in statement_rows
+                if row["row_origin"] == "manual" and row["standard_item_id"]
+            }
+            for row in statement_rows:
+                for candidate in candidates.get(row["statement_row_id"], []):
+                    if candidate["mapping_status"] == "approved" and candidate["standard_item_id"]:
+                        used_items.add(candidate["standard_item_id"])
+
+            eligible: dict[str, list[dict[str, Any]]] = {}
+            for row in statement_rows:
+                row_candidates = candidates.get(row["statement_row_id"], [])
+                if any(candidate["mapping_status"] == "approved" for candidate in row_candidates):
+                    skip_counts["already_approved"] += 1
+                    continue
+                if row["row_origin"] == "manual":
+                    skip("manual_row", row)
+                    continue
+                if not row_candidates:
+                    skip("no_candidate", row)
+                    continue
+                if len(row_candidates) > 1:
+                    skip("multiple_candidates", row)
+                    continue
+                candidate = row_candidates[0]
+                item = items.get(candidate["standard_item_id"])
+                if item is None:
+                    skip("item_missing", row, candidate["standard_item_id"])
+                    continue
+                if item["item_status"] != "approved" or item["merged_into_standard_item_id"]:
+                    skip("item_not_active", row, candidate["standard_item_id"])
+                    continue
+                eligible.setdefault(candidate["standard_item_id"], []).append(
+                    {**candidate, "statement_id": statement_id,
+                     "label": row.get("effective_label") or "",
+                     "statement_order": row["statement_order"]}
+                )
+
+            for item_id, entries in eligible.items():
+                if len(entries) > 1:
+                    for entry in entries:
+                        skip("duplicate_item_in_statement", entry, item_id)
+                    continue
+                if item_id in used_items:
+                    skip("item_already_used", entries[0], item_id)
+                    continue
+                entry = entries[0]
+                approvals.append({
+                    "statement_id": statement_id,
+                    "statement_row_id": entry["statement_row_id"],
+                    "mapping_id": entry["mapping_id"],
+                    "standard_item_id": item_id,
+                })
+
+        summary["skip_counts"] = dict(sorted(skip_counts.items()))
+        summary["skipped_examples"] = examples
+        summary["skipped"] = all_skipped
+        summary["approved"] = len(approvals)
+        if not approvals:
+            return summary
+        by_statement: Counter[str] = Counter(
+            approval["statement_id"] for approval in approvals
+        )
+        summary["approved_by_statement"] = {
+            key: by_statement[key] for key in sorted(by_statement)
+        }
+        if not apply:
+            return summary
+
+        approved_at = now()
+        try:
+            for approval in approvals:
+                cursor = conn.execute(
+                    "UPDATE statement_row_mappings "
+                    "SET mapping_status='approved', conflict_group_id=NULL, "
+                    "reviewed_by=?, reviewed_at=?, "
+                    "notes=CASE WHEN notes IS NULL OR TRIM(notes)='' THEN ? ELSE notes END "
+                    "WHERE mapping_id=? AND mapping_status='proposed'",
+                    (actor, approved_at, note, approval["mapping_id"]),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError(
+                        "mapping changed while bulk approving: "
+                        f"{approval['mapping_id']}"
+                    )
+            for statement_id in summary["approved_by_statement"]:
+                mapping_ids = [
+                    approval["mapping_id"]
+                    for approval in approvals
+                    if approval["statement_id"] == statement_id
+                ]
+                conn.execute(
+                    "INSERT INTO audit_events("
+                    "audit_event_id, event_type, statement_id, actor_id, "
+                    "after_json, details_json, reason, created_at"
+                    ") VALUES (?, 'workbench_mapping_bulk_approved', ?, ?, ?, ?, ?, ?)",
+                    (
+                        str(uuid.uuid4()), statement_id, actor,
+                        json.dumps(
+                            {"approved": len(mapping_ids)}, ensure_ascii=False
+                        ),
+                        json.dumps({
+                            "mapping_ids": mapping_ids,
+                            "scope": scope,
+                            "allow_locked": allow_locked,
+                            "skip_counts": summary["skip_counts"],
+                            "source": "workbench",
+                            "version": VERSION,
+                        }, ensure_ascii=False, sort_keys=True),
+                        note or "Bulk approval of auto-mapped standard items",
+                        approved_at,
+                    ),
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        return summary
+    finally:
+        conn.close()
+
 
 
 def _language_of(value: str) -> str:

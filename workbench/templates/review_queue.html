@@ -5,7 +5,13 @@
 <p class="muted">Marking a statement reviewed keeps it held; adoption is a separate action.</p>
 
 <section class="panel">
-  <h2>Pending review</h2>
+  <div class="panel-head">
+    <h2>Pending review</h2>
+    {% set pending_proposed = pending_review | sum(attribute="proposed_mapping_rows") %}
+    {% if can_map and pending_proposed %}
+    <button id="bulk-approve-all" class="secondary" data-role="{{ role }}">Approve all {{ pending_proposed }} proposed</button>
+    {% endif %}
+  </div>
   <div class="table-scroll">
   <table class="data">
     <thead>
@@ -38,6 +44,9 @@
         </td>
         <td>{{ item.field_verifications }}</td>
         <td class="actions-cell">
+          {% if can_map and item.proposed_mapping_rows %}
+          <button class="bulk-approve-button secondary" data-statement="{{ item.statement_id }}" data-role="{{ role }}" data-count="{{ item.proposed_mapping_rows }}">Approve {{ item.proposed_mapping_rows }} proposed</button>
+          {% endif %}
           {% if can_review_statement and item.mapping_ready %}
           <button class="review-button" data-statement="{{ item.statement_id }}" data-role="{{ role }}" data-status="reviewed">Mark reviewed</button>
           {% elif can_review_statement %}
@@ -152,6 +161,68 @@
 </section>
 
 <script>
+async function bulkApproveProposed(button, statementIds) {
+  button.disabled = true;
+  const response = await fetch("/api/review/bulk-approve-proposed", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Workbench-Role": button.dataset.role,
+      "X-Workbench-Actor": "workbench-ui"
+    },
+    body: JSON.stringify({statement_ids: statementIds, scope: "editable", note: ""})
+  });
+  if (response.ok) {
+    const body = await response.json();
+    const skipped = Object.entries(body.skip_counts || {})
+      .filter(([reason]) => reason !== "already_approved")
+      .map(([reason, count]) => `${reason}: ${count}`)
+      .join(", ");
+    const skippedRows = (body.skipped || []).filter(
+      (row) => row.reason !== "already_approved"
+    );
+    let message = `Approved ${body.approved} proposed mapping(s).`;
+    if (skipped) {
+      message += `\nSkipped — ${skipped}`;
+    }
+    if (skippedRows.length) {
+      message += "\n\nNeeds a manual decision:\n" + skippedRows.slice(0, 10)
+        .map((row) => `#${row.statement_order} ${row.label || "(blank label)"} → ${row.standard_item_key || row.standard_item_id} (${row.reason})`)
+        .join("\n");
+      if (skippedRows.length > 10) {
+        message += `\n…and ${skippedRows.length - 10} more`;
+      }
+    }
+    alert(message);
+    window.location.reload();
+  } else {
+    const body = await response.json().catch(() => ({}));
+    alert(body.detail || "Bulk approve failed");
+    button.disabled = false;
+  }
+}
+document.querySelectorAll(".bulk-approve-button").forEach((button) => {
+  button.addEventListener("click", () => {
+    const count = button.dataset.count;
+    if (!window.confirm(
+      `Approve every unambiguous proposed mapping in this statement${count ? ` (${count} proposed rows)` : ""}?\n` +
+      "Rows with no proposal, conflicting proposals, a duplicate item in the same statement or an inactive item are skipped."
+    )) {
+      return;
+    }
+    bulkApproveProposed(button, [button.dataset.statement]);
+  });
+});
+document.getElementById("bulk-approve-all")?.addEventListener("click", (event) => {
+  const button = event.currentTarget;
+  if (!window.confirm(
+    "Approve every unambiguous proposed mapping in all pending statements?\n" +
+    "Rows that need a decision are skipped and listed afterwards."
+  )) {
+    return;
+  }
+  bulkApproveProposed(button, null);
+});
 document.querySelectorAll(".review-button").forEach((button) => {
   button.addEventListener("click", async () => {
     button.disabled = true;

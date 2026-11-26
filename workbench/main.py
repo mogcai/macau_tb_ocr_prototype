@@ -71,6 +71,12 @@ class StandardItemLifecyclePayload(BaseModel):
     note: str = ""
 
 
+class BulkMappingApprovePayload(BaseModel):
+    statement_ids: list[str] | None = None
+    scope: str = "editable"
+    note: str = ""
+
+
 class ImportJobPayload(BaseModel):
     source: str
     issue_key: str | None = None
@@ -380,6 +386,32 @@ def api_map_row(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/review/bulk-approve-proposed")
+def api_bulk_approve_proposed(
+    payload: BulkMappingApprovePayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """Approve every unambiguous proposed mapping in the selected statements."""
+    role = role_from(request, x_workbench_role)
+    if not can_map(role):
+        raise HTTPException(status_code=403, detail="map capability is required")
+    try:
+        return service.bulk_approve_proposed_mappings(
+            actor=actor_from(request),
+            note=payload.note,
+            statement_ids=payload.statement_ids or None,
+            scope=payload.scope,
+            allow_locked=False,
+            apply=True,
+            collect_skipped=True,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/review/{statement_id}/adjustments")
