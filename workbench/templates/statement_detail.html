@@ -91,7 +91,7 @@
         <td>{{ row.effective_credit_display or "—" }}</td>
         <td>{{ row.effective_debit_state }} / {{ row.effective_credit_state }}</td>
         <td>{{ row.standardised_label or "—" }}</td>
-        <td>{% if row.mapping_status == "approved" %}<span class="pill active">approved</span>{% elif row.mapping_status == "unique" %}<span class="pill proposed">proposed</span>{% elif row.mapping_status == "conflict" %}<span class="pill conflict">conflict</span>{% else %}<span class="pill blocked">unmatched</span>{% endif %}</td>
+        <td>{% if row.mapping_status == "approved" %}<span class="pill active">approved</span>{% elif row.mapping_status == "unique" %}<span class="pill proposed">proposed</span>{% elif row.mapping_status == "conflict" %}<span class="pill conflict">conflict</span>{% else %}<span class="pill blocked">unmatched</span>{% endif %}{% if row.mapping_conflict and row.mapping_status != "conflict" %} <span class="pill conflict">conflict</span> <span class="muted">{{ row.mapping_conflict_count }} stale</span>{% endif %}</td>
         <td>{{ row.parent_context_status }}</td>
       </tr>
       {% else %}

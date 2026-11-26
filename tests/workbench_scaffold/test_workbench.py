@@ -584,16 +584,25 @@ class ReviewWriteTests(unittest.TestCase):
         )
         conn.close()
 
+    def _conflict_fixture(self) -> tuple[dict, dict] | None:
+        """Return a queue item and one row whose mapping state is conflict."""
+        for item in self._pending_queue():
+            if not item["mapping_conflict_rows"]:
+                continue
+            rows = self.client.get(f"/api/review/{item['statement_id']}/rows").json()
+            conflict_row = next(
+                (row for row in rows if row["mapping_status"] == "conflict"), None
+            )
+            if conflict_row is not None:
+                return item, conflict_row
+        return None
+
     def test_approving_a_conflict_clears_conflict_state(self) -> None:
-        queue = self._pending_queue()
-        blocked = next(
-            (item for item in queue if item["mapping_conflict_rows"]), None
-        )
-        if blocked is None:
+        fixture = self._conflict_fixture()
+        if fixture is None:
             self.skipTest("no mapping-conflict statement")
+        blocked, conflict_row = fixture
         statement_id = blocked["statement_id"]
-        rows = self.client.get(f"/api/review/{statement_id}/rows").json()
-        conflict_row = next(row for row in rows if row["mapping_status"] == "conflict")
         candidate = conflict_row["mapping_candidates"][0]
 
         response = self.client.post(
@@ -613,6 +622,74 @@ class ReviewWriteTests(unittest.TestCase):
             blocked["mapping_conflict_rows"] - 1,
         )
         self.assertEqual(refreshed["mapped_rows"], blocked["mapped_rows"])
+
+    def test_approving_rejects_duplicate_proposal_for_same_item(self) -> None:
+        fixture = self._conflict_fixture()
+        if fixture is None:
+            self.skipTest("no mapping-conflict statement")
+        blocked, conflict_row = fixture
+        statement_id = blocked["statement_id"]
+        candidate = conflict_row["mapping_candidates"][0]
+        statement_row_id = conflict_row["statement_row_id"]
+
+        # Simulate an earlier approval whose candidate proposal was never
+        # rejected: the row ends up with one approved mapping and the 5-way
+        # conflict group still holding a proposal for the same standard item.
+        conn = sqlite3.connect(self.db)
+        conn.execute(
+            "INSERT INTO statement_row_mappings("
+            "mapping_id, statement_row_id, standard_item_id, conflict_group_id, "
+            "mapping_status, match_method, match_score, mapping_version, "
+            "evidence_source, context_json, reviewed_by, reviewed_at, created_at"
+            ") VALUES ('test-duplicate-approved', ?, ?, NULL, 'approved', 'manual', "
+            "1.0, 'p1-review-1', 'workbench_manual', '{}', 'tester', "
+            "'2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')",
+            (statement_row_id, candidate["standard_item_id"]),
+        )
+        conn.commit()
+        conn.close()
+
+        stale_rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        stale_row = next(
+            row for row in stale_rows if row["statement_row_id"] == statement_row_id
+        )
+        self.assertEqual(stale_row["mapping_status"], "approved")
+        self.assertTrue(stale_row["mapping_conflict"])
+        self.assertGreaterEqual(stale_row["mapping_conflict_count"], 1)
+        page = self.client.get(f"/review/{statement_id}")
+        self.assertIn("stale candidates", page.text)
+
+        response = self.client.post(
+            f"/api/review/{statement_id}/rows/{statement_row_id}/map",
+            json={"standard_item_id": candidate["standard_item_id"], "note": "resolve conflict"},
+            headers={"X-Workbench-Role": "reviewer", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["mapping_status"], "approved")
+
+        conn = sqlite3.connect(self.db)
+        statuses = conn.execute(
+            "SELECT mapping_status, COUNT(*) FROM statement_row_mappings "
+            "WHERE statement_row_id=? GROUP BY mapping_status",
+            (statement_row_id,),
+        ).fetchall()
+        open_conflicts = conn.execute(
+            "SELECT COUNT(*) FROM statement_row_mappings "
+            "WHERE statement_row_id=? AND conflict_group_id IS NOT NULL",
+            (statement_row_id,),
+        ).fetchone()[0]
+        conn.close()
+        self.assertEqual(
+            statuses,
+            [("approved", 1), ("rejected", len(conflict_row["mapping_candidates"]))],
+        )
+        self.assertEqual(open_conflicts, 0)
+
+        resolved_rows = self.client.get(f"/api/review/{statement_id}/rows").json()
+        resolved_row = next(
+            row for row in resolved_rows if row["statement_row_id"] == statement_row_id
+        )
+        self.assertFalse(resolved_row["mapping_conflict"])
 
     def _insert_row(self, statement_id: str, *, after_row_id: str | None = None,
                     standard_item_id: str | None = None) -> dict:

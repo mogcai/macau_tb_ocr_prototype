@@ -59,8 +59,8 @@ def _current_extraction_sql(alias: str) -> str:
     3. the latest completed extraction (pre-review workbench view).
     """
     return f"""COALESCE(
-        (SELECT s.adopted_statement_extraction_id FROM statements s
-          WHERE s.statement_id={alias}.statement_id),
+        (SELECT st.adopted_statement_extraction_id FROM statements st
+          WHERE st.statement_id={alias}.statement_id),
         (SELECT b.statement_extraction_id FROM statement_review_bindings b
           WHERE b.statement_id={alias}.statement_id
             AND b.binding_status='active'
@@ -1039,6 +1039,8 @@ def _mapping_info(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, An
                     "standard_item_status": item["item_status"],
                     "standardised_label": text(item["canonical_zh"]) or text(item["canonical_pt"]),
                     "mapping_candidates": [candidate],
+                    "mapping_conflict": False,
+                    "mapping_conflict_count": 0,
                     "row_origin": "manual",
                 }
         return {
@@ -1048,6 +1050,8 @@ def _mapping_info(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, An
             "standard_item_status": "",
             "standardised_label": "",
             "mapping_candidates": [],
+            "mapping_conflict": False,
+            "mapping_conflict_count": 0,
             "row_origin": "manual",
         }
 
@@ -1068,6 +1072,7 @@ def _mapping_info(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, An
     )]
     approved = next((item for item in mappings if item["mapping_status"] == "approved"), None)
     proposed = [item for item in mappings if item["mapping_status"] == "proposed"]
+    conflicted = [item for item in mappings if item["conflict_group_id"]]
     if approved is not None:
         status = "approved"
         selected = approved
@@ -1090,6 +1095,8 @@ def _mapping_info(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, An
             if selected else ""
         ),
         "mapping_candidates": mappings,
+        "mapping_conflict": bool(conflicted),
+        "mapping_conflict_count": len(conflicted),
         "row_origin": "ocr",
     }
 
@@ -1630,22 +1637,28 @@ def approve_mapping(
             dict(mapping)
             for mapping in conn.execute(
                 "SELECT mapping_id, standard_item_id, mapping_status FROM statement_row_mappings "
-                "WHERE statement_row_id=? AND mapping_status IN ('proposed','approved')",
+                "WHERE statement_row_id=? AND mapping_status IN ('proposed','approved') "
+                "ORDER BY CASE mapping_status WHEN 'approved' THEN 0 ELSE 1 END, "
+                "created_at, mapping_id",
                 (statement_row_id,),
             )
         ]
+        existing = next(
+            (
+                mapping for mapping in before
+                if mapping["standard_item_id"] == standard_item_id
+            ),
+            None,
+        )
+        # Reject every other candidate, including a duplicate proposal for the
+        # approved standard item left behind by an earlier approval.
         conn.execute(
             "UPDATE statement_row_mappings SET mapping_status='rejected', "
             "conflict_group_id=NULL "
-            "WHERE statement_row_id=? AND standard_item_id<>? "
+            "WHERE statement_row_id=? AND mapping_id<>? "
             "AND mapping_status IN ('proposed','approved')",
-            (statement_row_id, standard_item_id),
+            (statement_row_id, existing["mapping_id"] if existing else ""),
         )
-        existing = conn.execute(
-            "SELECT mapping_id FROM statement_row_mappings "
-            "WHERE statement_row_id=? AND standard_item_id=?",
-            (statement_row_id, standard_item_id),
-        ).fetchone()
         if existing:
             mapping_id = existing["mapping_id"]
             conn.execute(

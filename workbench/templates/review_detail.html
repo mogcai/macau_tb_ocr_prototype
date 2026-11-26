@@ -187,8 +187,16 @@
         <td class="standard-cell">
           {% if row.mapping_status == 'approved' %}
             <span class="pill active">approved</span> {{ row.standardised_label }}
+            {% if row.mapping_conflict %}
+            <span class="pill conflict">conflict</span>
+            <span class="muted">{{ row.mapping_conflict_count }} stale candidates</span>
+            {% endif %}
           {% elif row.mapping_status == 'unique' %}
             <span class="pill proposed">proposed</span> {{ row.standardised_label }}
+            {% if row.mapping_conflict %}
+            <span class="pill conflict">conflict</span>
+            <span class="muted">{{ row.mapping_conflict_count }} stale candidates</span>
+            {% endif %}
           {% elif row.mapping_status == 'conflict' %}
             <span class="pill conflict">conflict</span>
             <span class="muted">{{ row.mapping_candidates|length }} candidates</span>
