@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}多選對比 · 澳門銀行數據儀表板{% endblock %}
+{% block content %}
+<section class="overview-head">
+  <div>
+    <h2>多選對比 <span class="pill pill-preview">初部 · 候選觀察</span></h2>
+    <p class="lead">{{ model.caption }}</p>
+  </div>
+  <form class="filters matrix-filters" method="get" action="/matrix">
+    <input type="hidden" name="submitted" value="1">
+    <label>機構分組
+      <select name="bucket">
+        {% for bucket in model.buckets %}
+        <option value="{{ bucket.id }}" {% if model.bucket == bucket.id %}selected{% endif %}>{{ bucket.title }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>機構（可多選）
+      <select name="entity_id" multiple size="{{ model.entity_select_size }}">
+        {% for entity in model.entities %}
+        <option value="{{ entity.entity_id }}" title="{{ entity.entity_key }}" {% if entity.entity_id in model.selected_entities %}selected{% endif %}>{{ entity.canonical_zh }} · {{ entity.available_periods }} 期</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>候選標準項（可多選）
+      <select name="item_key" multiple size="{{ model.item_select_size }}">
+        {% for item in model.available_items %}
+        <option value="{{ item.item_key }}" {% if item.item_key in model.selected_items %}selected{% endif %}>{{ item.item_key }}{% if item.item_zh %} {{ item.item_zh }}{% endif %} · {{ item.chartable }} 點</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>結算日（可多選）
+      <select name="statement_date" multiple size="4">
+        {% for date in model.window %}
+        <option value="{{ date }}" {% if date in model.selected_dates %}selected{% endif %}>{{ date }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">更新對比</button>
+  </form>
+</section>
+
+<p class="meta multi-hint">按住 ⌘（Mac）或 Ctrl（Windows）可多選。未提交時預設全部機構、最可畫的一個候選、三個結算日；提交後完全沒有選取，會顯示「未選」，不會自動變回全部。</p>
+{% for key in model.ignored_entities %}
+<p class="note">已忽略不屬於這個分組的機構：{{ key }}</p>
+{% endfor %}
+{% for key in model.ignored_items %}
+<p class="note">已忽略不屬於這個分組的候選：{{ key }}</p>
+{% endfor %}
+
+<section class="banner gating">
+  <strong>這是已採納報表的候選行觀察，不是已核定金融指標。</strong>
+  每條柱只來自一行；沒有合計、沒有排名，也沒有把借方減貸方。缺口不是 0，亦不會補數。
+  <a href="/indicators">查看指標與口徑</a>
+</section>
+
+<section class="cards kpis">
+  <article class="card">
+    <div class="label">機構 × 候選組</div>
+    <div class="value">{{ model.group_count }}</div>
+    <div class="meta">上限 {{ model.limits.max_groups }} 組 · 候選上限 {{ model.limits.max_items }} 個</div>
+  </article>
+  <article class="card">
+    <div class="label">已畫入柱</div>
+    <div class="value">{{ model.bar_count }}</div>
+    <div class="meta">每條柱是一個候選行觀察，不是排名</div>
+  </article>
+  <article class="card">
+    <div class="label">缺口 / 未畫入</div>
+    <div class="value">{{ model.gap_count }}</div>
+    <div class="meta">缺口保留原因，不當成 0</div>
+  </article>
+  <article class="card">
+    <div class="label">比較簽章</div>
+    <div class="value">{% if model.drawn %}{% if model.mode == "comparison" %}一致{% else %}單期{% endif %}{% else %}未畫{% endif %}</div>
+    <div class="meta">幣別、unit_scale、小數位、scope、row_type、借貸方向</div>
+  </article>
+</section>
+
+<section class="chart-panel">
+  <div class="panel-head">
+    <h2>多機構 × 多科目 × 多期對比</h2>
+    <p class="meta">{{ model.bucket_title }}。{{ model.bucket_rule }} 每組一條柱系，按結算日着色；缺口畫成虛線小框，不是 0。分組依名單及候選排序，不是按金額。</p>
+  </div>
+  {% if model.drawn %}
+  <div class="chart-scroll">{{ model.svg|safe }}</div>
+  {% else %}
+  <p class="empty-chart">{{ model.reason }}</p>
+  {% endif %}
+  <p class="meta signature">{{ model.signature_note }}</p>
+  {% if model.drawn and model.mode == "observation" and model.reason %}
+  <p class="note">{{ model.reason }}</p>
+  {% endif %}
+  <p class="meta chart-links">{{ model.note }}</p>
+</section>
+
+{% if model.slots %}
+<section class="panel">
+  <h2>逐點追溯（{{ model.slots|length }} 點）</h2>
+  <div class="scroll">
+    <table class="matrix-table">
+      <thead>
+        <tr>
+          <th>機構</th>
+          <th>候選</th>
+          <th>結算日</th>
+          <th>狀態</th>
+          <th>金額（追溯）</th>
+          <th>mapping</th>
+          <th>row_type</th>
+          <th>報表行</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for slot in model.slots %}
+        <tr {% if not slot.included_in_chart %}class="gap-row"{% endif %}>
+          <td>
+            {{ slot.canonical_zh }}
+            {% if slot.entity_key %}<div class="meta">{{ slot.entity_key }}</div>{% endif %}
+          </td>
+          <td>
+            {{ slot.item_key }}
+            {% if slot.item_zh %}<div class="meta">{{ slot.item_zh }}</div>{% endif %}
+          </td>
+          <td>{{ slot.statement_date }}</td>
+          <td>
+            {% if slot.included_in_chart %}
+            <span class="pill pill-approved">已畫入</span>
+            {% elif slot.signature_mismatch %}
+            <span class="pill pill-unmapped">簽章不一致</span>
+            {% else %}
+            <span class="pill pill-proposed">{{ slot.status }}</span>
+            {% endif %}
+            {% if slot.reason %}<div class="note">{{ slot.reason }}</div>{% endif %}
+          </td>
+          <td class="amount">{% if slot.display %}{{ slot.display }}{% else %}—{% endif %}{% if slot.zero_counterpart %}<div class="note">對邊為 0.00；按 0 對邊規則選{{ "借方" if slot.side == "debit" else "貸方" }}，需人手覆核。</div>{% endif %}</td>
+          <td>{% if slot.mapping_status %}{{ slot.mapping_status }}{% if slot.mapping_status != "approved" %}（未核准候選）{% endif %}{% else %}—{% endif %}</td>
+          <td>{{ slot.row_type or "—" }}</td>
+          <td>
+            {% if slot.statement_id %}
+            <a href="/statements/{{ slot.statement_id }}{% if slot.statement_row_id %}#{{ slot.statement_row_id }}{% endif %}">報表行</a>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="meta">金額只按報表 amount_decimal_places 顯示，未乘 unit_scale。簽章不一致時仍可在此追溯原始金額，但該點不會畫入圖。</p>
+</section>
+{% endif %}
+
+<details class="warning">
+  <summary>本頁使用限制（{{ model.page_warnings|length }} 項）</summary>
+  <ul>
+    {% for warning in model.page_warnings %}
+    <li>{{ warning }}</li>
+    {% endfor %}
+  </ul>
+</details>
+{% endblock %}

@@ -117,6 +117,19 @@ footer {
 .chart-svg .bar-label { fill: #243044; font-size: 13px; font-family: inherit; }
 .chart-svg .bar-value, .chart-svg .axis-title, .chart-svg .axis-note, .chart-svg .gap-label { fill: #5c6b73; font-size: 12px; font-family: inherit; }
 .chart-svg .axis-title { fill: #243044; font-weight: 600; }
+.chart-svg .bar-date-0 { fill: #1d4e89; }
+.chart-svg .bar-date-1 { fill: #6b3fa0; }
+.chart-svg .bar-date-2 { fill: #0f6e6e; }
+.chart-svg .bar-gap { fill: none; stroke: var(--gap); stroke-width: 1; stroke-dasharray: 3 2; }
+.chart-svg .grid-line { stroke: #e8e1d4; stroke-width: 1; }
+.chart-svg.matrix .bar-label { font-size: 11px; }
+.chart-svg.matrix .bar-label .axis-note { font-size: 10px; }
+.chart-scroll { overflow-x: auto; }
+.matrix-filters select[multiple] { min-width: 15rem; }
+.multi-hint { margin: 8px 0 0; }
+.matrix-table .gap-row { color: var(--muted); }
+.matrix-table td { font-variant-numeric: tabular-nums; }
+.matrix-table .note { max-width: 26rem; }
 .chart-svg .trend-line, .chart-svg .axis-line { stroke: #1d4e89; stroke-width: 2; }
 .chart-svg .axis-line { stroke: #ddd4c4; }
 .empty-chart { margin: 8px 16px 12px; color: var(--muted); }

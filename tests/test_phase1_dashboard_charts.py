@@ -239,6 +239,59 @@ class ChartSlotTests(unittest.TestCase):
         self.assertEqual(slot["point"]["row_type"], "item")
 
 
+    def test_exact_zero_counterpart_selects_the_non_zero_side_for_review(self) -> None:
+        statement = _statement("e0", LEGAL_BANKS[0], COMPARISON_DATES[1])
+
+        def slot(rows: list[dict]) -> dict:
+            return chart_slot(
+                _cell([statement]),
+                {statement["statement_id"]: rows},
+                "user:放款",
+            )
+
+        debit_side = slot([
+            _row(
+                "user:放款", 100, credit_state="amount", credit_minor=0,
+                statement_id=statement["statement_id"],
+            )
+        ])
+        self.assertEqual(debit_side["status"], "chart")
+        self.assertEqual(debit_side["point"]["side"], "debit")
+        self.assertEqual(debit_side["point"]["minor"], 100)
+        self.assertTrue(debit_side["point"]["zero_counterpart"])
+
+        credit_side = slot([
+            _row(
+                "user:放款", 0, credit_state="amount", credit_minor=100,
+                statement_id=statement["statement_id"],
+            )
+        ])
+        self.assertEqual(credit_side["status"], "chart")
+        self.assertEqual(credit_side["point"]["side"], "credit")
+        self.assertEqual(credit_side["point"]["minor"], 100)
+        self.assertTrue(credit_side["point"]["zero_counterpart"])
+
+        two_non_zero = slot([
+            _row(
+                "user:放款", 100, credit_state="amount", credit_minor=50,
+                statement_id=statement["statement_id"],
+            )
+        ])
+        self.assertEqual(two_non_zero["status"], "amount_side")
+        self.assertIsNone(two_non_zero["point"])
+        self.assertIn("非零", two_non_zero["reason"])
+
+        two_zero = slot([
+            _row(
+                "user:放款", 0, credit_state="amount", credit_minor=0,
+                statement_id=statement["statement_id"],
+            )
+        ])
+        self.assertEqual(two_zero["status"], "amount_side")
+        self.assertIsNone(two_zero["point"])
+        self.assertIn("都是 0.00", two_zero["reason"])
+
+
 class ChartViewTests(unittest.TestCase):
     def _view(self, specs, **kwargs):
         names = LEGAL_BANKS[:4]

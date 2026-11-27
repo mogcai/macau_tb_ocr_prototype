@@ -26,6 +26,15 @@ TEMPLATES = Jinja2Templates(directory=str(HERE / "templates"))
 ALLOWED_HOST_NAMES = frozenset({"127.0.0.1", "localhost"})
 
 
+def _multi_selection(
+    values: list[str] | None, submitted: bool
+) -> list[str] | None:
+    """Absent params mean defaults; a submitted empty choice means none."""
+    if values is not None:
+        return values
+    return [] if submitted else None
+
+
 def host_header_allowed(value: str | None) -> bool:
     """Allow only loopback names, with at most one numeric port.
 
@@ -135,6 +144,26 @@ def create_app(db_path: Path | str) -> FastAPI:
             )
         return render(request, "home.html", model=model)
 
+    @app.get("/matrix")
+    def matrix_page(
+        request: Request,
+        bucket: str | None = None,
+        submitted: str | None = None,
+        entity_id: list[str] | None = Query(None),
+        item_key: list[str] | None = Query(None),
+        statement_date: list[str] | None = Query(None),
+    ):
+        was_submitted = submitted is not None
+        with open_readonly(app.state.db_path) as connection:
+            model = service.matrix_view(
+                connection,
+                bucket_id=bucket,
+                entity_ids=_multi_selection(entity_id, was_submitted),
+                item_keys=_multi_selection(item_key, was_submitted),
+                statement_dates=_multi_selection(statement_date, was_submitted),
+            )
+        return render(request, "matrix.html", model=model)
+
     @app.get("/coverage")
     def coverage_page(request: Request):
         with open_readonly(app.state.db_path) as connection:
@@ -173,6 +202,22 @@ def create_app(db_path: Path | str) -> FastAPI:
     def entities_api() -> dict[str, Any]:
         with open_readonly(app.state.db_path) as connection:
             return service.bank_directory(connection)
+
+    @app.get("/api/matrix")
+    def matrix_api(
+        bucket: str | None = None,
+        entity_id: list[str] | None = Query(None),
+        item_key: list[str] | None = Query(None),
+        statement_date: list[str] | None = Query(None),
+    ) -> dict[str, Any]:
+        with open_readonly(app.state.db_path) as connection:
+            return service.matrix_view(
+                connection,
+                bucket_id=bucket,
+                entity_ids=entity_id,
+                item_keys=item_key,
+                statement_dates=statement_date,
+            )
 
     @app.get("/api/indicators")
     def indicators_api() -> dict[str, Any]:

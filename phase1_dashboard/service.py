@@ -8,6 +8,7 @@ from typing import Any
 from phase1_dashboard import queries
 from phase1_dashboard.charts import build_chart_view
 from phase1_dashboard.indicators import build_indicator_view
+from phase1_dashboard.matrix import build_matrix_view
 from phase1_dashboard.overview import build_bank_directory
 from phase1_dashboard.present import (
     build_compare,
@@ -106,6 +107,27 @@ def indicators(connection: sqlite3.Connection) -> dict[str, Any]:
 
 def coverage(connection: sqlite3.Connection) -> dict[str, Any]:
     model = build_coverage(**load_scope(connection))
+    model["page_warnings"] = list(PAGE_WARNINGS)
+    return model
+
+
+def matrix_view(
+    connection: sqlite3.Connection,
+    *,
+    bucket_id: str | None,
+    entity_ids: list[str] | None,
+    item_keys: list[str] | None,
+    statement_dates: list[str] | None,
+) -> dict[str, Any]:
+    scope = load_scope(connection)
+    model = build_matrix_view(
+        bucket_id=bucket_id,
+        entity_ids=entity_ids,
+        item_keys=item_keys,
+        statement_dates=statement_dates,
+        coverage=build_coverage(**scope),
+        **scope,
+    )
     model["page_warnings"] = list(PAGE_WARNINGS)
     return model
 

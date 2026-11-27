@@ -98,6 +98,7 @@
     {% for slot in model.cross_bank.slots if slot.included_in_chart %}
     <li>
       {{ slot.canonical_zh }} · {{ slot.display }} · {{ slot.mapping_status }}{% if slot.mapping_status != "approved" %}（未核准候選）{% endif %} · row_type {{ slot.row_type or "—" }}
+      {% if slot.zero_counterpart %} · 對邊為 0.00，按 0 對邊規則選{{ "借方" if model.cross_bank.side == "debit" else "貸方" }}，需人手覆核{% endif %}
       {% if slot.statement_id %}<a href="/statements/{{ slot.statement_id }}{% if slot.statement_row_id %}#{{ slot.statement_row_id }}{% endif %}">報表行</a>{% endif %}
     </li>
     {% endfor %}
@@ -126,7 +127,7 @@
     <li>
       {{ slot.statement_date }}
       {% if slot.included_in_chart %}
-      <span class="meta">已畫入 · {{ slot.display }} · {{ slot.mapping_status }}{% if slot.mapping_status != "approved" %}（未核准候選）{% endif %} · row_type {{ slot.row_type or "—" }}</span>
+      <span class="meta">已畫入 · {{ slot.display }} · {{ slot.mapping_status }}{% if slot.mapping_status != "approved" %}（未核准候選）{% endif %} · row_type {{ slot.row_type or "—" }}{% if slot.zero_counterpart %} · 對邊為 0.00，按 0 對邊規則選{{ "借方" if model.trend.side == "debit" else "貸方" }}，需人手覆核{% endif %}</span>
       {% if slot.statement_id %}<a href="/statements/{{ slot.statement_id }}{% if slot.statement_row_id %}#{{ slot.statement_row_id }}{% endif %}">報表行</a>{% endif %}
       {% else %}
       <span class="note">缺口 · {{ slot.reason }}</span>
@@ -174,6 +175,7 @@
   <h2>資料治理入口</h2>
   <ul class="entry-list">
     <li><a href="/entities">銀行資料庫</a>：15 個納入顯示的機構、最近可用結算日、mapping 覆蓋及未 adopted 提醒。</li>
+    <li><a href="/matrix">多選對比</a>：多機構 × 多候選 × 多結算日的分組柱狀觀察；缺口不補 0，沒有合計或排名。</li>
     <li><a href="/indicators">指標與口徑</a>：P0／P1 指標為何未啟用，以及啟用條件。</li>
     <li><a href="/compare">跨行對照</a>：單一結算日、單一候選的逐行對照；沒有合計、沒有排名。</li>
     <li><a href="/coverage">覆蓋明細</a>：逐格 statement、identity / metadata、mapping 及缺口原因。</li>

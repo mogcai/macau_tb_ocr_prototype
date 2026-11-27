@@ -67,19 +67,43 @@ def _esc(value: object) -> str:
     return html.escape("" if value is None else str(value), quote=True)
 
 
-def _one_sided_amount(row: dict[str, Any]) -> tuple[str, int] | None:
+def _amount_sides(
+    row: dict[str, Any],
+) -> tuple[bool, bool, int | None, int | None]:
+    """Return (debit_ok, credit_ok, debit_minor, credit_minor)."""
     debit_state = row.get("debit_state")
     credit_state = row.get("credit_state")
     debit_minor = (row.get("debit") or {}).get("minor")
     credit_minor = (row.get("credit") or {}).get("minor")
     debit_ok = debit_state == "amount" and debit_minor is not None
     credit_ok = credit_state == "amount" and credit_minor is not None
+    return (
+        debit_ok,
+        credit_ok,
+        int(debit_minor) if debit_ok else None,
+        int(credit_minor) if credit_ok else None,
+    )
+
+
+def _one_sided_amount(row: dict[str, Any]) -> tuple[str, int, bool] | None:
+    """Pick the sole amount side, with a narrow zero-counterpart rule.
+
+    Exactly one side must be an amount. When both sides are recorded amounts
+    and exactly one of them is zero, the zero is the printed counterpart of the
+    other side, so the non-zero side is selected. The returned flag marks the
+    point for review. Two non-zero sides, or two zero sides, stay unselected.
+    """
+    debit_ok, credit_ok, debit_minor, credit_minor = _amount_sides(row)
     if debit_ok and credit_ok:
+        if debit_minor == 0 and credit_minor != 0:
+            return "credit", int(credit_minor), True
+        if credit_minor == 0 and debit_minor != 0:
+            return "debit", int(debit_minor), True
         return None
-    if debit_ok:
-        return "debit", int(debit_minor)
-    if credit_ok:
-        return "credit", int(credit_minor)
+    if debit_ok and debit_minor is not None:
+        return "debit", debit_minor, False
+    if credit_ok and credit_minor is not None:
+        return "credit", credit_minor, False
     return None
 
 
@@ -211,8 +235,25 @@ def chart_slot(
         )
     sided = _one_sided_amount(row)
     if sided is None:
-        return _slot("amount_side", "借貸兩欄不能確定單一金額，沒有選邊。")
-    side, minor = sided
+        debit_ok, credit_ok, debit_minor, credit_minor = _amount_sides(row)
+        if debit_ok and credit_ok and debit_minor == 0 and credit_minor == 0:
+            reason = (
+                "借貸兩欄都是 0.00"
+                f"（借方 {_display_amount(0, decimal_places)}；"
+                f"貸方 {_display_amount(0, decimal_places)}），"
+                "沒有非零單邊金額可選，沒有畫入圖。"
+            )
+        elif debit_ok and credit_ok:
+            reason = (
+                "借貸兩欄都是非零值"
+                f"（借方 {_display_amount(debit_minor, decimal_places)}；"
+                f"貸方 {_display_amount(credit_minor, decimal_places)}），"
+                "不能確定單一金額，沒有選邊。"
+            )
+        else:
+            reason = "借貸兩欄不能確定單一金額，沒有選邊。"
+        return _slot("amount_side", reason)
+    side, minor, zero_counterpart = sided
     source = next(
         (candidate for candidate in row.get("candidates") or []
          if candidate.get("item_key") == item_key),
@@ -239,6 +280,7 @@ def chart_slot(
             "currency": row.get("currency"),
             "unit_scale": row.get("unit_scale"),
             "amount_decimal_places": decimal_places,
+            "zero_counterpart": zero_counterpart,
             "financially_validated": False,
             "presented_as_approved_scale": False,
         },
@@ -682,6 +724,11 @@ def _cross_bank(series: list[dict[str, Any]]) -> dict[str, Any]:
                 "row_type": (
                     slot["point"]["row_type"] if slot["point"] else None
                 ),
+                "zero_counterpart": (
+                    slot["point"].get("zero_counterpart")
+                    if slot["point"]
+                    else None
+                ),
                 "mapping_status": (
                     slot["point"]["mapping_status"] if slot["point"] else None
                 ),
@@ -760,6 +807,11 @@ def _trend(quarters: list[dict[str, Any]]) -> dict[str, Any]:
                     else None
                 ),
                 "row_type": slot["point"]["row_type"] if slot.get("point") else None,
+                "zero_counterpart": (
+                    slot["point"].get("zero_counterpart")
+                    if slot.get("point")
+                    else None
+                ),
                 "mapping_status": (
                     slot["point"]["mapping_status"] if slot.get("point") else None
                 ),
@@ -823,6 +875,7 @@ def _bar_svg(series: list[dict[str, Any]]) -> str:
             f'<rect x="{x}" y="{y + 10}" width="{span}" height="22" class="bar" '
             f'data-name="{_esc(slot["canonical_zh"])}" data-minor="{point["minor"]}" '
             f'data-display="{_esc(point["display"])}" data-order="{index}" '
+            f'data-zero-counterpart="{1 if point.get("zero_counterpart") else 0}" '
             f'data-row-type="{_esc(point["row_type"])}"></rect>'
         )
         parts.append(
@@ -925,6 +978,7 @@ def _trend_svg(quarters: list[dict[str, Any]], mode: str | None) -> str:
             f'<circle cx="{x}" cy="{y}" r="5" class="bar" '
             f'data-date="{_esc(slot["statement_date"])}" data-minor="{point["minor"]}" '
             f'data-display="{_esc(point["display"])}" '
+            f'data-zero-counterpart="{1 if point.get("zero_counterpart") else 0}" '
             f'data-row-type="{_esc(point["row_type"])}"></circle>'
         )
         value_anchor = "start" if index == 0 else "end" if index == len(quarters) - 1 else "middle"

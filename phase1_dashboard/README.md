@@ -47,6 +47,10 @@ export PHASE1_DASHBOARD_DB=/你的路徑/macau_balancete_v3.sqlite
 python -m phase1_dashboard
 ```
 
+```bash
+python -m phase1_dashboard --db data/macau_balancete_v3.sqlite
+```
+
 然後打開 <http://127.0.0.1:8010/>。預設埠是 `8010`，避免撞上 Workbench 的 `8000`。`--host` 只接受 `127.0.0.1`（`localhost` 與 `::1` 會改綁到 `127.0.0.1`）。其他地址會直接拒絕。請求的 `Host` 只接受 `127.0.0.1` 或 `localhost`，可以帶一個埠號；其他 `Host` 回 HTTP 400，避免 DNS rebinding 讀到這份沒有登入的本機資料。
 
 資料庫以 `mode=ro` 與 `PRAGMA query_only` 打開。請指向 V3。檔名 `macau_balancete.sqlite`（包括 `archive/database/` 裡的 V5）會被拒絕，不會拿來當分析資料。
@@ -59,6 +63,7 @@ python -m phase1_dashboard
 - **覆蓋明細**：三組機構 × 三個結算日。可用格顯示幣別、`unit_scale`、`reporting_scope`、identity / metadata，以及四種 mapping 行數。缺的格子寫「缺口」和原因。
 - **機構頁**：同一間機構的三季。只把資產負債表上恰好一個候選標準項的行排在一起。對不齊的行留在原位。不同 `statement_type` 不分開加總。
 - **跨行對照**：一次只選一個分組、一個結算日、一個候選 `item_key`。沒有合計欄，沒有排名。幣別或 `unit_scale` 不一致時保持原記載，不換成同一單位。
+- **多選對比**（`/matrix`）：一個分組之內，機構、候選 `item_key`、結算日都可以多選。每組（機構 × 候選）是一條柱系，每條柱是一個結算日。這是 scratch notebook 分組柱狀圖的 dashboard 版本，但**沒有**照抄 notebook 的 `abs(debit − credit)` 或 `pivot(aggregate_function="sum")`：每條柱只取單邊 amount，同一格有兩行同候選就標缺口，不相加。缺口不是 0。借貸兩邊都有值而其中一邊剛好 `0.00` 時，會選非零一邊並標示需人手覆核；兩邊都非零或兩邊都是 0 仍然係缺口。候選上限 6 個、機構 × 候選上限 24 組，超出會要求收窄選取。
 - **佔比**：可以切換，但分母尚未決定，畫面寫「未計算」。
 
 草稿警示（`user:總計`、`user:AMCM存款`、`user:股本` / `user:營運資金`、存款父項與大西洋銀行版面）來自 2026-11-22 的對照草稿，不是已凍結的官方對照。畫面上的行數與缺口來自你打開的那個資料庫，不是寫死的覆蓋統計。
