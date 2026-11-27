@@ -17,6 +17,14 @@ CREATE TABLE IF NOT EXISTS standard_items (
     ),
     parent_standard_item_id     TEXT,
     category                    TEXT,
+    -- Classification is kept separate from the financial category value so an
+    -- excluded row (for example a grand total) is not confused with an item
+    -- that simply has not been classified yet.  Existing databases gain these
+    -- columns through workbench.db.ensure_standard_item_classification_columns.
+    classification_status       TEXT NOT NULL DEFAULT 'unclassified' CHECK (
+        classification_status IN ('unclassified', 'classified', 'excluded')
+    ),
+    classification_source       TEXT,
     item_status                 TEXT NOT NULL DEFAULT 'draft' CHECK (
         item_status IN ('draft', 'approved', 'merged', 'retired')
     ),

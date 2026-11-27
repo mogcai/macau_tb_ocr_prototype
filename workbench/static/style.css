@@ -46,6 +46,9 @@ table.compact { font-size: 12px; }
 .pill.retired { background: #e5e7eb; color: var(--muted); }
 .pill.merged { background: #ede9fe; color: #5b21b6; }
 .pill.proposed { background: #fff4d6; color: var(--warn); }
+.pill.classified { background: #dbeafe; color: #1d4ed8; }
+.pill.excluded { background: #e5e7eb; color: var(--muted); }
+.pill.unclassified { background: #fff4d6; color: var(--warn); }
 .muted { color: var(--muted); }
 .ok { color: var(--ok); font-weight: 600; }
 .filters { display: flex; gap: 10px; margin-bottom: 14px; }

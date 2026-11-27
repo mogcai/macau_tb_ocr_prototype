@@ -6,6 +6,38 @@ from pathlib import Path
 
 from workbench.config import SNAPSHOT_DB, V3_DB
 
+STANDARD_ITEM_CLASSIFICATION_COLUMNS = (
+    (
+        "classification_status",
+        "TEXT NOT NULL DEFAULT 'unclassified' "
+        "CHECK (classification_status IN ('unclassified', 'classified', 'excluded'))",
+    ),
+    ("classification_source", "TEXT"),
+)
+
+
+def ensure_standard_item_classification_columns(
+    connection: sqlite3.Connection,
+) -> None:
+    """Add the classification columns to an older v3 database in place.
+
+    The columns are part of the current ``standard_items`` DDL, so a database
+    built from ``database/v3`` already has them.  Operational databases built
+    before that change need the additive migration; it is safe to call on every
+    start because each column is added only when missing.
+    """
+    exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='standard_items'"
+    ).fetchone()
+    if exists is None:
+        return
+    columns = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(standard_items)")
+    }
+    for name, ddl in STANDARD_ITEM_CLASSIFICATION_COLUMNS:
+        if name not in columns:
+            connection.execute(f"ALTER TABLE standard_items ADD COLUMN {name} {ddl}")
+
 
 def is_snapshot(path: Path) -> bool:
     try:

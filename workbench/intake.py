@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from workbench.config import ROOT
-from workbench.db import connect_v3
+from workbench.db import connect_v3, ensure_standard_item_classification_columns
 from workbench.ocr_quality import summarize_run_dir
 
 SCHEMA_FILES = (
@@ -290,6 +290,7 @@ def ensure_schema() -> None:
     try:
         for path in SCHEMA_FILES:
             conn.executescript(path.read_text(encoding="utf-8"))
+        ensure_standard_item_classification_columns(conn)
         _assert_no_dangling_statement_rows_refs(conn)
         _migrate_statement_rows_discard_fk(conn)
         conn.commit()

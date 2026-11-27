@@ -728,11 +728,15 @@ Constraints：
 | `canonical_en` | TEXT | Yes | 可選英文名稱 |
 | `canonical_en_status` | TEXT | No | missing / draft / approved / rejected |
 | `parent_standard_item_id` | TEXT | Yes | FK → `standard_items` |
-| `category` | TEXT | Yes | 財務分類 |
+| `category` | TEXT | Yes | 財務分類，保留策劃 CSV 原值（例如 `資產負債-資產`、`損益`、`排除`） |
+| `classification_status` | TEXT | No | unclassified / classified / excluded；預設 unclassified |
+| `classification_source` | TEXT | Yes | 分類來源及版本，例如 `csv:docs/...@sha256:...` |
 | `item_status` | TEXT | No | draft / approved / merged / retired |
 | `merged_into_standard_item_id` | TEXT | Yes | FK → `standard_items`；合併至 surviving Item |
 | `created_at` | TEXT | No | ISO timestamp |
 | `notes` | TEXT | Yes | 語義及治理說明 |
+
+Classification Rule：`category` 只保存人手策劃的分類值，不由 OCR label 推斷。`classification_status='excluded'` 表示該 Item 不應納入財務分類加總（例如 `總計`），與尚未分類的 `unclassified` 分開；`classification_source` 記錄來源 CSV 及內容 hash。`tools/import_standard_classification.py` 只寫這三個欄位，預設 dry-run，並為每次變更寫 `audit_events`。
 
 Language Status Rule：名稱為 NULL 時對應 status 必須為 `missing`；名稱非 NULL 時 status 不可為 `missing`。`item_status='approved'` 不代表每個語言名稱均已批准，必須另外檢查 zh / pt / en status。中葡名稱是同一 Standard Item 的不同語言，不是兩個 Item。DDL 加 `CHECK(merged_into_standard_item_id IS NULL OR merged_into_standard_item_id <> standard_item_id)`；Runtime 禁止 Merge Cycle，Merge 必須寫 Audit Event。
 

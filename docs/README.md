@@ -28,6 +28,7 @@
 |---|---|
 | [`audit/`](audit/) | Worksheet CSVs, MVP snapshot manifest — **tools write here** |
 | [`examples/`](examples/) | Small reusable examples (e.g. number normalization) |
+| [`macau_bank_account_classification.csv`](macau_bank_account_classification.csv) | Curated account → financial category classification; import with `tools/import_standard_classification.py` |
 
 ## Legacy V5 docs (still at repo root)
 

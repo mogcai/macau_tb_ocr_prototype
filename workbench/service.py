@@ -683,7 +683,8 @@ def standard_items(*, include_inactive: bool = False) -> list[dict[str, Any]]:
     try:
         rows = [dict(row) for row in conn.execute(
             "SELECT standard_item_id, item_key, canonical_zh, canonical_pt, "
-            "parent_standard_item_id, item_status, merged_into_standard_item_id "
+            "parent_standard_item_id, category, classification_status, "
+            "item_status, merged_into_standard_item_id "
             "FROM standard_items "
             "ORDER BY item_key"
         )]
@@ -705,7 +706,8 @@ def standard_item_admin_rows(*, db_path: Path | None = None) -> list[dict[str, A
                    si.canonical_zh_status, si.canonical_pt,
                    si.canonical_pt_status, si.canonical_en,
                    si.canonical_en_status, si.parent_standard_item_id,
-                   si.category, si.item_status, si.merged_into_standard_item_id,
+                   si.category, si.classification_status, si.classification_source,
+                   si.item_status, si.merged_into_standard_item_id,
                    si.created_at, si.notes,
                    parent.item_key AS merged_into_item_key,
                    (SELECT COUNT(*) FROM statement_row_mappings m

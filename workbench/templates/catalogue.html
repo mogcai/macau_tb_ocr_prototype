@@ -70,7 +70,7 @@
     <thead>
       <tr>
         <th>Status</th><th>Chinese</th><th>Portuguese</th><th>Path / key</th>
-        <th>Usage</th><th>Note</th><th>Actions</th>
+        <th>Classification</th><th>Usage</th><th>Note</th><th>Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -97,6 +97,21 @@
         <td>
           <div>{{ row.path }}</div>
           <div class="sub"><code>{{ row.item_key }}</code></div>
+        </td>
+        <td class="sub">
+          {% if row.category %}
+          <div>{{ row.category }}</div>
+          {% else %}
+          <div>—</div>
+          {% endif %}
+          <div>
+            <span class="pill {{ row.classification_status }}">{{ row.classification_status }}</span>
+          </div>
+          {% if row.classification_source %}
+          <div title="{{ row.classification_source }}">
+            {% if row.classification_source.startswith('csv:') %}source: CSV{% else %}source: manual{% endif %}
+          </div>
+          {% endif %}
         </td>
         <td class="sub">
           approved {{ row.approved_mapping_rows }}<br>
