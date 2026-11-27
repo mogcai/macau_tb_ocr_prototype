@@ -302,12 +302,15 @@ def _signature_text(point: dict[str, Any]) -> str:
     )
 
 
-def _mismatch_note(points: list[dict[str, Any]]) -> tuple[str, list[str]]:
+def _mismatch_note(
+    points: list[dict[str, Any]], ignore: tuple[str, ...] = ()
+) -> tuple[str, list[str]]:
     signatures = [_signature(point) for point in points]
     differing = [
         SIGNATURE_LABELS[field]
         for index, field in enumerate(SIGNATURE_FIELDS)
-        if len({signature[index] for signature in signatures}) > 1
+        if field not in ignore
+        and len({signature[index] for signature in signatures}) > 1
     ]
     note = (
         "比較簽章不一致（" + "、".join(differing) + "）。"

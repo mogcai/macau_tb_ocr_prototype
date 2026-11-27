@@ -118,6 +118,7 @@ def matrix_view(
     entity_ids: list[str] | None,
     item_keys: list[str] | None,
     statement_dates: list[str] | None,
+    signed: bool = False,
 ) -> dict[str, Any]:
     scope = load_scope(connection)
     model = build_matrix_view(
@@ -125,6 +126,7 @@ def matrix_view(
         entity_ids=entity_ids,
         item_keys=item_keys,
         statement_dates=statement_dates,
+        signed=signed,
         coverage=build_coverage(**scope),
         **scope,
     )

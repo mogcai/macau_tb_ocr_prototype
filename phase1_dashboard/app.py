@@ -149,6 +149,7 @@ def create_app(db_path: Path | str) -> FastAPI:
         request: Request,
         bucket: str | None = None,
         submitted: str | None = None,
+        signed: bool = False,
         entity_id: list[str] | None = Query(None),
         item_key: list[str] | None = Query(None),
         statement_date: list[str] | None = Query(None),
@@ -161,6 +162,7 @@ def create_app(db_path: Path | str) -> FastAPI:
                 entity_ids=_multi_selection(entity_id, was_submitted),
                 item_keys=_multi_selection(item_key, was_submitted),
                 statement_dates=_multi_selection(statement_date, was_submitted),
+                signed=signed,
             )
         return render(request, "matrix.html", model=model)
 
@@ -206,6 +208,7 @@ def create_app(db_path: Path | str) -> FastAPI:
     @app.get("/api/matrix")
     def matrix_api(
         bucket: str | None = None,
+        signed: bool = False,
         entity_id: list[str] | None = Query(None),
         item_key: list[str] | None = Query(None),
         statement_date: list[str] | None = Query(None),
@@ -217,6 +220,7 @@ def create_app(db_path: Path | str) -> FastAPI:
                 entity_ids=entity_id,
                 item_keys=item_key,
                 statement_dates=statement_date,
+                signed=signed,
             )
 
     @app.get("/api/indicators")

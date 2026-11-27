@@ -8,7 +8,9 @@ Candidate Explorer rules:
   ranked, or netted from debit minus credit;
 * a missing point stays a gap, never 0;
 * the full comparison signature must match across every drawn point;
-* groups keep the perimeter-list order, not amount order.
+* groups keep the perimeter-list order, not amount order;
+* the optional signed display negates credit-side amounts (× -1) so debit and
+  credit items can share a chart; it is a sign convention, not a net amount.
 
 The notebook computed ``abs(debit - credit) / 100`` and summed rows with
 ``pivot(aggregate_function="sum")``. Neither is reproduced here: the dashboard
@@ -21,13 +23,13 @@ from typing import Any
 
 from phase1_dashboard.charts import (
     SIGNATURE_FIELDS,
+    SIGNATURE_LABELS,
     _bucket_balance_rows,
     _esc,
     _is_lifecycle_blocked,
     _item_catalogue,
     _item_preference,
     _mismatch_note,
-    _signature,
     _signature_text,
     _side_label,
     chart_slot,
@@ -127,6 +129,7 @@ def build_matrix_view(
     entity_ids: list[str] | None,
     item_keys: list[str] | None,
     statement_dates: list[str] | None,
+    signed: bool = False,
     entities: list[dict[str, Any]],
     statements: list[dict[str, Any]],
     rows_by_statement: dict[str, list[dict[str, Any]]],
@@ -230,7 +233,12 @@ def build_matrix_view(
         for slot in group["cells"].values()
         if slot["included_in_chart"] and slot["point"]
     ]
-    signatures = {_signature(point) for point in points}
+    signature_fields = tuple(
+        field for field in SIGNATURE_FIELDS if not (signed and field == "side")
+    )
+    signatures = {
+        tuple(point.get(field) for field in signature_fields) for point in points
+    }
     drawn = False
     mode = None
     signature_note = "未畫入圖。"
@@ -241,22 +249,42 @@ def build_matrix_view(
                 "缺口留在下面，不畫成 0。"
             )
         elif len(signatures) > 1:
-            signature_note, _ = _mismatch_note(points)
+            signature_note, differing = _mismatch_note(
+                points, ignore=("side",) if signed else ()
+            )
             reason = signature_note
+            if differing == [SIGNATURE_LABELS["side"]] and not signed:
+                hint = (
+                    " 可勾選「貸方 × -1」再更新，將貸方以負數顯示，"
+                    "資產與負債就可以同圖。"
+                )
+                reason += hint
             for group in groups:
                 for slot in group["cells"].values():
                     if slot["included_in_chart"]:
                         slot["included_in_chart"] = False
                         slot["signature_mismatch"] = True
-                        slot["reason"] = signature_note
+                        slot["reason"] = reason
         else:
             drawn = True
             mode = "comparison" if len(points) > 1 else "observation"
-            signature_note = (
-                "全部柱共用同一比較簽章：" + _signature_text(points[0]) + "。"
-            )
+            if signed:
+                signature_note = (
+                    "全部柱共用同一比較簽章（貸方已 × -1，借貸方向不比較）："
+                    + _signed_signature_text(points[0])
+                    + "。"
+                )
+            else:
+                signature_note = (
+                    "全部柱共用同一比較簽章：" + _signature_text(points[0]) + "。"
+                )
             if mode == "observation":
                 reason = "只有一個有效點，這是單期觀察，不是趨勢或排名。"
+    if signed:
+        for group in groups:
+            for slot in group["cells"].values():
+                if slot.get("point"):
+                    slot["point"] = _signed_point(slot["point"])
 
     slots = [
         _trace_slot(group, date)
@@ -264,7 +292,7 @@ def build_matrix_view(
         for date in group["cells"]
     ]
     gap_count = sum(1 for row in slots if not row["included_in_chart"])
-    svg = _matrix_svg(groups, dates) if drawn else None
+    svg = _matrix_svg(groups, dates, signed) if drawn else None
     return {
         "bucket": bucket_id,
         "bucket_title": bucket["title"],
@@ -282,6 +310,12 @@ def build_matrix_view(
         "item_select_size": min(max(len(item_options), 6), 10),
         "ignored_entities": ignored_entities,
         "ignored_items": ignored_items,
+        "signed": signed,
+        "sign_rule": (
+            "貸方（credit）× -1；借方（debit）不變。這是顯示約定，不是淨額。"
+            if signed
+            else None
+        ),
         "groups": groups,
         "slots": slots,
         "drawn": drawn,
@@ -299,12 +333,19 @@ def build_matrix_view(
             "max_items": MAX_ITEMS,
             "max_groups": MAX_GROUPS,
         },
-        "caption": _caption(bucket["title"], selected_entities, selected_items, dates),
+        "caption": _caption(
+            bucket["title"], selected_entities, selected_items, dates, signed
+        ),
         "note": (
             "分組順序依機構名單及候選排序，不是按金額。"
             "同一機構、同一候選、同一結算日如有兩行同候選，標為缺口，不相加。"
             "借貸其中一邊剛好 0.00 時，按 0 對邊規則選非零一邊，該點標示需人手覆核。"
             "本頁沒有把借方減貸方，也沒有套用 unit_scale。"
+            + (
+                " 貸方 × -1 只改變圖上正負號，不是借貸相減，也不是合計。"
+                if signed
+                else ""
+            )
         ),
         "summed": False,
         "ranked": False,
@@ -326,6 +367,10 @@ def _trace_slot(group: dict[str, Any], date: str) -> dict[str, Any]:
         "status": slot["status"],
         "reason": slot.get("reason"),
         "display": point.get("display") if point else None,
+        "raw_display": (
+            (point.get("raw_display") or point.get("display")) if point else None
+        ),
+        "signed_for_display": bool(point.get("signed_for_display")) if point else False,
         "minor": point.get("minor") if point else None,
         "mapping_status": point.get("mapping_status") if point else None,
         "row_type": point.get("row_type") if point else None,
@@ -343,12 +388,45 @@ def _caption(
     entities: list[dict[str, Any]],
     items: list[str],
     dates: list[str],
+    signed: bool = False,
 ) -> str:
-    return (
+    text = (
         f"{bucket_title} · {len(entities)} 間機構 × {len(items)} 個候選 × "
         f"{len(dates)} 個結算日。每條柱是一份已採納資產負債表內、"
         "恰好一個現行候選的一行觀察，不是已核定金融指標，也不是財務核實。"
         "沒有合計、沒有排名，亦沒有把借方減貸方；缺口不是 0。"
+    )
+    if signed:
+        text += (
+            " 貸方（credit）金額 × -1、借方不變，只為資產與負債同圖閱讀；"
+            "原始正數、side 及 minor 仍保留在逐點追溯表。"
+        )
+    return text
+
+
+def _signed_point(point: dict[str, Any]) -> dict[str, Any]:
+    """Return a display copy with credit-side amounts negated.
+
+    The raw minor and the original display stay on the point. This is a display
+    convention, not an arithmetic net amount.
+    """
+    value = Decimal(str(point["display"]).replace(",", ""))
+    signed_value = -value if point.get("side") == "credit" else value
+    return {
+        **point,
+        "display": f"{signed_value:,.{point['amount_decimal_places']}f}",
+        "raw_display": point["display"],
+        "signed_for_display": point.get("side") == "credit",
+    }
+
+
+def _signed_signature_text(point: dict[str, Any]) -> str:
+    return (
+        f"{point.get('currency') or '幣別未記載'} · unit_scale "
+        f"{point.get('unit_scale') if point.get('unit_scale') is not None else '未記載'} · "
+        f"{point.get('amount_decimal_places')} 位小數 · "
+        f"{point.get('reporting_scope') or 'scope 未記載'} · "
+        f"row_type {point.get('row_type') or 'row_type 未記載'} · 借貸方向不比較"
     )
 
 
@@ -368,7 +446,9 @@ def _axis_amount(value: Decimal, decimal_places: int) -> str:
     return f"{value:,.{decimal_places}f}"
 
 
-def _matrix_svg(groups: list[dict[str, Any]], dates: list[str]) -> str:
+def _matrix_svg(
+    groups: list[dict[str, Any]], dates: list[str], signed: bool = False
+) -> str:
     """Grouped vertical bars: x = entity × item, one bar per selected date."""
     if not groups or not dates:
         return ""
@@ -383,6 +463,9 @@ def _matrix_svg(groups: list[dict[str, Any]], dates: list[str]) -> str:
         return ""
     decimal_places = displayed[0][2]["amount_decimal_places"]
     side = displayed[0][2]["side"]
+    side_text = (
+        "貸方 × -1（借方不變）" if signed else _side_label(side)
+    )
     values = [
         Decimal(point["display"].replace(",", "")) for _, _, point in displayed
     ]
@@ -415,7 +498,7 @@ def _matrix_svg(groups: list[dict[str, Any]], dates: list[str]) -> str:
         f'<svg class="chart-svg matrix" viewBox="0 0 {width} {height}" role="img" '
         f'aria-label="多機構、多候選、多期候選觀察，缺口不是 0，沒有合計">',
         f'<text x="{left}" y="18" class="axis-title">'
-        f'顯示金額（MOP · {decimal_places} 位小數）· {_side_label(side)} · 候選行</text>',
+        f'顯示金額（MOP · {decimal_places} 位小數）· {side_text} · 候選行</text>',
     ]
     legend_x = left
     for index, date in enumerate(dates):

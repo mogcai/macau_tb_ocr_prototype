@@ -126,6 +126,7 @@ footer {
 .chart-svg.matrix .bar-label .axis-note { font-size: 10px; }
 .chart-scroll { overflow-x: auto; }
 .matrix-filters select[multiple] { min-width: 15rem; }
+.matrix-filters .inline-check { flex-direction: row; align-items: center; gap: 6px; padding-bottom: 7px; }
 .multi-hint { margin: 8px 0 0; }
 .matrix-table .gap-row { color: var(--muted); }
 .matrix-table td { font-variant-numeric: tabular-nums; }

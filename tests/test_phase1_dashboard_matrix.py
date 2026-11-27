@@ -311,6 +311,60 @@ class MatrixRulesTests(unittest.TestCase):
         })
         self.assertIn("對邊為 0.00；按 0 對邊規則選借方", html)
 
+    def test_signed_display_allows_asset_and_liability_together(self) -> None:
+        names = [LEGAL_BANKS[0]]
+        dates = ("2026-06-30",)
+        rows = {
+            (names[0], "2026-06-30"): [
+                _row(
+                    "user:放款",
+                    100,
+                    statement_id="s0-2026-06-30",
+                    row_id="a",
+                ),
+                _row(
+                    "user:現金",
+                    200,
+                    statement_id="s0-2026-06-30",
+                    row_id="b",
+                    side="credit",
+                ),
+            ]
+        }
+        unsigned = _view(
+            names, dates, rows, item_keys=["user:放款", "user:現金"]
+        )
+        self.assertFalse(unsigned["drawn"])
+        self.assertIn("借貸方向", unsigned["reason"])
+        self.assertIn("貸方 × -1", unsigned["reason"])
+
+        signed = _view(
+            names,
+            dates,
+            rows,
+            item_keys=["user:放款", "user:現金"],
+            signed=True,
+        )
+        self.assertTrue(signed["drawn"])
+        self.assertTrue(signed["signed"])
+        self.assertEqual(signed["bar_count"], 2)
+        credit = next(
+            slot for slot in signed["slots"] if slot["item_key"] == "user:現金"
+        )
+        self.assertEqual(credit["side"], "credit")
+        self.assertEqual(credit["display"], "-2.00")
+        self.assertEqual(credit["raw_display"], "2.00")
+        self.assertTrue(credit["signed_for_display"])
+        debit = next(
+            slot for slot in signed["slots"] if slot["item_key"] == "user:放款"
+        )
+        self.assertEqual(debit["display"], "1.00")
+        self.assertFalse(debit["signed_for_display"])
+        self.assertIn('data-display="-2.00"', signed["svg"])
+        self.assertIn("貸方 × -1（借方不變）", signed["svg"])
+        self.assertIn("貸方已 × -1", signed["signature_note"])
+        self.assertFalse(signed["summed"])
+
     def test_unknown_entity_or_item_is_reported_not_silently_used(self) -> None:
         names = [LEGAL_BANKS[0]]
         dates = ("2026-06-30",)
@@ -401,6 +455,8 @@ class MatrixPageTests(unittest.TestCase):
         self.assertIn('name="entity_id" multiple', page.text)
         self.assertIn('name="item_key" multiple', page.text)
         self.assertIn('name="statement_date" multiple', page.text)
+        self.assertIn('name="signed"', page.text)
+        self.assertIn("貸方 × -1（資產與負債同圖）", page.text)
         self.assertIn("逐點追溯", page.text)
         self.assertIn("缺口不是 0", page.text)
         self.assertIn("沒有合計、沒有排名", page.text)
@@ -430,6 +486,11 @@ class MatrixPageTests(unittest.TestCase):
         self.assertEqual(body["selected_entities"], [entity["entity_id"]])
         self.assertFalse(body["summed"])
         self.assertFalse(body["ranked"])
+        signed = self.client.get(
+            "/api/matrix", params={"bucket": "legal", "signed": "1"}
+        ).json()
+        self.assertTrue(signed["signed"])
+        self.assertIn("貸方（credit）金額 × -1", signed["caption"])
 
     def test_invalid_date_is_a_dashboard_error(self) -> None:
         response = self.client.get(
