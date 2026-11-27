@@ -99,6 +99,7 @@ GET  /intake/{source_document_id}                  # Page classification + build
 GET  /api/intake
 GET  /api/intake/{source_document_id}             # includes ocr_quality summary
 POST /api/intake/{source_document_id}/pages/{document_page_id}  # classify, reviewer+
+POST /api/intake/{source_document_id}/reject-pages              # bulk reject selected pages + reason
 POST /api/intake/{source_document_id}/auto-classify             # apply PDF-text suggestions
 POST /api/intake/{source_document_id}/build                     # create statements
 POST /api/intake/{source_document_id}/reprocess                 # OCR reprocess via import job
@@ -176,6 +177,13 @@ For each page a reviewer:
 Pages with no extracted rows (non-TB pages) can be bulk-approved as `other`.
 Ambiguous names are never guessed: the page is reported as unmatched and must
 be classified manually.
+
+Pages that are mostly covers, contents or audit reports can be rejected in
+bulk: tick the page checkboxes (or **Select all proposed**), enter one shared
+reason and press **Reject selected pages**. Each selected page becomes
+`page_role=other` / `classification_status=rejected` and gets its own
+`page_classified` audit event. Pages already locked to a statement are skipped
+and listed; discard the owning statement first if one of them must change.
 
 Decisions are written to `document_pages` plus `page_statement_decisions`
 (migration `database/v3/017_page_statement_decisions.sql`) and audited in

@@ -145,10 +145,28 @@
   <p class="sub">Approve financial-statement pages with an entity and statement
   date. Reject or reclassify everything else so no page stays <code>proposed</code>.
   Sample labels come from the raw OCR rows.</p>
+  {% if can_classify and pages %}
+  <div class="actions intake-bulk-reject">
+    <input type="text" id="bulk-reject-note" class="reason-input"
+           placeholder="Reason for rejecting selected pages (required)">
+    <button id="bulk-reject-button" type="button" class="secondary" disabled>
+      Reject selected pages
+    </button>
+    <button id="bulk-select-proposed" type="button" class="secondary">
+      Select all proposed
+    </button>
+    <span id="bulk-reject-count" class="sub">0 selected</span>
+  </div>
+  <div id="bulk-reject-result" class="build-result"></div>
+  {% endif %}
   <div class="table-scroll">
     <table class="data compact intake-table">
       <thead>
         <tr>
+          {% if can_classify %}
+          <th class="select-cell"><input type="checkbox" id="bulk-select-all"
+              title="Select all pages that are not locked to a statement"></th>
+          {% endif %}
           <th>Page</th>
           <th>Current</th>
           <th>PDF text / suggestion</th>
@@ -160,6 +178,17 @@
       <tbody>
         {% for page in pages %}
         <tr class="{% if page.locked_rows %}intake-locked{% endif %}">
+          {% if can_classify %}
+          <td class="select-cell">
+            {% if not page.locked_rows %}
+            <input type="checkbox" class="page-select"
+                   value="{{ page.document_page_id }}"
+                   data-page="p{{ page.pdf_page }}"
+                   data-status="{{ page.classification_status }}"
+                   aria-label="Select page p{{ page.pdf_page }}">
+            {% endif %}
+          </td>
+          {% endif %}
           <td><strong>p{{ page.pdf_page }}</strong>
             {% if page.printed_page %}<div class="sub">printed {{ page.printed_page }}</div>{% endif %}
           </td>
@@ -323,6 +352,105 @@
     }
     return data;
   }
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[ch]));
+  }
+  const bulkBoxes = Array.from(document.querySelectorAll(".page-select"));
+  const bulkAll = document.getElementById("bulk-select-all");
+  const bulkButton = document.getElementById("bulk-reject-button");
+  const bulkCount = document.getElementById("bulk-reject-count");
+  function updateBulkSelection() {
+    const selected = bulkBoxes.filter((box) => box.checked);
+    if (bulkCount) bulkCount.textContent = selected.length + " selected";
+    if (bulkButton) bulkButton.disabled = selected.length === 0;
+    if (bulkAll) {
+      bulkAll.checked = bulkBoxes.length > 0 && selected.length === bulkBoxes.length;
+      bulkAll.indeterminate = selected.length > 0 && selected.length < bulkBoxes.length;
+    }
+  }
+  bulkBoxes.forEach((box) => box.addEventListener("change", updateBulkSelection));
+  if (bulkAll) {
+    bulkAll.addEventListener("change", () => {
+      bulkBoxes.forEach((box) => { box.checked = bulkAll.checked; });
+      updateBulkSelection();
+    });
+  }
+  const selectProposed = document.getElementById("bulk-select-proposed");
+  if (selectProposed) {
+    selectProposed.addEventListener("click", () => {
+      bulkBoxes.forEach((box) => {
+        box.checked = box.dataset.status === "proposed";
+      });
+      updateBulkSelection();
+    });
+  }
+  if (bulkButton) {
+    bulkButton.addEventListener("click", async () => {
+      const noteInput = document.getElementById("bulk-reject-note");
+      const note = noteInput.value.trim();
+      const pageIds = bulkBoxes.filter((box) => box.checked).map((box) => box.value);
+      if (!note) {
+        alert("A reason is required to reject pages");
+        noteInput.focus();
+        return;
+      }
+      if (!pageIds.length) return;
+      if (!window.confirm(
+        "Reject " + pageIds.length + " page(s)?\n" +
+        "They become page_role=other / classification_status=rejected. " +
+        "Pages locked to a statement are skipped and reported."
+      )) {
+        return;
+      }
+      const output = document.getElementById("bulk-reject-result");
+      bulkButton.disabled = true;
+      output.textContent = "Rejecting " + pageIds.length + " page(s)…";
+      try {
+        const result = await postJson(
+          "/api/intake/{{ document.source_document_id }}/reject-pages",
+          {page_ids: pageIds, note: note},
+        );
+        let message =
+          "<p class='ok'>Rejected " + result.rejected_count + " page(s).</p>";
+        if (result.skipped_count) {
+          message += "<p class='bad'>Skipped " + result.skipped_count +
+            " page(s):</p><ul class='blockers'>";
+          result.skipped.slice(0, 10).forEach((item) => {
+            message += "<li><code>" + escapeHtml(item.document_page_id) +
+              "</code> — " + escapeHtml(item.reason) + "</li>";
+          });
+          if (result.skipped.length > 10) {
+            message += "<li>…and " + (result.skipped.length - 10) + " more</li>";
+          }
+          message += "</ul>";
+        }
+        output.innerHTML = message;
+        if (result.rejected_count) {
+          if (result.skipped_count) {
+            alert(
+              "Rejected " + result.rejected_count + " page(s).\n" +
+              "Skipped " + result.skipped_count + " page(s):\n" +
+              result.skipped.slice(0, 10).map((item) =>
+                item.document_page_id + " — " + item.reason
+              ).join("\n") +
+              (result.skipped.length > 10
+                ? "\n…and " + (result.skipped.length - 10) + " more"
+                : "")
+            );
+          }
+          window.location.reload();
+        } else {
+          bulkButton.disabled = false;
+        }
+      } catch (error) {
+        output.innerHTML = "<p class='bad'>" + escapeHtml(error.message) + "</p>";
+        bulkButton.disabled = false;
+      }
+    });
+  }
+  updateBulkSelection();
   document.querySelectorAll("form.page-decision").forEach((form) => {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();

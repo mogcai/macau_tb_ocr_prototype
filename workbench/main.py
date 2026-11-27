@@ -97,6 +97,11 @@ class PageDecisionPayload(BaseModel):
     note: str = ""
 
 
+class BulkRejectPagesPayload(BaseModel):
+    page_ids: list[str]
+    note: str = ""
+
+
 class AutoClassifyPayload(BaseModel):
     classify_empty_pages: bool = True
 
@@ -764,6 +769,31 @@ def api_intake_decide(
             statement_type=payload.statement_type,
             note=payload.note,
             actor=actor_from(request),
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except intake.IntakeConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/intake/{source_document_id}/reject-pages")
+def api_intake_reject_pages(
+    source_document_id: str,
+    payload: BulkRejectPagesPayload,
+    request: Request,
+    x_workbench_role: str | None = Header(default=None),
+) -> dict[str, Any]:
+    role = role_from(request, x_workbench_role)
+    if not can_classify(role):
+        raise HTTPException(status_code=403, detail="classify capability is required")
+    try:
+        return intake.reject_pages(
+            source_document_id,
+            payload.page_ids,
+            actor=actor_from(request),
+            note=payload.note,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

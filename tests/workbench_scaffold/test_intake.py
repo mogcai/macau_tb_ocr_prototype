@@ -363,6 +363,69 @@ class IntakeTests(_IntakeTestBase):
         with self.assertRaises(intake.IntakeError):
             self._save(2, page_role="other", decision="reject", note=" ")
 
+    def test_bulk_reject_rejects_multiple_pages_with_one_reason(self) -> None:
+        page_ids = [page["document_page_id"] for page in self.detail["pages"]]
+        result = intake.reject_pages(
+            DOC_ID,
+            page_ids + [page_ids[0]],
+            actor="tester",
+            note="not a financial statement",
+        )
+        self.assertEqual(result["rejected_count"], 3)
+        self.assertEqual(result["skipped_count"], 0)
+        self.assertEqual(result["pending_pages"], 0)
+        self.assertEqual(
+            len({item["document_page_id"] for item in result["rejected"]}), 3
+        )
+        conn = sqlite3.connect(self.db)
+        try:
+            states = conn.execute(
+                "SELECT page_role, classification_status, classified_by "
+                "FROM document_pages WHERE source_document_id = ? "
+                "ORDER BY pdf_page",
+                (DOC_ID,),
+            ).fetchall()
+            audit = conn.execute(
+                "SELECT COUNT(*) FROM audit_events "
+                "WHERE source_document_id = ? AND event_type = 'page_classified' "
+                "AND reason = 'not a financial statement'",
+                (DOC_ID,),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(
+            states,
+            [("other", "rejected", "tester")] * 3,
+        )
+        self.assertEqual(audit, 3)
+
+    def test_bulk_reject_requires_a_note_and_a_selection(self) -> None:
+        page_ids = [page["document_page_id"] for page in self.detail["pages"]]
+        with self.assertRaises(intake.IntakeError):
+            intake.reject_pages(DOC_ID, [], actor="tester", note="x")
+        with self.assertRaises(intake.IntakeError):
+            intake.reject_pages(DOC_ID, page_ids, actor="tester", note=" ")
+
+    def test_bulk_reject_skips_pages_locked_to_statements(self) -> None:
+        self._classify_all()
+        intake.build_statements(DOC_ID, "tester")
+        locked_ids = [
+            page["document_page_id"]
+            for page in self.detail["pages"]
+            if page["pdf_page"] in (2, 3)
+        ]
+        result = intake.reject_pages(
+            DOC_ID,
+            locked_ids,
+            actor="tester",
+            note="late bulk reject",
+        )
+        self.assertEqual(result["rejected_count"], 0)
+        self.assertEqual(result["skipped_count"], 2)
+        self.assertTrue(
+            all("Discard" in item["reason"] for item in result["skipped"])
+        )
+
     def test_decision_writes_page_state_decision_and_audit(self) -> None:
         self._save(
             2, page_role="financial_statement", decision="approve",
@@ -867,6 +930,10 @@ class IntakeApiTests(_IntakeTestBase):
             headers={"X-Workbench-Role": "viewer"},
         )
         self.assertEqual(response.status_code, 403)
+        page = self.client.get(f"/intake/{DOC_ID}")
+        self.assertEqual(page.status_code, 200)
+        self.assertNotIn('class="page-select"', page.text)
+        self.assertNotIn("Reject selected pages", page.text)
 
     def test_auto_classify_endpoint_and_build(self) -> None:
         response = self.client.post(
@@ -884,6 +951,39 @@ class IntakeApiTests(_IntakeTestBase):
         )
         self.assertEqual(built.status_code, 200, built.text)
         self.assertEqual(built.json()["statements_created"], 2)
+
+    def test_bulk_reject_endpoint(self) -> None:
+        page_ids = [page["document_page_id"] for page in self.detail["pages"]]
+        viewer = self.client.post(
+            f"/api/intake/{DOC_ID}/reject-pages",
+            json={"page_ids": page_ids, "note": "not a financial statement"},
+            headers={"X-Workbench-Role": "viewer"},
+        )
+        self.assertEqual(viewer.status_code, 403)
+        missing_note = self.client.post(
+            f"/api/intake/{DOC_ID}/reject-pages",
+            json={"page_ids": page_ids, "note": " "},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(missing_note.status_code, 400)
+        response = self.client.post(
+            f"/api/intake/{DOC_ID}/reject-pages",
+            json={"page_ids": page_ids, "note": "cover / contents / audit"},
+            headers={"X-Workbench-Role": "reviewer"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        result = response.json()
+        self.assertEqual(result["rejected_count"], 3)
+        self.assertEqual(result["skipped_count"], 0)
+        self.assertEqual(result["pending_pages"], 0)
+        detail = self.client.get(f"/api/intake/{DOC_ID}").json()
+        self.assertTrue(
+            all(
+                page["page_role"] == "other"
+                and page["classification_status"] == "rejected"
+                for page in detail["pages"]
+            )
+        )
 
     def test_pages_and_build_endpoint(self) -> None:
         for page in self.detail["pages"]:
@@ -918,6 +1018,9 @@ class IntakeApiTests(_IntakeTestBase):
         self.assertIn("OCR quality preview", batch_page.text)
         self.assertIn("Pending statements", batch_page.text)
         self.assertIn("discard-statement", batch_page.text)
+        self.assertIn("Reject selected pages", batch_page.text)
+        self.assertIn("page-select", batch_page.text)
+        self.assertIn("Select all proposed", batch_page.text)
 
     def test_discard_endpoint_and_reprocess_requires_reason(self) -> None:
         self.client.post(

@@ -1181,6 +1181,7 @@ def save_page_decision(
     statement_date: str | None = None,
     statement_type: str = "balance_sheet",
     note: str = "",
+    return_detail: bool = True,
 ) -> dict[str, Any]:
     if page_role not in PAGE_ROLES:
         raise IntakeError(f"unknown page role: {page_role}")
@@ -1344,7 +1345,78 @@ def save_page_decision(
         raise
     finally:
         conn.close()
+    if not return_detail:
+        return {
+            "document_page_id": document_page_id,
+            "page_role": applied_role,
+            "classification_status": applied_status,
+        }
     return batch_detail(source_document_id)
+
+
+def reject_pages(
+    source_document_id: str,
+    document_page_ids: list[str],
+    *,
+    actor: str,
+    note: str,
+) -> dict[str, Any]:
+    """Reject several pages with one shared reason.
+
+    Each page still gets its own ``document_pages`` update, decision cleanup
+    and ``page_classified`` audit event. Pages that are already assigned to a
+    statement are skipped and reported instead of aborting the whole batch.
+    """
+    note = str(note or "").strip()
+    if not note:
+        raise IntakeError("a note is required when rejecting pages")
+    ordered = list(
+        dict.fromkeys(
+            str(page_id).strip()
+            for page_id in document_page_ids
+            if str(page_id or "").strip()
+        )
+    )
+    if not ordered:
+        raise IntakeError("select at least one page to reject")
+
+    rejected: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for page_id in ordered:
+        try:
+            result = save_page_decision(
+                source_document_id,
+                page_id,
+                page_role="other",
+                decision="reject",
+                actor=actor,
+                note=note,
+                return_detail=False,
+            )
+        except LookupError as exc:
+            skipped.append({
+                "document_page_id": page_id,
+                "reason": str(exc),
+            })
+        except IntakeConflict as exc:
+            skipped.append({
+                "document_page_id": page_id,
+                "reason": str(exc),
+            })
+        else:
+            rejected.append(result)
+
+    detail = batch_detail(source_document_id)
+    return {
+        "source_document_id": source_document_id,
+        "rejected_count": len(rejected),
+        "skipped_count": len(skipped),
+        "rejected": rejected,
+        "skipped": skipped,
+        "pending_pages": detail["pending_pages"],
+        "pages": detail["pages"],
+        "detail": detail,
+    }
 
 
 def auto_classify(
@@ -1379,6 +1451,7 @@ def auto_classify(
                 statement_date=statement_date,
                 statement_type="balance_sheet",
                 note=f"auto: PDF text match {page['pdf_bank_name'] or ''}".strip(),
+                return_detail=False,
             )
             counts["financial"] += 1
         elif classify_empty_pages and page["total_rows"] == 0:
@@ -1389,6 +1462,7 @@ def auto_classify(
                 decision="approve",
                 actor=actor,
                 note="auto: non-TB page, no extracted rows",
+                return_detail=False,
             )
             counts["empty"] += 1
         else:

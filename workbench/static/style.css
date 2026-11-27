@@ -133,6 +133,8 @@ table.data.compact { min-width: 1120px; }
 .actions-form { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
 /* Import intake */
 .intake-table td { vertical-align: middle; }
+.intake-table .select-cell { width: 34px; text-align: center; }
+.intake-bulk-reject { flex-wrap: wrap; margin: 10px 0 2px; }
 .intake-table .sample-cell { max-width: 340px; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .page-decision { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .page-decision select, .page-decision input {
