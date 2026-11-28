@@ -103,6 +103,25 @@ class NumberFormatTests(unittest.TestCase):
             ("30214693162.03", "recovered_ocr_character"),
         )
 
+    def test_trailing_table_rule_residue_is_removed_but_flagged(self):
+        # Vision reads the cell border as trailing "|" or "....." (issue 19/2025
+        # page 4 credit column). The value must recover, with review status.
+        for raw, expected in (
+            ("606,086.19 |", "606086.19"),
+            ("17,984,138,368.15 .....", "17984138368.15"),
+            ("2,305,862,078.14 |", "2305862078.14"),
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(
+                    parse_amount(raw, "comma_dot"),
+                    (expected, "recovered_ocr_artifact"),
+                )
+
+    def test_lone_trailing_decimal_dot_is_not_stripped(self):
+        value, status = parse_amount("1,234.", "comma_dot")
+        self.assertEqual(value, "")
+        self.assertIn(status, {"ambiguous_format", "invalid_grouping"})
+
     def test_european_style_value(self):
         self.assertEqual(parse_amount("1.234.567,89", "dot_comma"), ("1234567.89", ""))
 

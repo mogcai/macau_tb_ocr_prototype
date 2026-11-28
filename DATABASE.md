@@ -232,6 +232,7 @@ ORDER BY publication_date DESC, bank_name;
 ### V3 operational database（`data/macau_balancete_v3.sqlite`）
 
 - V3 schema 在 `database/v3/*.sql`；`statement_rows` 是 append-only OCR snapshot。
+- 一個 approved standard item 只可以在**同一個 `statement_extraction_id`** 內出現一次；重新 OCR 產生新 extraction 後，舊 extraction 的 approvals 不會再阻塞新 extraction。Manual insert 就同 statement 的 current extraction 比較（`019_item_uniqueness_per_extraction.sql`）。
 - `statement_rows.extracted_row_id` 只引用 `extracted_rows(extracted_row_id)`（單欄）。這樣 discard 時可以清空 `extracted_rows.statement_extraction_id`（migration `018`），而 `statement_rows` snapshot 保留。
 - **重建 parent table 時絕對不可以先 `ALTER TABLE ... RENAME TO`。** RENAME 會同時改寫 incoming foreign keys、views 和 triggers。2026-11-22 的 migration 就是這樣做，令 operational DB 留下 8690 個 FK violation，所有 statement-row view 都讀不到。正確做法：建新表 → 複製資料 → drop 舊表 → rename 新表，全部在同一個 transaction；期間先 drop 再重建 views/triggers，並以 `PRAGMA foreign_key_check` 作為 commit gate。
 - `statement_status='excluded'` 代表已 discard。Excluded statement 不會出現在 Review Queue 或 held 統計。重新 Build 只會重開「未 reviewed、未 adopted、未 published」的 statement，並寫入 `statement_reopened` audit event；其餘會 raise conflict，不會把 rows 綁到隱形 statement。

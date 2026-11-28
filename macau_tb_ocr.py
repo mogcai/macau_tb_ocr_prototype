@@ -536,6 +536,108 @@ def _select_amount_column_rules(
     return sep1, sep2, label_x0
 
 
+def _detect_vertical_rule_groups(image: Any) -> list[tuple[int, int, float]]:
+    """Return ``(x_start, x_end, strength)`` for strong vertical rules.
+
+    Shared by the amount-separator detector and by amount-column tiling. A
+    full-height rule must never sit inside an OCR tile: it bridges every row in
+    the ink projection and hides the blank gaps the tiler needs.
+    """
+    import cv2
+    import numpy as np
+
+    h, w = image.shape[:2]
+    binary = cv2.threshold(
+        image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+    )[1]
+    kernel_h = max(25, int(h * _COLUMN_RULE_KERNEL_FRACTION))
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_h))
+    vertical = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    projection = (vertical > 0).sum(axis=0)
+    min_run = max(2, int(w * 0.0015))
+    xs = np.where(projection >= max(20, int(h * _COLUMN_RULE_MIN_FRACTION)))[0]
+    groups: list[list[int]] = []
+    for x in xs:
+        x = int(x)
+        if groups and x - groups[-1][-1] <= min_run:
+            groups[-1].append(x)
+        else:
+            groups.append([x])
+    return [
+        (int(g[0]), int(g[-1]), float(projection[g].max()))
+        for g in groups
+    ]
+
+
+def _table_vertical_span(image: Any) -> tuple[int, int] | None:
+    """Return the top/bottom y of the table's long horizontal rules."""
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return None
+    h, w = image.shape[:2]
+    binary = cv2.threshold(
+        image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+    )[1]
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT, (max(20, int(w * 0.25)), 1)
+    )
+    horizontal = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    row_ink = (horizontal > 0).sum(axis=1)
+    ys = np.where(row_ink >= w * 0.25)[0]
+    if not len(ys):
+        return None
+    groups: list[list[int]] = [[int(ys[0])]]
+    for y in ys[1:]:
+        y = int(y)
+        if y - groups[-1][-1] <= 4:
+            groups[-1].append(y)
+        else:
+            groups.append([y])
+    centers = [int(round(sum(group) / len(group))) for group in groups]
+    if len(centers) < 2 or centers[-1] - centers[0] < h * 0.05:
+        return None
+    return centers[0], centers[-1]
+
+
+def _blank_margin(image: Any, frac: float, side: str,
+                  y_span: tuple[int, int] | None = None) -> bool:
+    """True when the strip outside a vertical rule has no column content.
+
+    Inset tables can put a frame at 15–25% of the page width, where the fixed
+    near-edge cut-offs no longer apply (issue 20/2025 page 35). A frame's
+    outside has few *rows* with any ink; a label or code column has ink on most
+    rows. Row coverage, not total ink area, separates a frame from a seal or a
+    scanning smudge that happens to overlap the margin.
+
+    When the table's top/bottom rules are known, only the table body is
+    measured. Otherwise every row that has ink in the central page region is
+    used, so a table that occupies only the top quarter of a page is still
+    measured over its own content rather than the full page. A 1% edge margin
+    is excluded: scanner border lines run the full height and would otherwise
+    make every margin look inked.
+    """
+    h, w = image.shape[:2]
+    x = int(frac * w)
+    edge = max(2, int(w * 0.01))
+    if side == "left":
+        band = image[:, edge:max(edge + 1, x - 8)]
+    else:
+        band = image[:, min(w - 1, x + 9):max(0, w - edge)]
+    if y_span is not None:
+        y0, y1 = max(0, y_span[0]), min(h, y_span[1] + 1)
+        band = band[y0:y1]
+        central = (image[y0:y1, edge:max(edge + 1, w - edge)] < 160).any(axis=1)
+    else:
+        central = (image[:, edge:max(edge + 1, w - edge)] < 160).any(axis=1)
+    rows = central.nonzero()[0]
+    if band.size == 0 or len(rows) == 0:
+        return False
+    has_ink = (band[rows] < 160).any(axis=1)
+    return float(has_ink.mean()) < 0.6
+
+
 def detect_column_layout(image_path: Path) -> tuple[float, float, float, str]:
     """Find the two amount-column rules and the label column's left edge.
 
@@ -554,30 +656,25 @@ def detect_column_layout(image_path: Path) -> tuple[float, float, float, str]:
         if image is None:
             raise ValueError("cv2 could not load image")
         h, w = image.shape[:2]
-        binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-        kernel_h = max(25, int(h * _COLUMN_RULE_KERNEL_FRACTION))
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_h))
-        vertical = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-        projection = (vertical > 0).sum(axis=0)
+        span = _table_vertical_span(image)
         candidates: list[tuple[float, float]] = []
-        min_run = max(2, int(w * 0.0015))
-        xs = np.where(projection >= max(20, int(h * _COLUMN_RULE_MIN_FRACTION)))[0]
-        if len(xs):
-            groups: list[list[int]] = [[int(xs[0])]]
-            for x in xs[1:]:
-                x = int(x)
-                if x - groups[-1][-1] <= min_run:
-                    groups[-1].append(x)
-                else:
-                    groups.append([x])
-            for g in groups:
-                x = int(round(sum(g) / len(g)))
-                frac = x / w
-                strength = float(projection[g].max())
-                # Keep near-edge peaks so frame filtering can drop them explicitly.
-                if 0.05 < frac < 0.95:
-                    candidates.append((strength, frac))
+        for g0, g1, strength in _detect_vertical_rule_groups(image):
+            x = int(round((g0 + g1) / 2))
+            frac = x / w
+            # Keep near-edge peaks so frame filtering can drop them explicitly.
+            if 0.05 < frac < 0.95:
+                candidates.append((strength, frac))
         merged = _merge_vertical_rules(candidates)
+        # An inset table's frame can sit at 15–25% of the page width, where the
+        # fixed near-edge cut-offs no longer apply (issue 20/2025 page 35 put
+        # the left frame at 0.157 and shifted every amount into the credit
+        # column). Drop frames whose outside has no column content, but never
+        # drop below the two amount separators. A seal can be detected as a
+        # rule too, so repeat until the next rule actually has column content.
+        while len(merged) > 2 and _blank_margin(image, merged[0][1], "left", span):
+            merged = merged[1:]
+        while len(merged) > 2 and _blank_margin(image, merged[-1][1], "right", span):
+            merged = merged[:-1]
         selected = _select_amount_column_rules(merged, allow_code_column=True)
         if selected is not None:
             sep1, sep2, label_x0 = selected
@@ -600,6 +697,9 @@ def detect_column_layout(image_path: Path) -> tuple[float, float, float, str]:
             ):
                 local_peaks.append((float(smooth[x]), frac))
         merged = _merge_vertical_rules(local_peaks)
+        # Projection peaks come from dense text as well as rules, so the frame
+        # heuristic is not applied here; it would drop the real separators when
+        # a table's margin contains a seal or a full-width text block.
         # Projection peaks from dense label text can look like a code column, so
         # never trim label_x0 on this fallback path.
         selected = _select_amount_column_rules(merged, allow_code_column=False)
@@ -615,6 +715,122 @@ def detect_column_boundaries(image_path: Path) -> tuple[float, float, str]:
     """Backward-compatible wrapper returning only the two amount separators."""
     sep1, sep2, _label_x0, source = detect_column_layout(image_path)
     return sep1, sep2, source
+
+
+# Numeric-column tiling. Apple Vision's accurate recognizer silently drops
+# contiguous rows when one ROI spans a tall table (issue 19/2025 page 4 lost
+# four credit amounts; page 5 lost most of the credit column), while the same
+# cells read cleanly in short ROIs. Tiles are cut only at blank rows, so no
+# amount is ever split.
+_AMOUNT_TILE_MAX_HEIGHT_PX = 600
+_AMOUNT_TILE_GAP_PX = 3
+_AMOUNT_TILE_INK_RATIO = 0.004
+_AMOUNT_TILE_MIN_INK_PX = 3
+
+
+def _ink_row_tiles(
+    masked: Any,
+    x0: int,
+    x1: int,
+    *,
+    max_tile_height: int,
+) -> list[tuple[int, int]]:
+    """Group ink rows into tiles whose cut points are blank row gaps."""
+    import numpy as np
+
+    h, w = masked.shape[:2]
+    x0 = max(0, min(w - 1, x0))
+    x1 = max(x0 + 1, min(w, x1))
+    ink = (masked[:, x0:x1] < 160).sum(axis=1)
+    threshold = max(
+        _AMOUNT_TILE_MIN_INK_PX, int((x1 - x0) * _AMOUNT_TILE_INK_RATIO)
+    )
+    rows = np.where(ink >= threshold)[0]
+    rows = rows[(rows > h * 0.03) & (rows < h * 0.99)]
+    bands: list[tuple[int, int]] = []
+    if len(rows):
+        start = prev = int(rows[0])
+        for value in rows[1:]:
+            y = int(value)
+            if y - prev > _AMOUNT_TILE_GAP_PX:
+                bands.append((start, prev))
+                start = y
+            prev = y
+        bands.append((start, prev))
+    grouped: list[tuple[int, int]] = []
+    current: list[tuple[int, int]] = []
+    for band in bands:
+        if current and band[1] - current[0][0] > max_tile_height:
+            grouped.append((current[0][0], current[-1][1]))
+            current = []
+        current.append(band)
+    if current:
+        grouped.append((current[0][0], current[-1][1]))
+    return [(max(0, y0 - 2), min(h, y1 + 2)) for y0, y1 in grouped]
+
+
+def _mask_vertical_rules(image: Any) -> Any:
+    """Return a copy of the image with every detected vertical rule whitened."""
+    masked = image.copy()
+    for g0, g1, _strength in _detect_vertical_rule_groups(image):
+        masked[:, max(0, g0 - 1):g1 + 2] = 255
+    return masked
+
+
+def detect_amount_tiles(
+    image: Any,
+    sep1: float,
+    sep2: float,
+    *,
+    max_tile_height: int = _AMOUNT_TILE_MAX_HEIGHT_PX,
+) -> tuple[dict[str, list[tuple[int, int]]], Any]:
+    """Split each amount column into row-gap-aligned OCR tiles.
+
+    Returns ``(tiles, masked_image)`` where tile values are ``(y0, y1)`` pixel
+    bounds in the source image. The returned image has every detected vertical
+    rule painted white: a full-height rule inside the ROI both confuses Vision
+    and hides the blank-row gaps this function uses as cut points.
+    """
+    h, w = image.shape[:2]
+    masked = _mask_vertical_rules(image)
+
+    columns = {
+        "debit": (
+            int((sep1 + 0.001) * w),
+            int(min(0.995, sep2 + _AMOUNT_ROI_PADDING) * w),
+        ),
+        "credit": (int((sep2 + 0.001) * w), int(0.995 * w)),
+    }
+    tiles: dict[str, list[tuple[int, int]]] = {}
+    for column, (x0, x1) in columns.items():
+        grouped = _ink_row_tiles(masked, x0, x1, max_tile_height=max_tile_height)
+        if not grouped:
+            # No ink evidence: preserve the previous full-height behaviour.
+            grouped = [(int(h * 0.035), int(h * 0.997))]
+        tiles[column] = grouped
+    return tiles, masked
+
+
+def detect_label_tiles(
+    image: Any,
+    sep1: float,
+    label_x0: float,
+    *,
+    max_tile_height: int = _AMOUNT_TILE_MAX_HEIGHT_PX,
+) -> list[tuple[int, int]]:
+    """Split the account-label column into row-gap-aligned OCR tiles.
+
+    The label ROI spans the whole table, so it is vulnerable to the same Vision
+    block-dropping as the amount columns (issue 19/2025 page 9 lost a dozen
+    labels). Returns ``[]`` when there is too little width to tile.
+    """
+    h, w = image.shape[:2]
+    masked = _mask_vertical_rules(image)
+    x0 = int(max(0.005, label_x0) * w)
+    x1 = int(max(0.01, sep1 - 0.002) * w)
+    if x1 - x0 < 50:
+        return []
+    return _ink_row_tiles(masked, x0, x1, max_tile_height=max_tile_height)
 
 
 def detect_row_bands(image_path: Path, boundaries: tuple[float, float]
@@ -886,27 +1102,77 @@ def run_vision_ocr(image_path: Path, languages: list[str],
     body_y0, body_y1 = 0.035, 0.997
     profiles = _vision_language_profiles(languages)
     tasks: list[dict[str, Any]] = []
+    label_tiles: list[tuple[int, int]] = []
+
+    # The account-label ROI spans the whole table and is just as vulnerable to
+    # Vision dropping contiguous rows as the amount columns, so it is tiled the
+    # same way. Header stays a single short ROI.
+    tiles: dict[str, list[tuple[int, int]]] = {}
+    image_height = 0
+    try:
+        import cv2
+        gray = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    except Exception:  # noqa: BLE001 - tiling is an optimisation, not a prerequisite
+        gray = None
+    if gray is not None:
+        image_height = gray.shape[0]
+        # Tiles are derived from a rule-masked copy so blank gaps are visible.
+        # OCR itself runs on the untouched image: whitening a rule column can
+        # clip a final glyph that touches the rule (2025-19 page 8
+        # "…745.66" became "…745.6€").
+        tiles, _masked = detect_amount_tiles(gray, sep1, sep2)
+        label_tiles = detect_label_tiles(gray, sep1, label_x0)
 
     for profile_name, lang_code in profiles:
         tasks.append({"name": f"header_{profile_name}", "language": lang_code,
-                      "level": level, "x0": 0.005, "y0": 0.0, "x1": 0.995, "y1": 0.25})
-        tasks.append({"name": f"label_{profile_name}", "language": lang_code,
-                      "level": level, "x0": max(0.005, label_x0), "y0": body_y0,
-                      "x1": max(0.01, sep1 - 0.002), "y1": body_y1})
+                      "level": level, "x0": 0.005, "y0": 0.0,
+                      "x1": 0.995, "y1": 0.25})
+        if label_tiles:
+            for y0, y1 in label_tiles:
+                tasks.append({
+                    "name": f"label_{profile_name}", "language": lang_code,
+                    "level": level, "x0": max(0.005, label_x0),
+                    "y0": y0 / image_height,
+                    "x1": max(0.01, sep1 - 0.002),
+                    "y1": y1 / image_height,
+                })
+        else:
+            tasks.append({
+                "name": f"label_{profile_name}", "language": lang_code,
+                "level": level, "x0": max(0.005, label_x0),
+                "y0": body_y0, "x1": max(0.01, sep1 - 0.002),
+                "y1": body_y1,
+            })
 
     # Numeric columns use a dedicated Latin/digit recognizer, not a Chinese or
-    # Portuguese language assumption.
-    tasks.extend([
-        {"name": "debit_numeric", "language": "en", "level": level,
-         "x0": min(0.99, sep1 + 0.002), "y0": body_y0,
-         "x1": max(sep1 + 0.01, sep2 + _AMOUNT_ROI_PADDING), "y1": body_y1},
-        {"name": "credit_numeric", "language": "en", "level": level,
-         "x0": min(0.99, sep2 + 0.002), "y0": body_y0,
-         "x1": 0.995, "y1": body_y1},
-    ])
+    # Portuguese language assumption. They are read in short row-gap-aligned
+    # tiles; one full-height ROI makes Vision silently drop contiguous rows on
+    # tall tables.
+    numeric_x = {
+        "debit": (min(0.99, sep1 + 0.002),
+                  max(sep1 + 0.01, sep2 + _AMOUNT_ROI_PADDING)),
+        "credit": (min(0.99, sep2 + 0.002), 0.995),
+    }
+    for column, (x0, x1) in numeric_x.items():
+        column_tiles = tiles.get(column)
+        if column_tiles:
+            for y0, y1 in column_tiles:
+                tasks.append({
+                    "name": f"{column}_numeric", "language": "en",
+                    "level": level, "x0": x0,
+                    "y0": max(body_y0, y0 / image_height),
+                    "x1": x1, "y1": min(body_y1, y1 / image_height),
+                })
+        else:
+            tasks.append({
+                "name": f"{column}_numeric", "language": "en",
+                "level": level, "x0": x0, "y0": body_y0,
+                "x1": x1, "y1": body_y1,
+            })
 
-    # Language correction is a per-region policy: text labels may benefit from a
-    # lexicon, but an amount must never be "corrected" before it is stored raw.
+    # Language correction is a per-region policy: text labels may benefit from
+    # a lexicon, but an amount must never be "corrected" before it is stored
+    # raw.
     for task in tasks:
         is_numeric = task["name"].endswith("_numeric")
         task["usesLanguageCorrection"] = (
@@ -914,13 +1180,20 @@ def run_vision_ocr(image_path: Path, languages: list[str],
             or (language_correction == "labels" and not is_numeric)
         )
 
-    return _invoke_vision_worker(
+    boxes, diagnostics = _invoke_vision_worker(
         image_path, tasks,
         minimum_text_height=minimum_text_height,
         preprocess=preprocess,
         level=level,
         language_correction=language_correction,
     )
+
+    diagnostics["vision_numeric_tiles"] = sum(len(v) for v in tiles.values())
+    diagnostics["vision_label_tiles"] = len(label_tiles)
+    diagnostics["vision_numeric_tile_source"] = (
+        "ink_gaps" if any(v for v in tiles.values()) else "full_height"
+    )
+    return boxes, diagnostics
 
 
 def _invoke_vision_worker(
@@ -1385,7 +1658,7 @@ def second_pass_amount_cells(rows: list[dict[str, Any]], image_path: Path,
                              boundaries: tuple[float, float],
                              page_format: str,
                              confidence_threshold: float = 0.88,
-                             max_cells: int = 80) -> dict[str, Any]:
+                             max_cells: int = 240) -> dict[str, Any]:
     """Re-read suspicious amount cells from the source image at 3x scale.
 
     The primary OCR remains in ``*_raw``. A second, targeted reading is stored in
@@ -1410,6 +1683,14 @@ def second_pass_amount_cells(rows: list[dict[str, Any]], image_path: Path,
     if image is None:
         diagnostics["amount_second_pass_status"] = "unavailable"
         return diagnostics
+    # The debit cell's OCR window intentionally extends past the debit|credit
+    # rule so the final digit is not clipped. Use a rule-masked copy only for
+    # the ink test; the OCR crop keeps the original pixels, and trailing rule
+    # residue is cleaned (and flagged) after recognition.
+    try:
+        ink_image = _mask_vertical_rules(image)
+    except Exception:  # noqa: BLE001 - masking is best-effort
+        ink_image = image
     worker = _ensure_vision_worker()
     sep1, sep2 = boundaries
     columns = {
@@ -1447,11 +1728,14 @@ def second_pass_amount_cells(rows: list[dict[str, Any]], image_path: Path,
                 continue
             x0 = max(0, int(fx0 * width))
             x1 = min(width, int(fx1 * width))
-            cell_top, cell_bottom = max(0, top), min(height, bottom)
+            # Row boxes come from label/amount clusters; a couple of pixels of
+            # vertical slack keeps the full glyph height in the crop.
+            cell_top = max(0, top - 2)
+            cell_bottom = min(height, bottom + 2)
             if x1 - x0 < 20 or cell_bottom - cell_top < 8:
                 continue
             try:
-                ink = _cell_ink_fraction(image, x0, x1, cell_top, cell_bottom)
+                ink = _cell_ink_fraction(ink_image, x0, x1, cell_top, cell_bottom)
             except Exception:  # noqa: BLE001
                 ink = 0.0
             if ink < 0.02:
@@ -1504,6 +1788,115 @@ def second_pass_amount_cells(rows: list[dict[str, Any]], image_path: Path,
     return diagnostics
 
 
+# Some Balancetes print a negative amount as a short minus rule at the far left
+# of the amount cell, far from the right-aligned digits (issue 20/2025 page 35,
+# 歷年營業結果: "-" at x=1124, digits start at x=1295). Vision does not report
+# the rule because it is only 1–3 px tall and below minimumTextHeight, so the
+# amount silently loses its sign and the printed column no longer balances.
+_MARGIN_SIGN_STRIP_PX = 40
+_MARGIN_SIGN_START_PX = 4
+_MARGIN_SIGN_MAX_START_PX = 22
+_MARGIN_SIGN_MIN_WIDTH_PX = 6
+_MARGIN_SIGN_MAX_WIDTH_PX = 16
+_MARGIN_SIGN_MAX_HEIGHT_PX = 3
+_MARGIN_SIGN_MIN_AREA_PX = 8
+
+
+def _find_margin_sign(image: Any, width: int, height: int,
+                      left_frac: float, top: int, bottom: int
+                      ) -> tuple[int, int, int, int] | None:
+    """Return ``(x, y, w, h)`` for a minus rule at the cell's left margin."""
+    import cv2
+    import numpy as np
+
+    if bottom - top < 8:
+        return None
+    left = int(left_frac * width)
+    x0 = max(0, left + _MARGIN_SIGN_START_PX)
+    x1 = min(width, left + _MARGIN_SIGN_STRIP_PX)
+    if x1 - x0 < _MARGIN_SIGN_MIN_WIDTH_PX:
+        return None
+    y0 = max(0, top - 1)
+    y1 = min(height, bottom + 1)
+    strip = (image[y0:y1, x0:x1] < 160).astype(np.uint8)
+    count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(strip, 8)
+    for index in range(1, count):
+        x, y, w, h, area = stats[index]
+        global_y = y0 + y
+        if (
+            _MARGIN_SIGN_MIN_WIDTH_PX <= w <= _MARGIN_SIGN_MAX_WIDTH_PX
+            and 2 <= h <= _MARGIN_SIGN_MAX_HEIGHT_PX
+            and area >= _MARGIN_SIGN_MIN_AREA_PX
+            and x0 + x <= left + _MARGIN_SIGN_MAX_START_PX
+            and global_y - top >= 3
+            and bottom - global_y >= 4
+        ):
+            return (int(x0 + x), int(global_y), int(w), int(h))
+    return None
+
+
+def apply_margin_signs(rows: list[dict[str, Any]], image_path: Path,
+                       width: int, height: int,
+                       boundaries: tuple[float, float]) -> dict[str, Any]:
+    """Negate amounts whose cell carries a printed minus rule at its left edge.
+
+    The raw OCR text never contains the rule, so ``*_raw`` stays untouched and
+    the sign is recorded separately. Every adopted sign enters review.
+    """
+    diagnostics: dict[str, Any] = {
+        "margin_sign_status": "off",
+        "margin_sign_applied": 0,
+    }
+    if not rows:
+        return diagnostics
+    try:
+        import cv2
+        image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    except Exception:  # noqa: BLE001
+        image = None
+    if image is None:
+        diagnostics["margin_sign_status"] = "unavailable"
+        return diagnostics
+    sep1, sep2 = boundaries
+    applied = 0
+    for row in rows:
+        try:
+            top = int(float(row.get("bbox_y0") or 0))
+            bottom = int(float(row.get("bbox_y1") or 0))
+        except (TypeError, ValueError):
+            continue
+        for column, left_frac in (("debit", sep1), ("credit", sep2)):
+            amount = str(row.get(f"{column}_amount") or "")
+            if not amount or amount.startswith("-"):
+                continue
+            try:
+                if Decimal(amount) == 0:
+                    continue
+            except InvalidOperation:
+                continue
+            sign = _find_margin_sign(image, width, height, left_frac, top, bottom)
+            if sign is None:
+                continue
+            row[f"{column}_amount"] = "-" + amount
+            row[f"{column}_margin_sign"] = "negative"
+            row[f"{column}_margin_sign_bbox"] = ",".join(str(value) for value in sign)
+            status = str(row.get(f"{column}_parse_status") or "")
+            row[f"{column}_parse_status"] = (
+                "recovered_negative_margin"
+                if status in {"", "parsed"}
+                else f"{status};recovered_negative_margin"
+            )
+            reason = row.get("review_reason") or ""
+            row["review_reason"] = ";".join(
+                value for value in (reason, f"{column}:recovered_negative_margin") if value
+            )
+            row["review_status"] = "needs_review"
+            applied += 1
+    diagnostics["margin_sign_status"] = "ran"
+    diagnostics["margin_sign_applied"] = applied
+    return diagnostics
+
+
 def _clean_amount_token(raw: str) -> tuple[str, bool, str]:
     """Strip display-only material and map common OCR-confusable glyphs.
 
@@ -1520,6 +1913,14 @@ def _clean_amount_token(raw: str) -> tuple[str, bool, str]:
     s = re.sub(r"(?<=[.,])\s+", "", s)
     s = re.sub(r"(?<=\d)\s+(?=\d)", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
+    # A cell crop can include the table rule, which Vision reads as a trailing
+    # "|" or ".....". Remove only unmistakable trailing rule residue (a lone
+    # decimal dot/comma is left untouched) and flag the repair for review.
+    artifact = False
+    trimmed = re.sub(r"(?<=[0-9])[\s]*(?:[|¦│…·]+[\s]*|[.,]{2,}[\s]*)$", "", s)
+    if trimmed != s:
+        s = trimmed.strip()
+        artifact = True
     s = s.replace("−", "-").replace("–", "-").replace("—", "-")
     if not s:
         return "", False, "blank"
@@ -1541,10 +1942,10 @@ def _clean_amount_token(raw: str) -> tuple[str, bool, str]:
     if not s:
         return "", negative, "blank"
 
-    issue = ""
+    issue = "recovered_ocr_artifact" if artifact else ""
     if re.search(r"[OoIl|]", s):
         s = s.translate(str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "|": "1"}))
-        issue = "ambiguous_ocr_character"
+        issue = issue or "ambiguous_ocr_character"
     # A single trailing letter is a common scan/OCR artifact on amounts
     # (30,214,693,162.03g). Removing it invents no digit and is flagged.
     if re.fullmatch(r"[0-9.,' ]+[A-Za-z]", s):
@@ -2271,7 +2672,7 @@ def filter_table_body_boxes(
         body_top = image_top
     total_hits = [
         b for b in boxes
-        if b.cy >= image_height * 0.80 and _TOTAL_ROW_RE.match(norm_text(b.text))
+        if _TOTAL_ROW_RE.match(norm_text(b.text))
     ]
     body_bottom = None
     if total_hits:
@@ -2280,7 +2681,7 @@ def filter_table_body_boxes(
         tolerance = max(15.0, (statistics.median(heights) if heights else 20.0) * 1.5)
         row_boxes = [b for b in boxes if abs(b.cy - total_row.cy) <= tolerance]
         body_bottom = max(b.y1 for b in row_boxes)
-    if image_bottom is not None and image_bottom >= image_height * 0.82:
+    if image_bottom is not None and image_bottom > (body_top or 0.0):
         body_bottom = max(body_bottom or 0.0, image_bottom)
     if body_top is None and body_bottom is None:
         return boxes, None, None, 0
@@ -3019,6 +3420,9 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
                 amount_verifier=verifier_diagnostics.get("amount_verifier_status") == "ran",
                 amount_second_pass=second_pass_diagnostics.get("amount_second_pass_status") == "ran",
             )
+            margin_sign_diagnostics = apply_margin_signs(
+                rows, image_path, table_image.width, table_image.height, (b1, b2),
+            )
             label_diagnostics: dict[str, Any] = {}
             if args.label_standardization:
                 lexicon = load_label_lexicon(args.label_lexicon)
@@ -3044,6 +3448,7 @@ def process_pdf(args: argparse.Namespace) -> dict[str, Any]:
             document_rows[-1].update(vision_diagnostics)
             document_rows[-1].update(verifier_diagnostics)
             document_rows[-1].update(second_pass_diagnostics)
+            document_rows[-1].update(margin_sign_diagnostics)
             document_rows[-1].update(label_diagnostics)
             document_rows[-1]["table_body_top"] = (
                 round(table_body_top, 2) if table_body_top is not None else ""

@@ -219,10 +219,26 @@ class ColumnLayoutTests(unittest.TestCase):
 
     def test_leading_code_column_is_excluded_from_label_roi(self):
         try:
-            import cv2  # noqa: F401
+            import cv2
+            import numpy as np
         except ImportError:
             self.skipTest("opencv not installed")
-        path = self._image([120, 520, 660])
+        image = np.full((600, 800), 255, dtype=np.uint8)
+        for x in (120, 520, 660):
+            image[:, x:x + 4] = 0
+        # Account codes left of the code|label rule, on most rows. A blank code
+        # column would be indistinguishable from a table margin. Amount-like
+        # marks in both amount columns keep their rules from looking like a
+        # frame (a frame has no content on its outside).
+        for y in range(30, 570, 20):
+            image[y:y + 14, 20:60] = 0
+            image[y:y + 14, 440:495] = 0
+            image[y:y + 14, 680:720] = 0
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+            path = Path(handle.name)
+        cv2.imwrite(str(path), image)
+        self.addCleanup(path.unlink, missing_ok=True)
         sep1, sep2, label_x0, _source = detect_column_layout(path)
         self.assertAlmostEqual(sep1, 0.65, places=2)
         self.assertAlmostEqual(sep2, 0.825, places=2)
@@ -261,6 +277,45 @@ class ColumnLayoutTests(unittest.TestCase):
         self.assertAlmostEqual(sep2, 0.63, delta=0.02)
         self.assertEqual(label_x0, 0.005)
         self.assertEqual(source, "detected_morphology")
+
+    def test_inset_left_frame_with_edge_right_frame(self):
+        """Issue 20/2025 page 35: the right frame is excluded by the edge cut.
+
+        The left frame at 0.157 used to become sep1, moving every debit amount
+        into the credit column.
+        """
+        try:
+            import cv2  # noqa: F401
+        except ImportError:
+            self.skipTest("opencv not installed")
+        # 800px: left frame 0.157, label|debit 0.472, debit|credit 0.678,
+        # right frame 0.883 (inside the 0.88 edge cut-off).
+        path = self._image([126, 378, 542, 707])
+        sep1, sep2, _label_x0, source = detect_column_layout(path)
+        self.assertAlmostEqual(sep1, 0.472, delta=0.02)
+        self.assertAlmostEqual(sep2, 0.678, delta=0.02)
+        self.assertEqual(source, "detected_morphology")
+
+    def test_stamp_in_the_margin_does_not_keep_a_table_frame(self):
+        """A seal left of the frame must not make the frame look like a column."""
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            self.skipTest("opencv not installed")
+        image = np.full((600, 800), 255, dtype=np.uint8)
+        for x in (126, 378, 542):
+            image[:, x:x + 4] = 0
+        # Seal-like block in the left margin covering ~25% of the table height.
+        image[240:340, 20:110] = 0
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+            path = Path(handle.name)
+        cv2.imwrite(str(path), image)
+        self.addCleanup(path.unlink, missing_ok=True)
+        sep1, sep2, _label_x0, _source = detect_column_layout(path)
+        self.assertAlmostEqual(sep1, 0.472, delta=0.02)
+        self.assertAlmostEqual(sep2, 0.678, delta=0.02)
 
 
 class RowBandDetectionTests(unittest.TestCase):

@@ -336,6 +336,100 @@ class V3ConstraintTests(unittest.TestCase):
             (NOW, NOW),
         )
 
+    def test_same_item_is_allowed_once_per_extraction_not_across_versions(self) -> None:
+        """A new extraction of the same statement may reuse an approved item.
+
+        This is the bulk-approve failure on 東亞銀行 2025-03-31: the previous
+        extraction already had 64 approved mappings, so approving the new
+        extraction aborted with "standard item already approved".
+        """
+        c = self.conn
+        c.execute(
+            "INSERT INTO extraction_runs(run_id, source_document_id, run_status) "
+            "VALUES('R2','D1','completed')"
+        )
+        c.execute(
+            "INSERT INTO page_extractions("
+            "page_extraction_id, run_id, document_page_id, source_document_id, "
+            "ocr_status, created_at) VALUES('PE2','R2','P1','D1','completed',?)",
+            (NOW,),
+        )
+        c.execute(
+            "INSERT INTO statement_extractions("
+            "statement_extraction_id, statement_id, run_id, source_document_id, "
+            "extraction_status, created_at) VALUES('SE1B','S1','R2','D1','completed',?)",
+            (NOW,),
+        )
+        c.execute(
+            "INSERT INTO extracted_rows("
+            "extracted_row_id, page_extraction_id, document_page_id, run_id, "
+            "row_disposition, statement_id, statement_extraction_id, page_row_order, "
+            "label_raw, label_language, debit_raw, debit_parsed_minor, debit_value_state, "
+            "credit_raw, credit_parsed_minor, credit_value_state, row_type_proposed, "
+            "parent_context_status, row_confidence, created_at"
+            ") VALUES('ER1B','PE2','P1','R2','included','S1','SE1B',1,"
+            "'現金','zh-Hant','1.00',100,'amount',NULL,NULL,'blank','item','root',0.9,?)",
+            (NOW,),
+        )
+        c.execute(
+            "INSERT INTO statement_rows("
+            "statement_row_id, statement_id, statement_extraction_id, extracted_row_id, "
+            "row_type, parent_context_status, label_normalized, label_language, "
+            "debit_minor, debit_value_state, credit_value_state, row_fingerprint, "
+            "fingerprint_version, carry_forward_status, created_at"
+            ") VALUES('SR1B','S1','SE1B','ER1B','item','root','現金','zh-Hant',"
+            "100,'amount','blank',?,1,'none',?)",
+            (FINGERPRINT, NOW),
+        )
+        c.execute(
+            "INSERT INTO statement_row_mappings("
+            "mapping_id, statement_row_id, standard_item_id, mapping_status, created_at"
+            ") VALUES('M1B','SR1B','SI1','proposed',?)",
+            (NOW,),
+        )
+        c.commit()
+        # Approve the same item on both extractions: allowed.
+        c.execute(
+            "UPDATE statement_row_mappings SET mapping_status='approved', "
+            "reviewed_by='tester', reviewed_at=? WHERE mapping_id='M1'",
+            (NOW,),
+        )
+        c.execute(
+            "UPDATE statement_row_mappings SET mapping_status='approved', "
+            "reviewed_by='tester', reviewed_at=? WHERE mapping_id='M1B'",
+            (NOW,),
+        )
+        # A second row in the same extraction still conflicts.
+        c.execute(
+            "INSERT INTO extracted_rows("
+            "extracted_row_id, page_extraction_id, document_page_id, run_id, "
+            "row_disposition, statement_id, statement_extraction_id, page_row_order, "
+            "label_raw, label_language, debit_value_state, credit_raw, "
+            "credit_parsed_minor, credit_value_state, row_type_proposed, "
+            "parent_context_status, row_confidence, created_at"
+            ") VALUES('ER1C','PE2','P1','R2','included','S1','SE1B',2,"
+            "'現金','zh-Hant','blank','2.00',200,'amount','item','root',0.9,?)",
+            (NOW,),
+        )
+        c.execute(
+            "INSERT INTO statement_rows("
+            "statement_row_id, statement_id, statement_extraction_id, extracted_row_id, "
+            "row_type, parent_context_status, label_normalized, label_language, "
+            "debit_value_state, credit_minor, credit_value_state, row_fingerprint, "
+            "fingerprint_version, carry_forward_status, created_at"
+            ") VALUES('SR1C','S1','SE1B','ER1C','item','root','現金','zh-Hant',"
+            "'blank',200,'amount',?,1,'none',?)",
+            (FINGERPRINT, NOW),
+        )
+        c.commit()
+        self.assert_sqlite_error(
+            "INSERT INTO statement_row_mappings("
+            "mapping_id, statement_row_id, standard_item_id, mapping_status, "
+            "reviewed_by, reviewed_at, created_at"
+            ") VALUES('M1C','SR1C','SI1','approved','tester',?,?)",
+            (NOW, NOW),
+        )
+
     def test_publication_requires_adopted_extraction(self) -> None:
         self.adopt()
         self.assert_sqlite_error(

@@ -217,6 +217,18 @@ class ReviewWriteTests(unittest.TestCase):
             if item["review_status"] != "reviewed"
         ]
 
+    def _unused_standard_item(self, rows: list[dict]) -> dict:
+        """Pick a catalogue item that is not already approved in this statement."""
+        used = {
+            row.get("standard_item_id")
+            for row in rows
+            if row.get("standard_item_id")
+        }
+        for item in self.client.get("/api/standard-items").json():
+            if item["standard_item_id"] not in used:
+                return item
+        self.skipTest("no unused standard item for this statement")
+
     def _ready_candidate(self) -> dict | None:
         """Return a statement that passes every adoption-readiness gate.
 
@@ -713,7 +725,9 @@ class ReviewWriteTests(unittest.TestCase):
 
     def test_inserted_row_appears_and_counts_as_mapped(self) -> None:
         queue = self._pending_queue()
-        ready = next(item for item in queue if item["mapping_ready"])
+        ready = next((item for item in queue if item["mapping_ready"]), None)
+        if ready is None:
+            self.skipTest("no review-queue statement with complete mappings")
         statement_id = ready["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
         used = {
@@ -769,7 +783,9 @@ class ReviewWriteTests(unittest.TestCase):
 
     def test_inserted_row_without_mapping_blocks_review(self) -> None:
         queue = self._pending_queue()
-        ready = next(item for item in queue if item["mapping_ready"])
+        ready = next((item for item in queue if item["mapping_ready"]), None)
+        if ready is None:
+            self.skipTest("no review-queue statement with complete mappings")
         statement_id = ready["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
         inserted = self._insert_row(statement_id, after_row_id=rows[0]["statement_row_id"])
@@ -787,7 +803,7 @@ class ReviewWriteTests(unittest.TestCase):
         )
         self.assertEqual(review.status_code, 409)
 
-        item = self.client.get("/api/standard-items").json()[0]
+        item = self._unused_standard_item(rows)
         mapped = self.client.post(
             f"/api/review/{statement_id}/rows/{inserted['statement_row_id']}/map",
             json={"standard_item_id": item["standard_item_id"]},
@@ -803,7 +819,9 @@ class ReviewWriteTests(unittest.TestCase):
 
     def test_excluded_ocr_row_can_be_restored(self) -> None:
         queue = self._pending_queue()
-        ready = next(item for item in queue if item["mapping_ready"])
+        ready = next((item for item in queue if item["mapping_ready"]), None)
+        if ready is None:
+            self.skipTest("no review-queue statement with complete mappings")
         statement_id = ready["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
         target = rows[0]
@@ -836,7 +854,9 @@ class ReviewWriteTests(unittest.TestCase):
 
     def test_row_adjustments_require_unreviewed_statement(self) -> None:
         queue = self._pending_queue()
-        ready = next(item for item in queue if item["mapping_ready"])
+        ready = next((item for item in queue if item["mapping_ready"]), None)
+        if ready is None:
+            self.skipTest("no review-queue statement with complete mappings")
         statement_id = ready["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
         reviewed = self.client.post(
@@ -866,7 +886,7 @@ class ReviewWriteTests(unittest.TestCase):
         statement_id = blocked["statement_id"]
         rows = self.client.get(f"/api/review/{statement_id}/rows").json()
         row = next(item for item in rows if item["mapping_status"] == "unmatched")
-        item = self.client.get("/api/standard-items").json()[0]
+        item = self._unused_standard_item(rows)
         response = self.client.post(
             f"/api/review/{statement_id}/rows/{row['statement_row_id']}/map",
             json={"standard_item_id": item["standard_item_id"], "note": "match unmatched"},
@@ -1320,6 +1340,16 @@ class ReviewWriteTests(unittest.TestCase):
         self.assertEqual(item["item_status"], "draft")
         self.assertEqual(item["canonical_zh_status"], "draft")
         self.assertEqual(item["item_key"], "user:測試科目")
+        self.assertEqual(item["classification_status"], "classified")
+        self.assertEqual(item["classification_source"], "manual:workbench")
+
+        missing_classification = self.client.post(
+            "/api/catalogue/items",
+            json={"canonical_zh": "無分類科目"},
+            headers={"X-Workbench-Role": "admin", "X-Workbench-Actor": "tester"},
+        )
+        self.assertEqual(missing_classification.status_code, 409)
+        self.assertIn("classification", missing_classification.json()["detail"])
 
         default_items = self.client.get("/api/standard-items").json()
         self.assertNotIn(item_id, {entry["standard_item_id"] for entry in default_items})

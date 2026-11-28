@@ -36,6 +36,7 @@ from workbench.ocr_quality import summarize_run_dir
 SCHEMA_FILES = (
     ROOT / "database" / "v3" / "017_page_statement_decisions.sql",
     ROOT / "database" / "v3" / "018_discard_statement_assignment.sql",
+    ROOT / "database" / "v3" / "019_item_uniqueness_per_extraction.sql",
 )
 AUTO_MAP = ROOT / "tools" / "p1_auto_map_standard_items.py"
 V5_SEED = ROOT / "data" / "baseline" / "baseline_v5_20261118.sqlite"

@@ -35,6 +35,8 @@ Process Macau Government Gazette PDFs and extract bank / financial-institution B
 
 Before OCR, Python detects the two vertical separators for Account / Debit / Credit. The Swift worker receives one image and a set of region tasks in a single process invocation per page. Some Balancetes add a leading account-code column (issue 45 page 29); the layout step takes the **two rightmost** rules as the debit/credit separators and trims the label ROI at the code/label rule, so codes are never treated as account labels.
 
+Outer table frames are excluded from the amount separators. A frame is only dropped when the strip outside it has no column content (row coverage <60%), and never when it would leave fewer than two rules; a seal or smudge in the margin does not make a frame look like a column. Inset tables can put a frame at 15–25% of the page width (issue 20/2025 page 35, left frame at 0.157), so the fixed near-edge cut-offs alone are not sufficient.
+
 - Header region: page image top 25%, for OCR metadata fallback.
 - Full-page header fallback: if the embedded table image still has no bank name or statement date, `--header-fallback auto` renders the top 25% of the full PDF page at 4x and OCRs that separately. This covers logos above the table crop (issue-45 page 17). Recovered values are evidence, not verification: `bank_name_source = ocr_full_page_header`, `header_fallback_*` columns, `images/page_XXXX_header_fallback.png`, and raw `header_fallback` boxes.
 - Account-label column: selected page language (`zh-Hant`, Portuguese, or English).
@@ -43,13 +45,15 @@ Before OCR, Python detects the two vertical separators for Account / Debit / Cre
 
 For bilingual pages, separate header/label tasks may run for both Chinese and Portuguese. Numeric column recognition is separated from Chinese/Portuguese label recognition. The worker resolves locale identifiers from the languages actually supported by the installed macOS Vision revision. It must refuse to fall back from `zh-Hant` to `zh-Hans`.
 
+The account-label and amount columns are read in **row-gap-aligned tiles** (at most ~600px tall). Apple Vision's `accurate` recognizer silently drops contiguous rows when a single ROI spans a tall table (issue 19/2025 page 4 lost four credit amounts; page 5 lost most of the credit column), while the same rows read cleanly in short ROIs. Tiles are cut only at blank rows, so no amount is split. The tile boundaries are computed from a rule-masked copy, but OCR runs on the untouched image: whitening a rule column can clip a final glyph that touches the rule. `vision_numeric_tiles` and `vision_label_tiles` in `documents.csv` record the tile counts, and `vision_numeric_tile_source` shows `ink_gaps` or the full-height fallback.
+
 Vision `fast` and `accurate` modes are available. `accurate` is the default to protect small financial text; benchmark `fast` separately on the same pages. Vision `fast` has no Traditional Chinese recognizer, so any `zh-Hant` task is always executed at `accurate` regardless of `--vision-level`; the requested and actually used levels are both recorded (`vision_level` vs `vision_levels_used`). The default minimum text height is 0.004 relative to image height. Raising it may improve speed but can omit small rows.
 
 The ROI mapping uses Apple's Vision coordinate-conversion API; it must still be visually smoke-tested on the user's Mac with pages 7 and 10, since the Vision worker cannot be executed in a Linux build environment. Do not claim that ROI coordinate mapping or Vision performance has been verified in a Linux environment.
 
 Experimental helpers are available but off by default: `--amount-verifier tesseract` (digit-only second reading kept as evidence; disagreements are only escalated when Vision's parse already failed) and `--row-structure auto|projection` (ink-projection row bands with a guard). On issue 45 both left row counts and blank-label counts unchanged, so they are opt-in and not evidence of higher accuracy.
 
-Amount cells that are empty, unparsed, ambiguous or low-confidence **and contain ink** get one targeted re-read at 3x (`--amount-second-pass ink`, default). The first reading stays in `*_raw`; the re-read is stored in `*_second_pass_raw`. A re-read is adopted only when the first reading was empty/unparsed, or when a low-confidence first reading disagrees with a clean re-read; adopted values are marked `recovered_second_pass` and always enter review. On issue 45 this fixed all page-15 amounts with no change on the other benchmark pages.
+Amount cells that are empty, unparsed, ambiguous or low-confidence **and contain ink** get one targeted re-read at 3x (`--amount-second-pass ink`, default). The first reading stays in `*_raw`; the re-read is stored in `*_second_pass_raw`. A re-read is adopted only when the first reading was empty/unparsed, or when a low-confidence first reading disagrees with a clean re-read; adopted values are marked `recovered_second_pass` and always enter review. The ink test ignores table rules, the cell crop keeps the original pixels, and trailing rule residue (`|`, `.....`) is stripped and flagged `recovered_ocr_artifact` instead of silently failing the parse. On issue 45 this fixed all page-15 amounts with no change on the other benchmark pages.
 
 ## 3. Environment setup
 
@@ -220,6 +224,8 @@ A space between digit groups is treated as a possible separator (`5,083,140,620 
 
 Every such repair returns `recovered_ocr_separator` and must enter `review_queue.csv`. No digit is added, removed or inferred. Invalid grouping returns `invalid_grouping` / `ambiguous_format`. O/0, I/1 and similar character substitutions remain flagged `ambiguous_ocr_character`, even if a candidate numeric value is emitted.
 
+Some Balancetes print a negative amount as a short minus rule at the far left of the amount cell, far from the right-aligned digits (issue 20/2025 page 35: a 9×2 px rule at x=1124 while the digits start at x=1295). Vision does not report it because it is below the minimum text height. `apply_margin_signs` checks the left strip of each inked amount cell for a single short horizontal rule (6–16 px wide, 1–3 px tall), negates the parsed amount, records `*_margin_sign` / `*_margin_sign_bbox`, sets `*_parse_status = recovered_negative_margin` and sends the row to review. The raw OCR string is never changed; a dashed row separator or an empty-cell dash is not treated as a sign.
+
 Canonical CSV decimal representation uses digits, no thousands separator and a dot decimal separator. Excel numeric columns are stored as numeric cells; `*_raw` columns retain original OCR strings.
 
 ### CLI number options
@@ -233,7 +239,7 @@ Canonical CSV decimal representation uses digits, no thousands separator and a d
 
 ### `documents.csv`
 
-Contains PDF/printed page, bank name, statement/publication dates, metadata source/status, image dimensions/xref, OCR language routing, OCR status, detected number format/confidence/evidence, Vision elapsed time and source image path. When `--header-fallback` runs, `header_fallback_status`, `header_fallback_bank_name`, `header_fallback_lines`, `header_fallback_image` and related fields record the full-page header evidence; `bank_name_source = ocr_full_page_header` when the name came from that pass.
+Contains PDF/printed page, bank name, statement/publication dates, metadata source/status, image dimensions/xref, OCR language routing, OCR status, detected number format/confidence/evidence, Vision elapsed time and source image path. When `--header-fallback` runs, `header_fallback_status`, `header_fallback_bank_name`, `header_fallback_lines`, `header_fallback_image` and related fields record the full-page header evidence; `bank_name_source = ocr_full_page_header` when the name came from that pass. `margin_sign_status` / `margin_sign_applied` report the left-margin minus-sign check.
 
 ### `tb_rows.csv` / Excel `TB_Rows`
 
@@ -245,6 +251,7 @@ Important fields:
 - `debit_amount`, `credit_amount`: canonical decimal candidates.
 - `number_format`, `number_format_confidence`, `number_format_evidence`: page-level number convention and evidence.
 - `debit_parse_status`, `credit_parse_status`: parser / recovery state.
+- `debit_margin_sign` / `credit_margin_sign` and `*_margin_sign_bbox`: a printed minus rule found at the cell's left edge (`negative`), with its pixel box.
 - `row_confidence`, `row_average_confidence`: OCR confidence information.
 - `review_reason`, `review_status`: review logic output.
 - `column_boundary_source`: detected method or fallback.

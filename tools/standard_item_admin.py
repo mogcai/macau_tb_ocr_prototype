@@ -66,7 +66,8 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument("--en", default="")
     create.add_argument("--key", default="")
     create.add_argument("--parent", default="")
-    create.add_argument("--category", default="")
+    create.add_argument("--category", required=True,
+                        help="classification category, e.g. 資產負債-資產 or 排除")
     create.add_argument("--note", default="")
 
     retire = sub.add_parser("retire", help="retire a standard item")

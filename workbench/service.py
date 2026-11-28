@@ -958,6 +958,12 @@ def create_standard_item(
     en = text(canonical_en)
     if not zh and not pt and not en:
         raise ValueError("at least one canonical name (zh, pt or en) is required")
+    category_value = text(category)
+    if not category_value:
+        raise ValueError("classification/category is required for a new standard item")
+    classification_status = (
+        "excluded" if category_value.casefold() in {"排除", "excluded"} else "classified"
+    )
     key = text(item_key) or f"user:{zh or pt or en}"
     key = re.sub(r"\s+", "", key)
     conn = connect_v3(db_path, write=True)
@@ -983,15 +989,17 @@ def create_standard_item(
                 standard_item_id, item_key, canonical_zh, canonical_zh_status,
                 canonical_pt, canonical_pt_status, canonical_en,
                 canonical_en_status, parent_standard_item_id, category,
+                classification_status, classification_source,
                 item_status, created_at, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual:workbench', 'draft', ?, ?)
             """,
             (
                 item_id, key,
                 zh or None, "draft" if zh else "missing",
                 pt or None, "draft" if pt else "missing",
                 en or None, "draft" if en else "missing",
-                parent_standard_item_id or None, text(category) or None,
+                parent_standard_item_id or None, category_value,
+                classification_status,
                 now(), note or None,
             ),
         )
@@ -1523,11 +1531,12 @@ def _standard_item_conflict(
     exclude_adjustment_id: str | None = None,
 ) -> dict[str, Any] | None:
     row = conn.execute(
-        """
+        f"""
         SELECT sr.statement_order, sr.label_normalized AS label
         FROM statement_row_mappings m
         JOIN statement_rows sr ON sr.statement_row_id=m.statement_row_id
         WHERE sr.statement_id=?
+          AND sr.statement_extraction_id={_current_extraction_sql('sr')}
           AND m.standard_item_id=?
           AND m.mapping_status='approved'
           AND (? IS NULL OR m.statement_row_id<>?)
@@ -1554,11 +1563,13 @@ def statement_used_standard_items(statement_id: str) -> list[str]:
     conn = connect_v3()
     try:
         rows = conn.execute(
-            """
+            f"""
             SELECT DISTINCT m.standard_item_id
             FROM statement_row_mappings m
             JOIN statement_rows sr ON sr.statement_row_id=m.statement_row_id
-            WHERE sr.statement_id=? AND m.mapping_status='approved'
+            WHERE sr.statement_id=?
+              AND sr.statement_extraction_id={_current_extraction_sql('sr')}
+              AND m.mapping_status='approved'
             UNION
             SELECT DISTINCT a.standard_item_id
             FROM statement_row_adjustments a

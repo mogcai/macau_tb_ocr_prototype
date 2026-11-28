@@ -50,8 +50,19 @@
         {% endfor %}
       </select>
     </label>
-    <label>Category (optional)
-      <input class="catalogue-category" placeholder="asset / liability / income ...">
+    <label>Classification (required)
+      <input class="catalogue-category" list="catalogue-categories" required
+             placeholder="e.g. 資產負債-資產">
+      <datalist id="catalogue-categories">
+        <option value="資產負債-資產"></option>
+        <option value="資產負債-負債"></option>
+        <option value="資產負債-資產/負債"></option>
+        <option value="所有者權益"></option>
+        <option value="損益"></option>
+        <option value="表外項目"></option>
+        <option value="排除"></option>
+      </datalist>
+      <span class="muted">Use 排除 for total rows.</span>
     </label>
     <label class="wide">Note
       <input class="catalogue-note" placeholder="source / confirmation note">
@@ -189,13 +200,18 @@ document.querySelectorAll(".catalogue-action").forEach((button) => {
 const createButton = document.querySelector(".create-item");
 if (createButton) {
   createButton.addEventListener("click", async () => {
+    const category = document.querySelector(".catalogue-category").value.trim();
+    if (!category) {
+      alert("Classification is required for a new standard item.");
+      return;
+    }
     const payload = {
       canonical_zh: document.querySelector(".catalogue-zh").value || null,
       canonical_pt: document.querySelector(".catalogue-pt").value || null,
       canonical_en: document.querySelector(".catalogue-en").value || null,
       item_key: document.querySelector(".catalogue-key").value || null,
       parent_standard_item_id: document.querySelector(".catalogue-parent").value || null,
-      category: document.querySelector(".catalogue-category").value || null,
+      category: category,
       note: document.querySelector(".catalogue-note").value || "Created in Workbench catalogue"
     };
     if (!payload.canonical_zh && !payload.canonical_pt && !payload.canonical_en) {

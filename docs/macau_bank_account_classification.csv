@@ -53,6 +53,7 @@ account_name,category,classification_status
 銀行貸款,資產負債-負債,classified
 澳門特區紙幣流通額,資產負債-負債,classified
 應付支票及票據,資產負債-負債,classified
+應付賬款,資產負債-負債,classified
 pt:VALORES EM CONTA COM O TESOURO PÚBLICO,資產負債-負債,classified
 不動產,資產負債-資產,classified
 未完成不動產,資產負債-資產,classified
@@ -79,6 +80,8 @@ pt:VALORES EM CONTA COM O TESOURO PÚBLICO,資產負債-負債,classified
 銀行結存,資產負債-資產,classified
 澳門特區負債證明書,資產負債-資產,classified
 應收帳項,資產負債-資產,classified
+總公司之欠款,資產負債-資產,classified
+關連公司之欠款,資產負債-資產,classified
 AMCM存款,資產負債-資產,classified
 AMCM存款>外幣,資產負債-資產,classified
 AMCM存款>澳門元,資產負債-資產,classified
